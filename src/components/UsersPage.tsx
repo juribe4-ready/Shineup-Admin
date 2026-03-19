@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase, Profile } from '../supabase'
-import { Users, Mail, Shield, ToggleLeft, ToggleRight, Plus, Search, X, Check, LogOut, ChevronDown } from 'lucide-react'
+import { Users, Mail, ToggleLeft, ToggleRight, Plus, Search, X, Check, LogOut } from 'lucide-react'
 
 const C = {
   teal: '#00BCD4', tealDark: '#0097A7', tealLight: '#E0F7FA',
@@ -68,7 +68,7 @@ export default function UsersPage({ profile, onSignOut }: Props) {
   const loadStaff = async () => {
     try {
       const res = await fetch(`https://api.airtable.com/v0/appBwnoxgyIXILe6M/tblgHwN1wX6u3ZtNY?fields[]=Name&fields[]=Email&fields[]=Initials&fields[]=Role`, {
-        headers: { 'Authorization': `Bearer ${import.meta.env.VITE_AIRTABLE_TOKEN}` }
+        headers: { 'Authorization': `Bearer ${(import.meta as any).env?.VITE_AIRTABLE_TOKEN || ''}` }
       })
       if (!res.ok) return
       const data = await res.json()
