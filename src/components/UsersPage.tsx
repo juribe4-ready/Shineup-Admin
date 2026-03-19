@@ -110,17 +110,19 @@ export default function UsersPage({ profile, onSignOut }: Props) {
     e.preventDefault()
     setInviting(true)
     try {
-      const { error } = await supabase.auth.admin.inviteUserByEmail(inviteEmail, {
-        data: { role: inviteRole }
+      const res = await fetch('/api/inviteUser', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail, role: inviteRole })
       })
-      if (error) throw error
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error al invitar')
       setInviteSuccess(true)
       showToast(`Invitación enviada a ${inviteEmail}`)
       setTimeout(() => { setShowInvite(false); setInviteSuccess(false); setInviteEmail('') }, 2000)
       loadUsers()
-    } catch {
-      // Fallback: create user directly with magic link
-      showToast('Usa el dashboard de Supabase para invitar usuarios por ahora', 'err')
+    } catch (err: any) {
+      showToast(err.message || 'Error al enviar invitación', 'err')
     }
     setInviting(false)
   }
