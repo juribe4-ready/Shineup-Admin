@@ -1,30 +1,37 @@
 import { useState, useEffect } from 'react'
 import { supabase, Profile } from '../supabase'
-import { Users, Mail, ToggleLeft, ToggleRight, Plus, Search, X, Check, LogOut } from 'lucide-react'
+import { Users, Mail, ToggleLeft, ToggleRight, Plus, Search, X, Check, LogOut, Trash2 } from 'lucide-react'
 
 const C = {
-  teal: '#00BCD4', tealDark: '#0097A7', tealLight: '#E0F7FA',
-  ink: '#0F172A', slate: '#475569', muted: '#94A3B8',
-  border: '#E2E8F0', bg: '#F8FAFC', white: '#FFFFFF',
-  green: '#00C853', red: '#EF4444', amber: '#F59E0B',
+  primary:      '#6366F1',
+  primaryDark:  '#4F46E5',
+  primaryLight: '#EEF2FF',
+  headerBg:     '#1E293B',
+  headerMid:    '#334155',
+  ink:          '#0F172A',
+  slate:        '#475569',
+  muted:        '#94A3B8',
+  border:       '#E2E8F0',
+  bg:           '#F8FAFC',
+  white:        '#FFFFFF',
+  green:        '#10B981',
+  red:          '#EF4444',
+  amber:        '#F59E0B',
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: 'Administrador', manager: 'Manager', cleaner: 'Cleaner', client: 'Cliente'
-}
 const ROLE_COLORS: Record<string, { bg: string; color: string }> = {
   admin:   { bg: '#EDE9FE', color: '#7C3AED' },
   manager: { bg: '#DBEAFE', color: '#2563EB' },
-  cleaner: { bg: C.tealLight, color: C.tealDark },
+  cleaner: { bg: '#ECFDF5', color: '#059669' },
   client:  { bg: '#FEF3C7', color: '#D97706' },
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Admin', manager: 'Manager', cleaner: 'Cleaner', client: 'Cliente'
+}
+
 interface StaffRecord {
-  id: string
-  name: string
-  email: string
-  initials: string
-  role: string
+  id: string; name: string; email: string; initials: string; role: string
 }
 
 interface Props {
@@ -44,11 +51,9 @@ export default function UsersPage({ profile, onSignOut }: Props) {
   const [inviteSuccess, setInviteSuccess] = useState(false)
   const [toast, setToast]             = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const [editingUser, setEditingUser] = useState<Profile | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<Profile | null>(null)
 
-  useEffect(() => {
-    loadUsers()
-    loadStaff()
-  }, [])
+  useEffect(() => { loadUsers(); loadStaff() }, [])
 
   const showToast = (msg: string, type: 'ok' | 'err' = 'ok') => {
     setToast({ msg, type })
@@ -107,6 +112,20 @@ export default function UsersPage({ profile, onSignOut }: Props) {
     } catch { showToast('Error al vincular staff', 'err') }
   }
 
+  const deleteUser = async (user: Profile) => {
+    try {
+      const res = await fetch('/api/deleteUser', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      })
+      if (!res.ok) throw new Error('Error al eliminar')
+      setUsers(prev => prev.filter(u => u.id !== user.id))
+      setConfirmDelete(null)
+      showToast('Usuario eliminado')
+    } catch { showToast('Error al eliminar usuario', 'err') }
+  }
+
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault()
     setInviting(true)
@@ -138,60 +157,56 @@ export default function UsersPage({ profile, onSignOut }: Props) {
 
       {/* TOAST */}
       {toast && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100] px-5 py-3 rounded-2xl shadow-xl text-white text-[13px] font-bold"
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100] px-5 py-3 rounded-2xl shadow-xl text-white text-[13px] font-bold whitespace-nowrap"
           style={{ background: toast.type === 'ok' ? C.green : C.red }}>
           {toast.msg}
         </div>
       )}
 
       {/* HEADER */}
-      <div className="shadow-md" style={{ background: `linear-gradient(135deg, ${C.tealDark}, ${C.teal})` }}>
-        <div className="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-3xl font-black text-white tracking-tighter">
+      <div style={{ background: `linear-gradient(135deg, ${C.headerBg}, ${C.headerMid})` }}>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tighter">
               Shine<span style={{ color: '#FFD700' }}>UP</span>
-              <span className="text-[14px] font-semibold text-white/60 ml-2 tracking-widest uppercase">Admin</span>
+              <span className="text-[11px] sm:text-[13px] font-semibold text-white/40 ml-2 tracking-widest uppercase hidden sm:inline">Admin</span>
             </h1>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl" style={{ background: 'rgba(255,255,255,0.15)' }}>
-              <div className="w-7 h-7 rounded-xl flex items-center justify-center text-white font-black text-[12px]" style={{ background: 'rgba(255,255,255,0.2)' }}>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-xl" style={{ background: 'rgba(255,255,255,0.1)' }}>
+              <div className="w-7 h-7 rounded-xl flex items-center justify-center text-white font-black text-[12px]" style={{ background: C.primary }}>
                 {profile.initials || 'AD'}
               </div>
-              <span className="text-white font-semibold text-[13px]">{profile.full_name?.split(' ')[0] || 'Admin'}</span>
+              <span className="text-white font-semibold text-[13px] hidden sm:block">{profile.full_name?.split(' ')[0] || 'Admin'}</span>
             </div>
-            <button onClick={onSignOut} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-white/70 text-[12px] font-semibold hover:text-white transition-colors"
-              style={{ background: 'rgba(255,255,255,0.1)' }}>
-              <LogOut className="w-3.5 h-3.5" /> Salir
+            <button onClick={onSignOut} className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-white/60 text-[12px] font-semibold hover:text-white transition-colors"
+              style={{ background: 'rgba(255,255,255,0.08)' }}>
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:block">Salir</span>
             </button>
           </div>
         </div>
-
-        {/* NAV */}
-        <div className="max-w-5xl mx-auto px-6 flex gap-1 pb-0">
-          <button className="flex items-center gap-2 px-4 py-3 text-[13px] font-bold text-white border-b-2 border-white">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex gap-1">
+          <button className="flex items-center gap-2 px-4 py-3 text-[13px] font-bold text-white border-b-2" style={{ borderColor: C.primary }}>
             <Users className="w-4 h-4" /> Usuarios
           </button>
         </div>
       </div>
 
       {/* CONTENT */}
-      <div className="max-w-5xl mx-auto px-6 py-8">
-
-        {/* Page header */}
-        <div className="flex items-center justify-between mb-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h2 className="font-black text-[22px]" style={{ color: C.ink }}>Gestión de Usuarios</h2>
+            <h2 className="font-black text-[20px] sm:text-[22px]" style={{ color: C.ink }}>Gestión de Usuarios</h2>
             <p className="text-[13px] font-medium mt-0.5" style={{ color: C.muted }}>{users.length} usuarios registrados</p>
           </div>
           <button onClick={() => setShowInvite(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-white font-bold text-[13px] shadow-md active:scale-95 transition-all"
-            style={{ background: C.teal }}>
+            className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl text-white font-bold text-[13px] shadow-md active:scale-95 transition-all w-full sm:w-auto"
+            style={{ background: C.primary }}>
             <Plus className="w-4 h-4" /> Invitar usuario
           </button>
         </div>
 
-        {/* Search */}
         <div className="relative mb-5">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: C.muted }} />
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
@@ -200,20 +215,19 @@ export default function UsersPage({ profile, onSignOut }: Props) {
             style={{ fontFamily: 'Poppins, sans-serif', border: `1.5px solid ${C.border}`, background: C.white, color: C.ink }} />
         </div>
 
-        {/* Users table */}
-        <div className="rounded-3xl overflow-hidden shadow-sm" style={{ background: C.white, border: `1px solid ${C.border}` }}>
-          {/* Table header */}
+        {/* DESKTOP TABLE */}
+        <div className="rounded-3xl overflow-hidden shadow-sm hidden sm:block" style={{ background: C.white, border: `1px solid ${C.border}` }}>
           <div className="grid grid-cols-12 px-6 py-3 text-[10px] font-black uppercase tracking-widest" style={{ background: C.bg, color: C.muted, borderBottom: `1px solid ${C.border}` }}>
             <div className="col-span-4">Usuario</div>
             <div className="col-span-2">Rol</div>
             <div className="col-span-3">Staff Airtable</div>
             <div className="col-span-2">Estado</div>
-            <div className="col-span-1">Acciones</div>
+            <div className="col-span-1 text-right">Acciones</div>
           </div>
 
           {loading ? (
             <div className="flex items-center justify-center py-16">
-              <div className="w-8 h-8 border-3 border-slate-200 border-t-teal-400 rounded-full animate-spin" style={{ borderTopColor: C.teal }} />
+              <div className="w-8 h-8 border-3 rounded-full animate-spin" style={{ borderColor: C.border, borderTopColor: C.primary }} />
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center py-16 gap-3" style={{ color: C.muted }}>
@@ -227,7 +241,6 @@ export default function UsersPage({ profile, onSignOut }: Props) {
                 const linkedStaff = staffList.find(s => s.id === user.staff_airtable_id)
                 return (
                   <div key={user.id} className="grid grid-cols-12 px-6 py-4 items-center hover:bg-slate-50 transition-colors">
-                    {/* User info */}
                     <div className="col-span-4 flex items-center gap-3">
                       <div className="w-9 h-9 rounded-2xl flex items-center justify-center font-black text-[13px] shrink-0"
                         style={{ background: roleStyle.bg, color: roleStyle.color }}>
@@ -238,8 +251,6 @@ export default function UsersPage({ profile, onSignOut }: Props) {
                         <p className="text-[11px] font-medium truncate" style={{ color: C.muted }}>{user.email}</p>
                       </div>
                     </div>
-
-                    {/* Role */}
                     <div className="col-span-2">
                       <select value={user.role} onChange={e => updateRole(user, e.target.value)}
                         className="text-[11px] font-bold px-2.5 py-1.5 rounded-xl outline-none cursor-pointer"
@@ -250,54 +261,46 @@ export default function UsersPage({ profile, onSignOut }: Props) {
                         <option value="client">Cliente</option>
                       </select>
                     </div>
-
-                    {/* Staff Airtable */}
                     <div className="col-span-3">
                       {editingUser?.id === user.id ? (
                         <div className="flex items-center gap-2">
                           <select onChange={e => updateStaffId(user, e.target.value)} defaultValue=""
                             className="text-[11px] font-medium px-2 py-1.5 rounded-xl outline-none flex-1"
-                            style={{ border: `1.5px solid ${C.teal}`, fontFamily: 'Poppins, sans-serif', color: C.ink }}>
+                            style={{ border: `1.5px solid ${C.primary}`, fontFamily: 'Poppins, sans-serif', color: C.ink }}>
                             <option value="" disabled>Seleccionar...</option>
-                            {staffList.map(s => (
-                              <option key={s.id} value={s.id}>{s.name} ({s.initials})</option>
-                            ))}
+                            {staffList.map(s => <option key={s.id} value={s.id}>{s.name} ({s.initials})</option>)}
                           </select>
                           <button onClick={() => setEditingUser(null)} className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: '#FEE2E2' }}>
                             <X className="w-3 h-3" style={{ color: C.red }} />
                           </button>
                         </div>
                       ) : linkedStaff ? (
-                        <button onClick={() => setEditingUser(user)} className="flex items-center gap-2 text-left hover:opacity-70 transition-opacity">
+                        <button onClick={() => setEditingUser(user)} className="flex items-center gap-2 hover:opacity-70 transition-opacity">
                           <div className="w-6 h-6 rounded-lg flex items-center justify-center font-black text-[10px]"
-                            style={{ background: C.tealLight, color: C.tealDark }}>{linkedStaff.initials}</div>
+                            style={{ background: C.primaryLight, color: C.primary }}>{linkedStaff.initials}</div>
                           <span className="text-[12px] font-semibold" style={{ color: C.ink }}>{linkedStaff.name}</span>
                         </button>
                       ) : (
                         <button onClick={() => setEditingUser(user)}
-                          className="text-[11px] font-bold px-3 py-1.5 rounded-xl transition-all hover:opacity-80"
+                          className="text-[11px] font-bold px-3 py-1.5 rounded-xl"
                           style={{ background: '#FEF3C7', color: C.amber }}>
                           + Vincular Staff
                         </button>
                       )}
                     </div>
-
-                    {/* Status */}
                     <div className="col-span-2">
                       <button onClick={() => toggleActive(user)} className="flex items-center gap-2 active:scale-95 transition-all">
-                        {user.active ? (
-                          <><ToggleRight className="w-6 h-6" style={{ color: C.green }} /><span className="text-[11px] font-bold" style={{ color: C.green }}>Activo</span></>
-                        ) : (
-                          <><ToggleLeft className="w-6 h-6" style={{ color: C.muted }} /><span className="text-[11px] font-bold" style={{ color: C.muted }}>Inactivo</span></>
-                        )}
+                        {user.active
+                          ? <><ToggleRight className="w-6 h-6" style={{ color: C.green }} /><span className="text-[11px] font-bold" style={{ color: C.green }}>Activo</span></>
+                          : <><ToggleLeft className="w-6 h-6" style={{ color: C.muted }} /><span className="text-[11px] font-bold" style={{ color: C.muted }}>Inactivo</span></>}
                       </button>
                     </div>
-
-                    {/* Actions */}
                     <div className="col-span-1 flex items-center justify-end">
-                      <span className="text-[10px] font-medium px-2 py-1 rounded-lg" style={{ background: C.bg, color: C.muted }}>
-                        {new Date(user.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
-                      </span>
+                      <button onClick={() => setConfirmDelete(user)}
+                        className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-red-50 transition-colors"
+                        style={{ color: C.muted }}>
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 )
@@ -305,70 +308,159 @@ export default function UsersPage({ profile, onSignOut }: Props) {
             </div>
           )}
         </div>
+
+        {/* MOBILE CARDS */}
+        <div className="space-y-3 sm:hidden">
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="w-8 h-8 border-3 rounded-full animate-spin" style={{ borderColor: C.border, borderTopColor: C.primary }} />
+            </div>
+          ) : filtered.map(user => {
+            const roleStyle = ROLE_COLORS[user.role] || ROLE_COLORS.cleaner
+            const linkedStaff = staffList.find(s => s.id === user.staff_airtable_id)
+            return (
+              <div key={user.id} className="rounded-3xl p-4 shadow-sm" style={{ background: C.white, border: `1px solid ${C.border}` }}>
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center font-black text-[14px] shrink-0"
+                      style={{ background: roleStyle.bg, color: roleStyle.color }}>
+                      {user.initials || user.email[0].toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="font-bold text-[14px]" style={{ color: C.ink }}>{user.full_name || 'Sin nombre'}</p>
+                      <p className="text-[11px] font-medium" style={{ color: C.muted }}>{user.email}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setConfirmDelete(user)} className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ color: C.muted }}>
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <select value={user.role} onChange={e => updateRole(user, e.target.value)}
+                    className="text-[11px] font-bold px-2.5 py-1.5 rounded-xl outline-none cursor-pointer"
+                    style={{ background: roleStyle.bg, color: roleStyle.color, border: 'none', fontFamily: 'Poppins, sans-serif' }}>
+                    <option value="admin">Admin</option>
+                    <option value="manager">Manager</option>
+                    <option value="cleaner">Cleaner</option>
+                    <option value="client">Cliente</option>
+                  </select>
+                  {linkedStaff ? (
+                    <button onClick={() => setEditingUser(user)} className="flex items-center gap-1.5"
+                      style={{ background: C.primaryLight, color: C.primary, padding: '4px 10px', borderRadius: '10px' }}>
+                      <span className="text-[11px] font-bold">{linkedStaff.name}</span>
+                    </button>
+                  ) : (
+                    <button onClick={() => setEditingUser(user)} className="text-[11px] font-bold px-2.5 py-1.5 rounded-xl"
+                      style={{ background: '#FEF3C7', color: C.amber }}>+ Vincular
+                    </button>
+                  )}
+                  <button onClick={() => toggleActive(user)} className="flex items-center gap-1.5 ml-auto">
+                    {user.active
+                      ? <><ToggleRight className="w-5 h-5" style={{ color: C.green }} /><span className="text-[11px] font-bold" style={{ color: C.green }}>Activo</span></>
+                      : <><ToggleLeft className="w-5 h-5" style={{ color: C.muted }} /><span className="text-[11px] font-bold" style={{ color: C.muted }}>Inactivo</span></>}
+                  </button>
+                </div>
+                {editingUser?.id === user.id && (
+                  <div className="mt-3 flex gap-2">
+                    <select onChange={e => updateStaffId(user, e.target.value)} defaultValue=""
+                      className="text-[12px] font-medium px-3 py-2 rounded-xl outline-none flex-1"
+                      style={{ border: `1.5px solid ${C.primary}`, fontFamily: 'Poppins, sans-serif', color: C.ink }}>
+                      <option value="" disabled>Seleccionar staff...</option>
+                      {staffList.map(s => <option key={s.id} value={s.id}>{s.name} ({s.initials})</option>)}
+                    </select>
+                    <button onClick={() => setEditingUser(null)} className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#FEE2E2' }}>
+                      <X className="w-4 h-4" style={{ color: C.red }} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       {/* INVITE MODAL */}
       {showInvite && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-6" style={{ background: 'rgba(15,23,42,0.6)' }} onClick={() => setShowInvite(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(15,23,42,0.7)' }} onClick={() => setShowInvite(false)}>
           <div className="w-full max-w-md rounded-3xl overflow-hidden shadow-2xl" style={{ background: C.white }} onClick={e => e.stopPropagation()}>
-            <div className="px-6 py-5" style={{ background: `linear-gradient(135deg, ${C.tealDark}, ${C.teal})` }}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Mail className="w-5 h-5 text-white" />
-                  <p className="font-black text-[17px] text-white">Invitar Usuario</p>
-                </div>
-                <button onClick={() => setShowInvite(false)} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.2)' }}>
-                  <X className="w-4 h-4 text-white" />
-                </button>
+            <div className="px-6 py-5 flex items-center justify-between" style={{ background: `linear-gradient(135deg, ${C.headerBg}, ${C.headerMid})` }}>
+              <div className="flex items-center gap-2">
+                <Mail className="w-5 h-5 text-white" />
+                <p className="font-black text-[17px] text-white">Invitar Usuario</p>
               </div>
+              <button onClick={() => setShowInvite(false)} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.15)' }}>
+                <X className="w-4 h-4 text-white" />
+              </button>
             </div>
-
             {inviteSuccess ? (
               <div className="px-6 py-10 flex flex-col items-center gap-3">
                 <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: '#DCFCE7' }}>
                   <Check className="w-8 h-8" style={{ color: C.green }} />
                 </div>
                 <p className="font-black text-[17px]" style={{ color: C.ink }}>¡Invitación enviada!</p>
-                <p className="text-[13px] text-center" style={{ color: C.muted }}>Le llegará un email a {inviteEmail} para crear su cuenta.</p>
+                <p className="text-[13px] text-center" style={{ color: C.muted }}>Le llegará un email a {inviteEmail}</p>
               </div>
             ) : (
               <form onSubmit={handleInvite} className="px-6 py-6 space-y-4">
                 <div>
-                  <p className="text-[11px] font-black uppercase tracking-widest mb-2" style={{ color: C.muted }}>Email del usuario</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: C.muted }}>Email del usuario</p>
                   <input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
                     placeholder="correo@ejemplo.com" required
                     className="w-full px-4 py-3 rounded-2xl text-[13px] font-medium outline-none"
                     style={{ fontFamily: 'Poppins, sans-serif', border: `1.5px solid ${C.border}`, color: C.ink, background: C.bg }} />
                 </div>
                 <div>
-                  <p className="text-[11px] font-black uppercase tracking-widest mb-2" style={{ color: C.muted }}>Rol</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: C.muted }}>Rol</p>
                   <div className="grid grid-cols-3 gap-2">
                     {(['cleaner', 'manager', 'admin'] as const).map(r => (
                       <button key={r} type="button" onClick={() => setInviteRole(r)}
                         className="py-2.5 rounded-2xl text-[12px] font-bold transition-all"
                         style={{
-                          border: `1.5px solid ${inviteRole === r ? ROLE_COLORS[r].color : C.border}`,
-                          background: inviteRole === r ? ROLE_COLORS[r].bg : C.bg,
-                          color: inviteRole === r ? ROLE_COLORS[r].color : C.muted
+                          border: `1.5px solid ${inviteRole === r ? C.primary : C.border}`,
+                          background: inviteRole === r ? C.primaryLight : C.bg,
+                          color: inviteRole === r ? C.primary : C.muted
                         }}>
                         {ROLE_LABELS[r]}
                       </button>
                     ))}
                   </div>
                 </div>
-                <div className="pt-2">
-                  <p className="text-[11px] font-medium mb-4" style={{ color: C.muted }}>
-                    ⚠️ La invitación por email requiere configuración adicional en Supabase. 
-                    Por ahora puedes agregar usuarios desde el dashboard de Supabase → Authentication → Users → Invite User.
-                  </p>
-                  <button type="submit" disabled={inviting}
-                    className="w-full py-3.5 rounded-2xl text-white font-black text-[14px] flex items-center justify-center gap-2 active:scale-95 transition-all"
-                    style={{ background: C.teal, opacity: inviting ? 0.7 : 1 }}>
-                    {inviting ? 'Enviando...' : <><Mail className="w-4 h-4" /> Enviar Invitación</>}
-                  </button>
-                </div>
+                <button type="submit" disabled={inviting}
+                  className="w-full py-3.5 rounded-2xl text-white font-black text-[14px] flex items-center justify-center gap-2 active:scale-95 transition-all"
+                  style={{ background: C.primary, opacity: inviting ? 0.7 : 1 }}>
+                  {inviting ? 'Enviando...' : <><Mail className="w-4 h-4" /> Enviar Invitación</>}
+                </button>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRM MODAL */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(15,23,42,0.7)' }} onClick={() => setConfirmDelete(null)}>
+          <div className="w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl" style={{ background: C.white }} onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 mx-auto" style={{ background: '#FEE2E2' }}>
+                <Trash2 className="w-7 h-7" style={{ color: C.red }} />
+              </div>
+              <p className="font-black text-[18px] text-center mb-2" style={{ color: C.ink }}>¿Eliminar usuario?</p>
+              <p className="text-[13px] text-center mb-6" style={{ color: C.muted }}>
+                Se eliminará <strong>{confirmDelete.full_name || confirmDelete.email}</strong> permanentemente.
+              </p>
+              <div className="flex gap-3">
+                <button onClick={() => setConfirmDelete(null)}
+                  className="flex-1 py-3 rounded-2xl font-bold text-[13px]"
+                  style={{ background: C.bg, color: C.slate }}>
+                  Cancelar
+                </button>
+                <button onClick={() => deleteUser(confirmDelete)}
+                  className="flex-1 py-3 rounded-2xl font-bold text-[13px] text-white"
+                  style={{ background: C.red }}>
+                  Eliminar
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
