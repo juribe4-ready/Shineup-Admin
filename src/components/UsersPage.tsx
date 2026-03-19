@@ -98,9 +98,10 @@ export default function UsersPage({ profile, onSignOut }: Props) {
       const { error } = await supabase.from('profiles').update({
         staff_airtable_id: staffId,
         initials: staff?.initials || user.initials,
+        full_name: staff?.name || user.full_name,
       }).eq('id', user.id)
       if (error) throw error
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, staff_airtable_id: staffId, initials: staff?.initials || u.initials } : u))
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, staff_airtable_id: staffId, initials: staff?.initials || u.initials, full_name: staff?.name || u.full_name } : u))
       setEditingUser(null)
       showToast('Staff vinculado correctamente')
     } catch { showToast('Error al vincular staff', 'err') }
