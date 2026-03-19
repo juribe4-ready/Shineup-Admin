@@ -13,7 +13,7 @@ export default function App() {
       else setLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) loadProfile(session.user.id)
       else { setProfile(null); setLoading(false) }
       if (window.location.hash) window.history.replaceState(null, '', window.location.pathname)
