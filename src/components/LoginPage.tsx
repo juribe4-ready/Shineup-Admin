@@ -9,10 +9,7 @@ export default function LoginPage() {
 
   const handleGoogle = async () => {
     setLoading(true)
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: window.location.origin }
-    })
+    await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } })
     setLoading(false)
   }
 
@@ -26,16 +23,19 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6"
-      style={{ background: 'linear-gradient(135deg, #0097A7 0%, #00BCD4 60%, #26C6DA 100%)', fontFamily: 'Poppins, sans-serif' }}>
+      style={{ background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #334155 100%)', fontFamily: 'Poppins, sans-serif' }}>
 
-      <div className="mb-10 text-center">
+      <div style={{ position: 'absolute', top: '-80px', right: '-80px', width: '300px', height: '300px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', bottom: '-60px', left: '-60px', width: '250px', height: '250px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.10) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+      <div className="mb-10 text-center relative z-10">
         <h1 className="text-5xl font-black text-white tracking-tighter">
           Shine<span style={{ color: '#FFD700' }}>UP</span>
         </h1>
-        <p className="text-white/70 text-[13px] font-semibold mt-2 tracking-widest uppercase">Admin Panel</p>
+        <p className="text-white/40 text-[12px] font-semibold mt-2 tracking-widest uppercase">Admin Panel</p>
       </div>
 
-      <div className="w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl" style={{ background: 'rgba(255,255,255,0.97)' }}>
+      <div className="w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl relative z-10" style={{ background: 'rgba(255,255,255,0.97)' }}>
         <div className="px-7 py-8">
           <p className="font-black text-[20px] mb-1" style={{ color: '#0F172A' }}>Acceso Admin</p>
           <p className="text-[13px] font-medium mb-6" style={{ color: '#94A3B8' }}>Solo administradores y managers</p>
@@ -70,10 +70,13 @@ export default function LoginPage() {
             {error && <div className="px-4 py-3 rounded-2xl text-[12px] font-semibold" style={{ background: '#FEE2E2', color: '#EF4444' }}>{error}</div>}
             <button type="submit" disabled={loading}
               className="w-full py-3.5 rounded-2xl font-black text-[14px] text-white transition-all active:scale-95"
-              style={{ background: 'linear-gradient(135deg, #0097A7, #00BCD4)', opacity: loading ? 0.7 : 1 }}>
+              style={{ background: 'linear-gradient(135deg, #4F46E5, #6366F1)', opacity: loading ? 0.7 : 1 }}>
               {loading ? 'Ingresando...' : 'Ingresar'}
             </button>
           </form>
+        </div>
+        <div className="px-7 py-4 text-center" style={{ borderTop: '1px solid #F1F5F9' }}>
+          <p className="text-[11px] font-medium" style={{ color: '#94A3B8' }}>Solo usuarios autorizados pueden acceder.</p>
         </div>
       </div>
     </div>
