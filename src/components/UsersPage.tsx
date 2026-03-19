@@ -67,18 +67,10 @@ export default function UsersPage({ profile, onSignOut }: Props) {
 
   const loadStaff = async () => {
     try {
-      const res = await fetch(`https://api.airtable.com/v0/appBwnoxgyIXILe6M/tblgHwN1wX6u3ZtNY?fields[]=Name&fields[]=Email&fields[]=Initials&fields[]=Role`, {
-        headers: { 'Authorization': `Bearer ${(import.meta as any).env?.VITE_AIRTABLE_TOKEN || ''}` }
-      })
+      const res = await fetch('/api/getStaff')
       if (!res.ok) return
       const data = await res.json()
-      setStaffList((data.records || []).map((r: any) => ({
-        id: r.id,
-        name: r.fields?.Name || '',
-        email: r.fields?.Email || '',
-        initials: r.fields?.Initials || '',
-        role: r.fields?.Role || '',
-      })).filter((s: StaffRecord) => s.email))
+      setStaffList(data.filter((s: StaffRecord) => s.name))
     } catch {}
   }
 
