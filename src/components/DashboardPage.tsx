@@ -33,10 +33,20 @@ const STATUS_COLORS: Record<string, { bg: string; color: string; label: string; 
 
 interface Cleaning {
   id: string; cleaningId: string; propertyText: string; address: string
-  status: string; scheduledTime: string | null; startTime: string | null
-  endTime: string | null; staffList: { name: string; initials: string }[]
+  propertyId: string; status: string; scheduledTime: string | null
+  startTime: string | null; endTime: string | null
+  estimatedEndTime?: string | null
+  staffList: { name: string; initials: string }[]
   staffListText: string; googleMapsUrl: string; thumbnail: string | null
   coords: { lat: number; lng: number } | null; bookUrl: string | null
+}
+
+interface Incident {
+  id: string; name: string; status: string; comment?: string; photoUrls: string[]
+}
+
+interface InventoryItem {
+  id: string; status: string; comment?: string; photoUrls: string[]
 }
 
 interface TimelineGroup {
@@ -221,13 +231,32 @@ export default function DashboardPage({ profile: _profile }: Props) {
   const [data, setData]           = useState<DashboardData | null>(null)
   const [loading, setLoading]     = useState(true)
   const [date, setDate]           = useState(today())
-  const [selected, setSelected]   = useState<Cleaning | null>(null)
+  const [selected, setSelected]     = useState<Cleaning | null>(null)
+  const [incidents, setIncidents]   = useState<Incident[]>([])
+  const [inventory, setInventory]   = useState<InventoryItem[]>([])
+  const [loadingDetail, setLoadingDetail] = useState(false)
   const [mapReady, setMapReady]   = useState(false)
   const [autoRefresh] = useState(true)
   const mapRef    = useRef<HTMLDivElement>(null)
   const mapObj    = useRef<any>(null)
   const markers   = useRef<any[]>([])
   const infoWindow = useRef<any>(null)
+
+  const loadDetail = async (cleaning: Cleaning) => {
+    setSelected(cleaning)
+    setIncidents([]); setInventory([])
+    if (!cleaning.propertyId) return
+    setLoadingDetail(true)
+    try {
+      const [incRes, invRes] = await Promise.all([
+        fetch(`/api/getIncidents?propertyId=${cleaning.propertyId}`),
+        fetch(`/api/getInventory?propertyId=${cleaning.propertyId}`)
+      ])
+      if (incRes.ok) setIncidents(await incRes.json())
+      if (invRes.ok) setInventory(await invRes.json())
+    } catch {}
+    finally { setLoadingDetail(false) }
+  }
 
   const loadData = useCallback(async (d?: string) => {
     setLoading(true)
@@ -451,7 +480,7 @@ export default function DashboardPage({ profile: _profile }: Props) {
 
             <div className="p-5">
               {/* Header */}
-              <div className="flex items-start justify-between mb-4">
+              <div className="flex items-start justify-between mb-3">
                 <div className="flex-1 pr-4">
                   <p className="font-black text-[17px] leading-tight" style={{ color: C.ink }}>{selected.propertyText}</p>
                   <p className="text-[12px] font-medium mt-0.5" style={{ color: C.muted }}>{selected.address}</p>
@@ -461,51 +490,85 @@ export default function DashboardPage({ profile: _profile }: Props) {
                 </button>
               </div>
 
-              {/* Status badge */}
+              {/* Status */}
               {(() => {
                 const sc = STATUS_COLORS[selected.status] || STATUS_COLORS['Programmed']
-                return (
-                  <span className="text-[11px] font-bold px-3 py-1.5 rounded-full inline-block mb-4" style={{ background: sc.bg, color: sc.color }}>
-                    {sc.label}
-                  </span>
-                )
+                return <span className="text-[11px] font-bold px-3 py-1.5 rounded-full inline-block mb-3" style={{ background: sc.bg, color: sc.color }}>{sc.label}</span>
               })()}
 
-              {/* Times */}
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div className="p-3 rounded-2xl" style={{ background: C.bg }}>
-                  <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: C.muted }}>Programada</p>
-                  <p className="font-black text-[16px]" style={{ color: C.ink }}>{fmt(selected.scheduledTime)}</p>
-                </div>
-                <div className="p-3 rounded-2xl" style={{ background: C.bg }}>
-                  <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: C.muted }}>Inicio Real</p>
-                  <p className="font-black text-[16px]" style={{ color: selected.startTime ? C.green : C.muted }}>{fmt(selected.startTime)}</p>
-                </div>
+              {/* Times grid */}
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {[
+                  { label: 'Inicio Prog.', value: selected.scheduledTime, color: C.ink },
+                  { label: 'Inicio Real', value: selected.startTime, color: selected.startTime ? C.green : C.muted },
+                  { label: 'Fin Prog.', value: selected.estimatedEndTime, color: C.ink },
+                  { label: 'Fin Real', value: selected.endTime, color: selected.endTime ? C.green : C.muted },
+                ].map(t => (
+                  <div key={t.label} className="p-2.5 rounded-2xl" style={{ background: C.bg }}>
+                    <p className="text-[9px] font-black uppercase tracking-widest mb-0.5" style={{ color: C.muted }}>{t.label}</p>
+                    <p className="font-black text-[15px]" style={{ color: t.color }}>{fmt(t.value)}</p>
+                  </div>
+                ))}
               </div>
 
               {/* Staff */}
               {selected.staffList?.length > 0 && (
-                <div className="flex items-center gap-2 mb-4">
-                  <Users className="w-4 h-4 shrink-0" style={{ color: C.muted }} />
-                  <p className="text-[13px] font-semibold" style={{ color: C.slate }}>
-                    {selected.staffList.map(s => s.name).join(', ')}
-                  </p>
+                <div className="flex items-center gap-2 mb-3 p-2.5 rounded-2xl" style={{ background: C.bg }}>
+                  <Users className="w-3.5 h-3.5 shrink-0" style={{ color: C.muted }} />
+                  <p className="text-[12px] font-semibold" style={{ color: C.slate }}>{selected.staffList.map(s => s.name).join(', ')}</p>
                 </div>
               )}
 
+              {/* Incidents */}
+              {loadingDetail ? (
+                <div className="flex justify-center py-3"><div className="w-5 h-5 border-2 rounded-full animate-spin" style={{ borderColor: C.border, borderTopColor: C.primary }} /></div>
+              ) : (
+                <>
+                  {incidents.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: C.muted }}>Incidentes ({incidents.length})</p>
+                      <div className="space-y-1.5">
+                        {incidents.map(inc => (
+                          <div key={inc.id} className="flex items-center gap-2 p-2.5 rounded-xl" style={{ background: '#FEF3C7' }}>
+                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: C.amber }} />
+                            <p className="text-[12px] font-semibold flex-1 truncate" style={{ color: C.ink }}>{inc.name}</p>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: C.amber, color: 'white' }}>{inc.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {inventory.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: C.muted }}>Inventario ({inventory.length})</p>
+                      <div className="space-y-1.5">
+                        {inventory.map(inv => (
+                          <div key={inv.id} className="flex items-center gap-2 p-2.5 rounded-xl" style={{ background: inv.status === 'Out of Stock' ? '#FEE2E2' : '#FEF3C7' }}>
+                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: inv.status === 'Out of Stock' ? C.red : C.amber }} />
+                            <p className="text-[12px] font-semibold flex-1 truncate" style={{ color: C.ink }}>{inv.comment || inv.status}</p>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: inv.status === 'Out of Stock' ? C.red : C.amber, color: 'white' }}>{inv.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
               {/* Actions */}
-              <div className="flex gap-2">
+              <div className="flex gap-2 mt-1">
                 {selected.googleMapsUrl && (
                   <a href={selected.googleMapsUrl} target="_blank" rel="noopener noreferrer"
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl text-[13px] font-bold transition-all"
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl text-[12px] font-bold"
                     style={{ background: C.primaryLight, color: C.primary }}>
-                    <MapPin className="w-4 h-4" /> Ver en Maps
+                    <MapPin className="w-3.5 h-3.5" /> Maps
                   </a>
                 )}
-                <a href={`https://shineup-ops.vercel.app`} target="_blank" rel="noopener noreferrer"
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl text-white text-[13px] font-bold transition-all"
+                <a href="https://shineup-ops.vercel.app" target="_blank" rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl text-white text-[12px] font-bold"
                   style={{ background: C.primary }}>
-                  <ExternalLink className="w-4 h-4" /> Ver Detalle
+                  <ExternalLink className="w-3.5 h-3.5" /> Ver en Ops
                 </a>
               </div>
             </div>
