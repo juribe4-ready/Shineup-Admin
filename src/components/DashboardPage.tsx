@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Profile } from '../supabase'
 import {
-  MapPin, Clock, Users, RefreshCw, ChevronRight,
-  CheckCircle2, Play, Calendar, X, ExternalLink, Camera
+  MapPin, Users, RefreshCw, ChevronRight,
+  Calendar, X, ExternalLink
 } from 'lucide-react'
 
 const C = {
@@ -68,13 +68,13 @@ declare global {
   interface Window { google: any; initMap: () => void }
 }
 
-export default function DashboardPage({ profile }: Props) {
+export default function DashboardPage({ profile: _profile }: Props) {
   const [data, setData]           = useState<DashboardData | null>(null)
   const [loading, setLoading]     = useState(true)
   const [date, setDate]           = useState(today())
   const [selected, setSelected]   = useState<Cleaning | null>(null)
   const [mapReady, setMapReady]   = useState(false)
-  const [autoRefresh, setAutoRefresh] = useState(true)
+  const [autoRefresh] = useState(true)
   const mapRef    = useRef<HTMLDivElement>(null)
   const mapObj    = useRef<any>(null)
   const markers   = useRef<any[]>([])
