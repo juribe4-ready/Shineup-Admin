@@ -129,17 +129,17 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
                 <div className="flex items-center" style={{ background: '#FAFBFC' }}>
                   <div className="px-4 py-3 flex items-center gap-2" style={{ width: '180px', minWidth: '180px' }}>
                     <div className="flex items-center">
-                      {group.staffListText.split(',').slice(0, 3).map((name, i) => (
+                      {group.cleanings[0]?.staffList.slice(0, 3).map((s, i) => (
                         <div key={i} className="w-6 h-6 rounded-lg flex items-center justify-center font-black text-[9px] text-white border border-white"
                           style={{ background: C.primary, marginLeft: i > 0 ? '-4px' : 0 }}>
-                          {name.trim().substring(0, 2).toUpperCase()}
+                          {s.initials || s.name.substring(0, 2).toUpperCase()}
                         </div>
                       ))}
                     </div>
                     <div className="min-w-0">
                       <p className="text-[11px] font-bold truncate" style={{ color: C.ink }}>
-                        {group.staffListText.split(',')[0]?.trim()}
-                        {group.staffListText.split(',').length > 1 && <span style={{ color: C.muted }}> +{group.staffListText.split(',').length - 1}</span>}
+                        {group.cleanings[0]?.staffList[0]?.name || group.staffListText.split(',')[0]?.trim()}
+                        {group.cleanings[0]?.staffList.length > 1 && <span style={{ color: C.muted }}> +{(group.cleanings[0]?.staffList.length || 1) - 1}</span>}
                       </p>
                       <p className="text-[10px] font-semibold" style={{ color: groupPct === 100 ? C.green : C.primary }}>{groupPct}% · {group.done}/{group.total}</p>
                     </div>
@@ -559,7 +559,7 @@ export default function DashboardPage({ profile: _profile }: Props) {
                     <MapPin className="w-3.5 h-3.5" /> Maps
                   </a>
                 )}
-                <a href="https://shineup-ops.vercel.app" target="_blank" rel="noopener noreferrer"
+                <a href={`https://shineup-ops.vercel.app/?cleaning=${selected.id}`} target="_blank" rel="noopener noreferrer"
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl text-white text-[12px] font-bold"
                   style={{ background: C.primary }}>
                   <ExternalLink className="w-3.5 h-3.5" /> Ver en Ops
