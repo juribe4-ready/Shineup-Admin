@@ -413,10 +413,11 @@ export default function DashboardPage({ profile: _profile }: Props) {
       {/* Stats cards */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
-          { label: 'Total', value: stats.total, color: C.ink, bg: C.white },
-          { label: 'Programadas', value: stats.programmed, color: C.muted, bg: C.white },
-          { label: 'En Progreso', value: stats.inProgress, color: C.blue, bg: '#EFF6FF' },
-          { label: 'Terminadas', value: stats.done, color: C.green, bg: '#ECFDF5' },
+          { label: 'Total',       value: stats.total,      color: C.ink,     bg: C.white },
+          { label: 'Programadas', value: stats.programmed, color: C.muted,   bg: C.white },
+          { label: 'Abiertas',    value: stats.opened,     color: '#D97706', bg: '#FFFBEB' },
+          { label: 'En Progreso', value: stats.inProgress, color: C.blue,    bg: '#EFF6FF' },
+          { label: 'Terminadas',  value: stats.done,       color: C.green,   bg: '#ECFDF5' },
         ].map(s => (
           <div key={s.label} className="rounded-3xl p-4 shadow-sm" style={{ background: s.bg, border: `1px solid ${C.border}` }}>
             <p className="font-black text-[28px] leading-none" style={{ color: s.color }}>{s.value}</p>
@@ -470,13 +471,6 @@ export default function DashboardPage({ profile: _profile }: Props) {
           style={{ background: 'rgba(15,23,42,0.7)' }} onClick={() => setSelected(null)}>
           <div className="w-full max-w-md rounded-3xl overflow-hidden shadow-2xl" style={{ background: C.white }}
             onClick={e => e.stopPropagation()}>
-
-            {/* Thumbnail */}
-            {selected.thumbnail && (
-              <div className="w-full h-44 overflow-hidden" style={{ background: C.bg }}>
-                <img src={selected.thumbnail} alt="" className="w-full h-full object-cover" />
-              </div>
-            )}
 
             <div className="p-5">
               {/* Header */}
