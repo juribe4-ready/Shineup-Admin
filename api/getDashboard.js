@@ -65,6 +65,7 @@ export default async function handler(req, res) {
         id: record.id,
         cleaningId: f['Cleaning ID'] || '',
         propertyText: f['Property Text'] || '',
+        propertyId: Array.isArray(f['Property']) ? f['Property'][0] : (f['Property'] || ''),
         address,
         status: f['Status'] || 'Programmed',
         scheduledTime: f['Scheduled Time'] || null,
