@@ -269,6 +269,25 @@ export default function DashboardPage({ profile: _profile }: Props) {
     return () => clearInterval(interval)
   }, [autoRefresh, date, loadData])
 
+  // Geocode addresses in frontend
+  useEffect(() => {
+    if (!data || !window.google?.maps) return
+    const geocoder = new window.google.maps.Geocoder()
+    data.cleanings.forEach(c => {
+      if (c.coords || !c.address) return
+      geocoder.geocode({ address: c.address }, (results: any, status: any) => {
+        if (status === 'OK' && results[0]) {
+          c.coords = {
+            lat: results[0].geometry.location.lat(),
+            lng: results[0].geometry.location.lng()
+          }
+          // Force re-render markers
+          setData(prev => prev ? { ...prev } : prev)
+        }
+      })
+    })
+  }, [data, mapReady])
+
   // Initialize map
   useEffect(() => {
     if (!mapReady || !mapRef.current || !data) return
