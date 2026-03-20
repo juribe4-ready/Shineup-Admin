@@ -55,6 +55,7 @@ export default async function handler(req, res) {
       const staffList = staffIds.map(id => staffMap[id] || { name: '?', initials: '?' });
       const staffListText = f['staffList'] || '';
 
+      const coords = null;
       const frontView = f['FrontView'] || [];
       const thumbnail = Array.isArray(frontView) && frontView[0]
         ? frontView[0]?.thumbnails?.large?.url || frontView[0]?.url || null
