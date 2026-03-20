@@ -103,7 +103,7 @@ export default function DashboardPage({ profile: _profile }: Props) {
     script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=initMap&libraries=marker`
     script.async = true
     document.head.appendChild(script)
-    return () => { delete window.initMap }
+    return () => { (window as any).initMap = undefined }
   }, [])
 
   useEffect(() => { loadData(date) }, [date])
