@@ -68,6 +68,155 @@ declare global {
   interface Window { google: any; initMap: () => void }
 }
 
+
+// ─── Gantt Timeline ───────────────────────────────────────────────────────────
+const HOUR_START = 7  // 7am
+const HOUR_END   = 20 // 8pm
+const TOTAL_HOURS = HOUR_END - HOUR_START
+
+function timeToPercent(isoString: string | null): number | null {
+  if (!isoString) return null
+  const d = new Date(isoString)
+  const hours = d.getHours() + d.getMinutes() / 60
+  const clamped = Math.max(HOUR_START, Math.min(HOUR_END, hours))
+  return ((clamped - HOUR_START) / TOTAL_HOURS) * 100
+}
+
+function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSelect: (c: Cleaning) => void }) {
+  const hours = Array.from({ length: TOTAL_HOURS + 1 }, (_, i) => HOUR_START + i)
+  const nowPct = timeToPercent(new Date().toISOString())
+
+  return (
+    <div className="rounded-3xl overflow-hidden shadow-sm" style={{ background: C.white, border: `1px solid ${C.border}` }}>
+      <div className="px-5 py-4" style={{ borderBottom: `1px solid ${C.border}` }}>
+        <p className="font-black text-[14px]" style={{ color: C.ink }}>Timeline por Grupo</p>
+        <p className="text-[12px] font-medium mt-0.5" style={{ color: C.muted }}>{timeline.length} grupos · eje horario {HOUR_START}am–{HOUR_END - 12}pm</p>
+      </div>
+
+      <div className="overflow-x-auto">
+        <div style={{ minWidth: '700px' }}>
+
+          {/* Hour axis */}
+          <div className="flex border-b" style={{ borderColor: C.border }}>
+            <div style={{ width: '180px', minWidth: '180px' }} className="px-4 py-2" />
+            <div className="flex-1 relative px-0 py-2">
+              <div className="flex justify-between px-0">
+                {hours.map(h => (
+                  <span key={h} className="text-[10px] font-bold" style={{ color: C.muted }}>
+                    {h < 12 ? `${h}am` : h === 12 ? '12pm' : `${h - 12}pm`}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Groups */}
+          {timeline.map(group => {
+            const groupPct = group.total > 0 ? Math.round((group.done / group.total) * 100) : 0
+            return (
+              <div key={group.staffListText} className="border-b last:border-0" style={{ borderColor: C.border }}>
+                {/* Group header row */}
+                <div className="flex items-center" style={{ background: '#FAFBFC' }}>
+                  <div className="px-4 py-3 flex items-center gap-2" style={{ width: '180px', minWidth: '180px' }}>
+                    <div className="flex items-center">
+                      {group.staffListText.split(',').slice(0, 3).map((name, i) => (
+                        <div key={i} className="w-6 h-6 rounded-lg flex items-center justify-center font-black text-[9px] text-white border border-white"
+                          style={{ background: C.primary, marginLeft: i > 0 ? '-4px' : 0 }}>
+                          {name.trim().substring(0, 2).toUpperCase()}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-bold truncate" style={{ color: C.ink }}>
+                        {group.staffListText.split(',')[0]?.trim()}
+                        {group.staffListText.split(',').length > 1 && <span style={{ color: C.muted }}> +{group.staffListText.split(',').length - 1}</span>}
+                      </p>
+                      <p className="text-[10px] font-semibold" style={{ color: groupPct === 100 ? C.green : C.primary }}>{groupPct}% · {group.done}/{group.total}</p>
+                    </div>
+                  </div>
+                  <div className="flex-1 relative py-2 pr-4" style={{ height: '48px' }}>
+                    {/* Grid lines */}
+                    {hours.map((h, i) => (
+                      <div key={h} className="absolute top-0 bottom-0 w-px" style={{ left: `${(i / TOTAL_HOURS) * 100}%`, background: C.border, opacity: 0.5 }} />
+                    ))}
+                    {/* Now line */}
+                    {nowPct !== null && (
+                      <div className="absolute top-0 bottom-0 w-0.5 z-10" style={{ left: `${nowPct}%`, background: C.red, opacity: 0.7 }} />
+                    )}
+                  </div>
+                </div>
+
+                {/* Cleaning bars */}
+                {group.cleanings.map(c => {
+                  const sc = STATUS_COLORS[c.status] || STATUS_COLORS['Programmed']
+                  const schedPct = timeToPercent(c.scheduledTime)
+
+                  // Estimate duration: default 2hrs, adjust if we have start+end
+                  let durationPct = (2 / TOTAL_HOURS) * 100
+                  if (c.startTime && c.endTime) {
+                    const start = timeToPercent(c.startTime) || schedPct || 0
+                    const end = timeToPercent(c.endTime) || start + durationPct
+                    durationPct = end - start
+                  }
+
+                  const barLeft = schedPct ?? 0
+                  const realLeft = c.startTime ? (timeToPercent(c.startTime) ?? barLeft) : null
+
+                  return (
+                    <div key={c.id} className="flex items-center border-t" style={{ borderColor: C.border }}>
+                      <div className="px-4 py-1.5 flex items-center gap-2" style={{ width: '180px', minWidth: '180px' }}>
+                        <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: sc.dot }} />
+                        <p className="text-[11px] font-medium truncate" style={{ color: C.slate }}>{c.propertyText}</p>
+                      </div>
+                      <div className="flex-1 relative py-2 pr-4 cursor-pointer" style={{ height: '40px' }} onClick={() => onSelect(c)}>
+                        {/* Grid lines */}
+                        {hours.map((h, i) => (
+                          <div key={h} className="absolute top-0 bottom-0 w-px" style={{ left: `${(i / TOTAL_HOURS) * 100}%`, background: C.border, opacity: 0.3 }} />
+                        ))}
+                        {/* Now line */}
+                        {nowPct !== null && (
+                          <div className="absolute top-0 bottom-0 w-0.5 z-10" style={{ left: `${nowPct}%`, background: C.red, opacity: 0.5 }} />
+                        )}
+                        {/* Scheduled bar (gray) */}
+                        {schedPct !== null && (
+                          <div className="absolute rounded-xl flex items-center px-2 overflow-hidden"
+                            style={{
+                              left: `${barLeft}%`,
+                              width: `${Math.max(durationPct, 4)}%`,
+                              top: '6px', bottom: '6px',
+                              background: '#E2E8F0',
+                              opacity: c.startTime ? 0.5 : 1,
+                            }}>
+                            <span className="text-[9px] font-bold truncate" style={{ color: C.muted }}>{c.scheduledTime ? new Date(c.scheduledTime).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                          </div>
+                        )}
+                        {/* Real bar (colored) */}
+                        {realLeft !== null && (
+                          <div className="absolute rounded-xl flex items-center px-2 overflow-hidden hover:opacity-90 transition-opacity"
+                            style={{
+                              left: `${realLeft}%`,
+                              width: `${Math.max(c.status === 'Done' && c.endTime ? (timeToPercent(c.endTime)! - realLeft) : durationPct * 0.6, 3)}%`,
+                              top: '4px', bottom: '4px',
+                              background: sc.dot,
+                            }}>
+                            <span className="text-[9px] font-black text-white truncate">
+                              {c.status === 'Done' ? '✓' : c.status === 'In Progress' ? '▶' : ''} {c.startTime ? new Date(c.startTime).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : ''}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function DashboardPage({ profile: _profile }: Props) {
   const [data, setData]           = useState<DashboardData | null>(null)
   const [loading, setLoading]     = useState(true)
@@ -253,83 +402,14 @@ export default function DashboardPage({ profile: _profile }: Props) {
         </div>
       </div>
 
-      {/* Timeline */}
-      <div className="rounded-3xl overflow-hidden shadow-sm" style={{ background: C.white, border: `1px solid ${C.border}` }}>
-        <div className="px-5 py-4" style={{ borderBottom: `1px solid ${C.border}` }}>
-          <p className="font-black text-[14px]" style={{ color: C.ink }}>Timeline por Grupo</p>
-          <p className="text-[12px] font-medium mt-0.5" style={{ color: C.muted }}>{data?.timeline.length || 0} grupos activos</p>
+      {/* Gantt Timeline */}
+      {data && data.timeline.length > 0 && <GanttTimeline timeline={data.timeline} onSelect={setSelected} />}
+      {(!data?.timeline || data.timeline.length === 0) && (
+        <div className="rounded-3xl flex flex-col items-center py-12 gap-2 shadow-sm" style={{ background: C.white, border: `1px solid ${C.border}`, color: C.muted }}>
+          <Calendar className="w-8 h-8 opacity-30" />
+          <p className="text-[13px] font-medium">Sin limpiezas para esta fecha</p>
         </div>
-        <div className="divide-y" style={{ borderColor: C.border }}>
-          {(data?.timeline || []).map(group => {
-            const groupPct = group.total > 0 ? Math.round((group.done / group.total) * 100) : 0
-            return (
-              <div key={group.staffListText} className="px-5 py-4">
-                {/* Group header */}
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1">
-                      {group.staffListText.split(',').slice(0, 4).map((name, i) => (
-                        <div key={i} className="w-7 h-7 rounded-xl flex items-center justify-center font-black text-[10px] text-white"
-                          style={{ background: C.primary, marginLeft: i > 0 ? '-4px' : 0, zIndex: 4 - i }}>
-                          {name.trim().substring(0, 2).toUpperCase()}
-                        </div>
-                      ))}
-                    </div>
-                    <p className="font-bold text-[13px]" style={{ color: C.ink }}>{group.staffListText}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[12px] font-bold" style={{ color: C.muted }}>{group.done}/{group.total}</span>
-                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: groupPct === 100 ? '#DCFCE7' : C.primaryLight, color: groupPct === 100 ? C.green : C.primary }}>
-                      {groupPct}%
-                    </span>
-                  </div>
-                </div>
-
-                {/* Progress bar */}
-                <div className="h-1.5 rounded-full overflow-hidden mb-3" style={{ background: C.border }}>
-                  <div className="h-full rounded-full transition-all" style={{ width: `${groupPct}%`, background: groupPct === 100 ? C.green : C.primary }} />
-                </div>
-
-                {/* Cleanings list */}
-                <div className="space-y-2">
-                  {group.cleanings.map(c => {
-                    const sc = STATUS_COLORS[c.status] || STATUS_COLORS['Programmed']
-                    return (
-                      <button key={c.id} onClick={() => setSelected(c)}
-                        className="w-full flex items-center gap-3 p-3 rounded-2xl text-left hover:bg-slate-50 transition-colors active:scale-99"
-                        style={{ border: `1px solid ${C.border}` }}>
-                        {c.thumbnail ? (
-                          <img src={c.thumbnail} alt="" className="w-10 h-10 rounded-xl object-cover shrink-0"
-                            onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                        ) : (
-                          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: C.bg }}>
-                            <MapPin className="w-4 h-4" style={{ color: C.muted }} />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-[13px] truncate" style={{ color: C.ink }}>{c.propertyText}</p>
-                          <p className="text-[11px] font-medium truncate" style={{ color: C.muted }}>{c.address}</p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-[10px] font-bold px-2 py-1 rounded-full" style={{ background: sc.bg, color: sc.color }}>{sc.label}</span>
-                          <span className="text-[11px] font-mono" style={{ color: C.muted }}>{fmt(c.scheduledTime)}</span>
-                          <ChevronRight className="w-4 h-4" style={{ color: C.muted }} />
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
-          {(!data?.timeline || data.timeline.length === 0) && (
-            <div className="flex flex-col items-center py-12 gap-2" style={{ color: C.muted }}>
-              <Calendar className="w-8 h-8 opacity-30" />
-              <p className="text-[13px] font-medium">Sin limpiezas para esta fecha</p>
-            </div>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* CLEANING DETAIL MODAL */}
       {selected && (
