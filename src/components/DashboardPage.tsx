@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Profile } from '../supabase'
 import {
-  MapPin, Users, RefreshCw, ChevronRight,
+  MapPin, Users, RefreshCw,
   Calendar, X, ExternalLink
 } from 'lucide-react'
 
