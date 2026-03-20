@@ -411,7 +411,7 @@ export default function DashboardPage({ profile: _profile }: Props) {
       </div>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
           { label: 'Total', value: stats.total, color: C.ink, bg: C.white },
           { label: 'Programadas', value: stats.programmed, color: C.muted, bg: C.white },
@@ -456,7 +456,7 @@ export default function DashboardPage({ profile: _profile }: Props) {
       </div>
 
       {/* Gantt Timeline */}
-      {data && data.timeline.length > 0 && <GanttTimeline timeline={data.timeline} onSelect={setSelected} />}
+      {data && data.timeline.length > 0 && <GanttTimeline timeline={data.timeline} onSelect={loadDetail} />}
       {(!data?.timeline || data.timeline.length === 0) && (
         <div className="rounded-3xl flex flex-col items-center py-12 gap-2 shadow-sm" style={{ background: C.white, border: `1px solid ${C.border}`, color: C.muted }}>
           <Calendar className="w-8 h-8 opacity-30" />
