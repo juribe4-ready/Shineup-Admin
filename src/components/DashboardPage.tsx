@@ -245,13 +245,18 @@ export default function DashboardPage({ profile: _profile }: Props) {
 
   // Load Google Maps script
   useEffect(() => {
-    if (window.google) { setMapReady(true); return }
+    if (window.google?.maps) { setMapReady(true); return }
     const key = (import.meta as any).env?.VITE_GOOGLE_MAPS_KEY || ''
-    window.initMap = () => setMapReady(true)
-    const script = document.createElement('script')
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=initMap&libraries=marker`
-    script.async = true
-    document.head.appendChild(script)
+    ;(window as any).initMap = () => setMapReady(true)
+    const existing = document.getElementById('gmaps-script')
+    if (!existing) {
+      const script = document.createElement('script')
+      script.id = 'gmaps-script'
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=initMap&loading=async`
+      script.async = true
+      script.defer = true
+      document.head.appendChild(script)
+    }
     return () => { (window as any).initMap = undefined }
   }, [])
 
