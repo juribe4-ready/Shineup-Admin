@@ -1,24 +1,5 @@
 const AIRTABLE_BASE = 'appBwnoxgyIXILe6M';
 const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN;
-const GOOGLE_MAPS_KEY = process.env.GOOGLE_MAPS_KEY;
-
-const geocodeCache = {};
-
-async function geocodeAddress(address) {
-  if (geocodeCache[address]) return geocodeCache[address];
-  try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_KEY}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if (data.results?.[0]) {
-      const loc = data.results[0].geometry.location;
-      geocodeCache[address] = { lat: loc.lat, lng: loc.lng };
-      return geocodeCache[address];
-    }
-  } catch {}
-  return null;
-}
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -73,10 +54,6 @@ export default async function handler(req, res) {
       const staffIds = Array.isArray(f['Assigned Staff']) ? f['Assigned Staff'] : [];
       const staffList = staffIds.map(id => staffMap[id] || { name: '?', initials: '?' });
       const staffListText = f['staffList'] || '';
-
-      // Geocode address
-      let coords = null;
-      if (address) coords = await geocodeAddress(address);
 
       const frontView = f['FrontView'] || [];
       const thumbnail = Array.isArray(frontView) && frontView[0]
