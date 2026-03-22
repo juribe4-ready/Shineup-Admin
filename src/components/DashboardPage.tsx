@@ -103,7 +103,7 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
         <p className="text-[12px] font-medium mt-0.5" style={{ color: C.muted }}>{timeline.length} grupos · eje horario {HOUR_START}am–{HOUR_END - 12}pm</p>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" style={{ position: 'relative' }}>
         <div style={{ minWidth: '700px' }}>
 
           {/* Hour axis */}
@@ -127,25 +127,21 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
               <div key={group.staffListText} className="border-b last:border-0" style={{ borderColor: C.border }}>
                 {/* Group header row */}
                 <div className="flex items-center" style={{ background: '#FAFBFC' }}>
-                  <div className="px-4 py-3 flex items-center gap-2" style={{ width: '180px', minWidth: '180px' }}>
-                    <div className="flex items-center">
-                      {group.cleanings[0]?.staffList.slice(0, 3).map((s, i) => (
-                        <div key={i} className="w-6 h-6 rounded-lg flex items-center justify-center font-black text-[9px] text-white border border-white"
-                          style={{ background: C.primary, marginLeft: i > 0 ? '-4px' : 0 }}>
-                          {s.initials || s.name.substring(0, 2).toUpperCase()}
-                        </div>
-                      ))}
+                  <div className="px-3 py-3 flex flex-col gap-1.5" style={{ width: '180px', minWidth: '180px', position: 'sticky', left: 0, background: '#FAFBFC', zIndex: 10 }}>
+                    <div className="flex flex-wrap gap-1">
+                      {group.cleanings[0]?.staffList.map((s, i) => {
+                        const roleColor = s.role?.includes('Manager') ? '#7C3AED' : s.role?.includes('Wknd') ? '#D97706' : C.primary
+                        return (
+                          <div key={i} className="w-6 h-6 rounded-lg flex items-center justify-center font-black text-[9px] text-white"
+                            style={{ background: roleColor }}>
+                            {s.initials || s.name.substring(0, 2).toUpperCase()}
+                          </div>
+                        )
+                      })}
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-bold truncate" style={{ color: C.ink }}>
-                        {group.cleanings[0]?.staffList.slice(0, 4).map((s, i) => (
-                          <span key={i} className="text-[10px] font-black" style={{ color: C.primary }}>{s.initials}</span>
-                        ))}
-                      </p>
-                      <p className="text-[10px] font-semibold" style={{ color: groupPct === 100 ? C.green : C.primary }}>{groupPct}% · {group.done}/{group.total}</p>
-                    </div>
+                    <p className="text-[10px] font-semibold" style={{ color: groupPct === 100 ? C.green : C.primary }}>{groupPct}% · {group.done}/{group.total}</p>
                   </div>
-                  <div className="flex-1 relative py-2 pr-4" style={{ height: '48px' }}>
+                  <div className="flex-1 relative py-2 pr-4" style={{ height: '56px' }}>
                     {/* Grid lines */}
                     {hours.map((h, i) => (
                       <div key={h} className="absolute top-0 bottom-0 w-px" style={{ left: `${(i / TOTAL_HOURS) * 100}%`, background: C.border, opacity: 0.5 }} />
@@ -175,7 +171,7 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
 
                   return (
                     <div key={c.id} className="flex items-center border-t" style={{ borderColor: C.border }}>
-                      <div className="px-4 py-1.5 flex items-center gap-2" style={{ width: '180px', minWidth: '180px' }}>
+                      <div className="px-3 py-1.5 flex items-center gap-2" style={{ width: '180px', minWidth: '180px', position: 'sticky', left: 0, background: C.white, zIndex: 10 }}>
                         <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: sc.dot }} />
                         <p className="text-[11px] font-medium truncate" style={{ color: C.slate }}>{c.propertyText}</p>
                       </div>
