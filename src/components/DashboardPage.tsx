@@ -138,8 +138,9 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
                     </div>
                     <div className="min-w-0">
                       <p className="text-[11px] font-bold truncate" style={{ color: C.ink }}>
-                        {group.cleanings[0]?.staffList[0]?.name || group.staffListText.split(',')[0]?.trim()}
-                        {group.cleanings[0]?.staffList.length > 1 && <span style={{ color: C.muted }}> +{(group.cleanings[0]?.staffList.length || 1) - 1}</span>}
+                        {group.cleanings[0]?.staffList.slice(0, 4).map((s, i) => (
+                          <span key={i} className="text-[10px] font-black" style={{ color: C.primary }}>{s.initials}</span>
+                        ))}
                       </p>
                       <p className="text-[10px] font-semibold" style={{ color: groupPct === 100 ? C.green : C.primary }}>{groupPct}% · {group.done}/{group.total}</p>
                     </div>
