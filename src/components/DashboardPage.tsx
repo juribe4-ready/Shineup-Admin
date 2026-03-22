@@ -36,7 +36,7 @@ interface Cleaning {
   propertyId: string; status: string; scheduledTime: string | null
   startTime: string | null; endTime: string | null
   estimatedEndTime?: string | null
-  staffList: { name: string; initials: string }[]
+  staffList: { name: string; initials: string; role?: string }[]
   staffListText: string; googleMapsUrl: string; thumbnail: string | null
   coords: { lat: number; lng: number } | null; bookUrl: string | null
 }
