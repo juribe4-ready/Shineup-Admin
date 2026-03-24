@@ -3,7 +3,8 @@ import { supabase, Profile } from './supabase'
 import LoginPage from './components/LoginPage'
 import UsersPage from './components/UsersPage'
 import DashboardPage from './components/DashboardPage'
-import { LayoutDashboard, Users, LogOut } from 'lucide-react'
+import PlanningPage from './components/PlanningPage'
+import { LayoutDashboard, Users, LogOut, CalendarDays } from 'lucide-react'
 
 const C = {
   primary:     '#6366F1',
@@ -15,7 +16,7 @@ const C = {
   bg:          '#F8FAFC',
 }
 
-type Page = 'dashboard' | 'users'
+type Page = 'dashboard' | 'users' | 'planning'
 
 export default function App() {
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -91,6 +92,7 @@ export default function App() {
           {[
             { key: 'dashboard' as Page, label: 'Dashboard', Icon: LayoutDashboard },
             { key: 'users' as Page, label: 'Usuarios', Icon: Users },
+          { key: 'planning' as Page, label: 'Planificación', Icon: CalendarDays },
           ].map(({ key, label, Icon }) => (
             <button key={key} onClick={() => setPage(key)}
               className="flex items-center gap-2 px-4 py-3 text-[13px] font-bold transition-colors border-b-2"
@@ -108,6 +110,7 @@ export default function App() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {page === 'dashboard' && <DashboardPage profile={profile} />}
         {page === 'users' && <UsersPage profile={profile} onSignOut={signOut} />}
+        {page === 'planning' && <PlanningPage />}
       </div>
     </div>
   )
