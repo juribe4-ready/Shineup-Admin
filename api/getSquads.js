@@ -43,9 +43,14 @@ export default async function handler(req, res) {
       { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
     )
     const blocksData = await blocksRes.json()
+    console.log('[getSquads] Raw blocks count:', (blocksData.records || []).length)
+    if (blocksData.records?.[0]) {
+      console.log('[getSquads] Sample block fields:', JSON.stringify(blocksData.records[0].fields))
+    }
+
     const blocks = (blocksData.records || []).map(r => ({
       id: r.id,
-      squadId: Array.isArray(r.fields?.Squads) ? r.fields.Squads[0] : null,
+      squadId: Array.isArray(r.fields?.Squads) ? r.fields.Squads[0] : (r.fields?.Squads || null),
       date: r.fields?.Date || '',
       startTime: r.fields?.StartTime || '',
       endTime: r.fields?.EndTime || '',
@@ -53,6 +58,8 @@ export default async function handler(req, res) {
       appointmentId: Array.isArray(r.fields?.Appointment) ? r.fields.Appointment[0] : null,
       notes: r.fields?.Notes || '',
     }))
+
+    console.log('[getSquads] Processed blocks:', blocks.map(b => ({ id: b.id, squadId: b.squadId, date: b.date })))
 
     return res.status(200).json({ squads, blocks, dates })
   } catch (err) {
