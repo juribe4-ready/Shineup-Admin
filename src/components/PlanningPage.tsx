@@ -23,6 +23,7 @@ const BLOCK_TYPES = ['Appointment', 'Manual Block', 'STR', 'Holiday Block']
 
 interface Squad {
   id: string; name: string; color: string; type: string
+  startHour: number; endHour: number
 }
 interface Block {
   id: string; squadId: string; date: string
@@ -68,6 +69,7 @@ export default function PlanningPage() {
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null)
   const [toast, setToast]               = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const [saving, setSaving]             = useState(false)
+  const [blockTypes, setBlockTypes]     = useState<string[]>(['Appointment', 'Manual Block', 'STR', 'Holiday Block', 'Rest'])
 
   // Block form state
   const [bSquad, setBSquad]   = useState('')
@@ -93,6 +95,11 @@ export default function PlanningPage() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
+      // Load block types dynamically
+      fetch('/api/getSquadBlockTypes').then(r => r.ok ? r.json() : null).then(d => {
+        if (d?.types?.length) setBlockTypes(d.types)
+      }).catch(() => {})
+
       const [squadsRes, apptRes] = await Promise.all([
         fetch(`/api/getSquads?weekStart=${weekStartStr}`),
         fetch(`/api/getAppointments?weekStart=${weekStartStr}`)
@@ -149,14 +156,18 @@ export default function PlanningPage() {
   }
 
   // Calculate availability percentage for a squad on a date
-  const getAvailPct = (squadId: string, date: string) => {
-    const dayBlocks = blocks.filter(b => b.squadId === squadId && b.date === date)
+  const getAvailPct = (squad: Squad, date: string) => {
+    const dayStart = squad.startHour * 60
+    const dayEnd = squad.endHour * 60
+    const dayTotal = dayEnd - dayStart
+    if (dayTotal <= 0) return 0
+    const dayBlocks = blocks.filter(b => b.squadId === squad.id && b.date === date)
     const occupied = dayBlocks.reduce((acc, b) => {
-      const s = Math.max(timeToMin(b.startTime || '08:00'), DAY_START)
-      const e = Math.min(timeToMin(b.endTime || '18:00'), DAY_END)
+      const s = Math.max(timeToMin(b.startTime || `${squad.startHour}:00`), dayStart)
+      const e = Math.min(timeToMin(b.endTime || `${squad.endHour}:00`), dayEnd)
       return acc + Math.max(0, e - s)
     }, 0)
-    return Math.max(0, 100 - Math.round((occupied / DAY_TOTAL) * 100))
+    return Math.max(0, 100 - Math.round((occupied / dayTotal) * 100))
   }
 
   const monthLabel = (() => {
@@ -164,6 +175,16 @@ export default function PlanningPage() {
     const e = dates[6] ? MONTHS_ES[new Date(dates[6] + 'T12:00:00').getMonth()] : s
     return s === e ? `${s} ${weekStart.getFullYear()}` : `${s} / ${e} ${weekStart.getFullYear()}`
   })()
+
+  const weekNumber = (() => {
+    const d = new Date(weekStart)
+    d.setHours(0, 0, 0, 0)
+    d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7)
+    const week1 = new Date(d.getFullYear(), 0, 4)
+    return 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7)
+  })()
+
+  const weekRangeLabel = `${fmtDate(dates[0])} – ${fmtDate(dates[6])}`
 
   const weekdaySquads  = squads.filter(s => s.type === 'Weekday')
   const weekendSquads  = squads.filter(s => s.type === 'Weekend' || s.type === 'Weekend/Holiday')
@@ -194,7 +215,10 @@ export default function PlanningPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="font-black text-[22px]" style={{ color: C.ink }}>Planificación</h2>
-          <p className="text-[13px] font-medium mt-0.5" style={{ color: C.muted }}>{monthLabel}</p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <p className="text-[13px] font-medium" style={{ color: C.muted }}>{weekRangeLabel}</p>
+            <span className="text-[11px] font-black px-2 py-0.5 rounded-full" style={{ background: C.primaryLight, color: C.primary }}>Sem {weekNumber}</span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={prevWeek} className="w-9 h-9 rounded-2xl flex items-center justify-center transition-all hover:bg-slate-100" style={{ border: `1.5px solid ${C.border}` }}>
@@ -280,15 +304,18 @@ export default function PlanningPage() {
               {dates.map(date => {
                 const available = relevantSquads(date).some(s => s.id === squad.id)
                 const dayBlocks = blocks.filter(b => b.squadId === squad.id && b.date === date)
-                const availPct = available ? getAvailPct(squad.id, date) : 0
+                const availPct = available ? getAvailPct(squad, date) : 0
                 const dayAppts = appointments.filter(a => a.date === date)
 
                 return (
                   <div key={date} className="border-l relative min-h-[80px] p-1.5 group"
                     style={{ borderColor: C.border, background: available ? C.white : '#F8FAFC' }}>
                     {!available ? (
-                      <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="absolute inset-0 group cursor-pointer" onClick={() => openBlockForm(squad.id, date)}>
                         <div className="w-full h-full opacity-10" style={{ background: `repeating-linear-gradient(45deg, ${C.muted} 0px, ${C.muted} 1px, transparent 1px, transparent 8px)` }} />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Plus className="w-4 h-4" style={{ color: C.muted }} />
+                        </div>
                       </div>
                     ) : (
                       <>
@@ -324,7 +351,7 @@ export default function PlanningPage() {
                           </button>
                         ))}
 
-                        {/* Add block button */}
+                        {/* Add block button - always available */}
                         <button onClick={() => openBlockForm(squad.id, date)}
                           className="w-full rounded-xl py-0.5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity mt-0.5"
                           style={{ border: `1px dashed ${C.border}` }}>
@@ -473,7 +500,7 @@ export default function PlanningPage() {
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: C.muted }}>Tipo</p>
                 <div className="grid grid-cols-2 gap-2">
-                  {BLOCK_TYPES.map(t => (
+                  {blockTypes.map(t => (
                     <button key={t} type="button" onClick={() => setBType(t)}
                       className="py-2 rounded-2xl text-[11px] font-bold transition-all"
                       style={{ border: `1.5px solid ${bType === t ? C.primary : C.border}`, background: bType === t ? C.primaryLight : C.bg, color: bType === t ? C.primary : C.muted }}>
