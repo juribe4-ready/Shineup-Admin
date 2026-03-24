@@ -19,8 +19,6 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   'Completed':   { bg: '#F1F5F9', color: '#475569' },
 }
 
-const BLOCK_TYPES = ['Appointment', 'Manual Block', 'STR', 'Holiday Block']
-
 interface Squad {
   id: string; name: string; color: string; type: string
   startHour: number; endHour: number
@@ -57,7 +55,6 @@ function timeToMin(t: string): number {
 
 const DAY_START = 8 * 60   // 8am
 const DAY_END   = 18 * 60  // 6pm
-const DAY_TOTAL = DAY_END - DAY_START
 
 export default function PlanningPage() {
   const [weekStart, setWeekStart]       = useState(() => getMonday(new Date()))
@@ -169,12 +166,6 @@ export default function PlanningPage() {
     }, 0)
     return Math.max(0, 100 - Math.round((occupied / dayTotal) * 100))
   }
-
-  const monthLabel = (() => {
-    const s = MONTHS_ES[weekStart.getMonth()]
-    const e = dates[6] ? MONTHS_ES[new Date(dates[6] + 'T12:00:00').getMonth()] : s
-    return s === e ? `${s} ${weekStart.getFullYear()}` : `${s} / ${e} ${weekStart.getFullYear()}`
-  })()
 
   const weekNumber = (() => {
     const d = new Date(weekStart)
