@@ -36,12 +36,16 @@ export default async function handler(req, res) {
       }))
 
     // Fetch blocks for the week
-    const dateFilter = dates.map(d => `{Date}='${d}'`).join(',')
-    const formula = encodeURIComponent(`OR(${dateFilter})`)
+    const weekEnd = dates[6]
+    const formula = encodeURIComponent(
+      `AND({Date}>='${dates[0]}', {Date}<='${weekEnd}')`
+    )
+    console.log('[getSquads] Block filter formula:', `AND({Date}>='${dates[0]}', {Date}<='${weekEnd}')`)
     const blocksRes = await fetch(
       `https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}?filterByFormula=${formula}&fields[]=Squads&fields[]=Date&fields[]=StartTime&fields[]=EndTime&fields[]=Type&fields[]=Appointment&fields[]=Notes`,
       { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
     )
+    console.log('[getSquads] Blocks API status:', blocksRes.status)
     const blocksData = await blocksRes.json()
     console.log('[getSquads] Raw blocks count:', (blocksData.records || []).length)
     if (blocksData.records?.[0]) {
