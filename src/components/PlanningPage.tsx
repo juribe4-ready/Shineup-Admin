@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronLeft, ChevronRight, Plus, X, Calendar, Clock, AlertCircle, RefreshCw } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, X, Clock, AlertCircle, RefreshCw } from 'lucide-react'
 
 const C = {
   primary: '#6366F1', primaryDark: '#4F46E5', primaryLight: '#EEF2FF',
@@ -49,12 +49,6 @@ function fmtDate(iso: string): string {
   return `${d.getDate()} ${MONTHS_ES[d.getMonth()].substring(0, 3)}`
 }
 
-function addMinutes(time: string, minutes: number): string {
-  const [h, m] = time.split(':').map(Number)
-  const total = h * 60 + m + minutes
-  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
-}
-
 function timeToMin(t: string): number {
   const [h, m] = t.split(':').map(Number)
   return h * 60 + m
@@ -71,8 +65,6 @@ export default function PlanningPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading]           = useState(true)
   const [showBlockForm, setShowBlockForm] = useState(false)
-  const [selectedDay, setSelectedDay]   = useState<string | null>(null)
-  const [selectedSquad, setSelectedSquad] = useState<string | null>(null)
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null)
   const [toast, setToast]               = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const [saving, setSaving]             = useState(false)
