@@ -12,6 +12,11 @@ async function parseBody(req) {
   })
 }
 
+function timeToMin(t) {
+  const [h, m] = t.split(':').map(Number)
+  return h * 60 + m
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
@@ -23,6 +28,29 @@ export default async function handler(req, res) {
 
     if (!squadId || !date || !startTime || !endTime) {
       return res.status(400).json({ error: 'squadId, date, startTime, endTime requeridos' })
+    }
+
+    // Check for overlapping blocks on same squad + date
+    const formula = encodeURIComponent(`AND({Date}='${date}', FIND('${squadId}', ARRAYJOIN(Squads)))`)
+    const existingRes = await fetch(
+      `https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}?filterByFormula=${formula}&fields[]=StartTime&fields[]=EndTime`,
+      { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
+    )
+    if (existingRes.ok) {
+      const existing = await existingRes.json()
+      const newStart = timeToMin(startTime)
+      const newEnd = timeToMin(endTime)
+
+      for (const r of (existing.records || [])) {
+        const exStart = timeToMin(r.fields?.StartTime || '00:00')
+        const exEnd = timeToMin(r.fields?.EndTime || '00:00')
+        // Check overlap: new block overlaps if newStart < exEnd AND newEnd > exStart
+        if (newStart < exEnd && newEnd > exStart) {
+          return res.status(409).json({
+            error: `Conflicto de horario: ya existe un bloque de ${r.fields?.StartTime} a ${r.fields?.EndTime} para este squad en esa fecha.`
+          })
+        }
+      }
     }
 
     const fields = {

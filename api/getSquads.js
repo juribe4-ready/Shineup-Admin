@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 
     // Fetch squads
     const squadsRes = await fetch(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE}/${SQUADS_TABLE}?fields[]=Name&fields[]=Color&fields[]=Type&fields[]=Active`,
+      `https://api.airtable.com/v0/${AIRTABLE_BASE}/${SQUADS_TABLE}?fields[]=Name&fields[]=Color&fields[]=Type&fields[]=Active&fields[]=StartHour&fields[]=EndHour`,
       { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
     )
     const squadsData = await squadsRes.json()
@@ -33,6 +33,8 @@ export default async function handler(req, res) {
         name: r.fields?.Name || '',
         color: r.fields?.Color || '#94A3B8',
         type: r.fields?.Type || 'Weekday',
+        startHour: r.fields?.StartHour ?? 8,
+        endHour: r.fields?.EndHour ?? 18,
       }))
 
     // Fetch blocks for the week
