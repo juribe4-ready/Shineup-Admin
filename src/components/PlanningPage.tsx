@@ -53,9 +53,6 @@ function timeToMin(t: string): number {
   return h * 60 + m
 }
 
-const DAY_START = 8 * 60   // 8am
-const DAY_END   = 18 * 60  // 6pm
-
 export default function PlanningPage() {
   const [weekStart, setWeekStart]       = useState(() => getMonday(new Date()))
   const [squads, setSquads]             = useState<Squad[]>([])
