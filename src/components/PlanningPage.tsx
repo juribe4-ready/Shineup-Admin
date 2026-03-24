@@ -19,7 +19,7 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   'Completed':   { bg: '#F1F5F9', color: '#475569' },
 }
 
-const BLOCK_TYPES = ['Appointment', 'Manual Block', 'Airbnb Reserved', 'Holiday Block']
+const BLOCK_TYPES = ['Appointment', 'Manual Block', 'STR', 'Holiday Block']
 
 interface Squad {
   id: string; name: string; color: string; type: string
