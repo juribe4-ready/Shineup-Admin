@@ -39,6 +39,10 @@ interface Cleaning {
   staffList: { name: string; initials: string; role?: string }[]
   staffListText: string; googleMapsUrl: string; thumbnail: string | null
   coords: { lat: number; lng: number } | null; bookUrl: string | null
+  videoInicial?: string[]
+  photosVideos?: { url: string; filename: string }[]
+  storagePhoto?: string | null
+  openComments?: string
 }
 
 interface Incident {
@@ -466,89 +470,168 @@ export default function DashboardPage({ profile: _profile }: Props) {
       {selected && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center px-4"
           style={{ background: 'rgba(15,23,42,0.7)' }} onClick={() => setSelected(null)}>
-          <div className="w-full max-w-md rounded-3xl overflow-hidden shadow-2xl" style={{ background: C.white }}
+          <div className="w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl" style={{ background: C.white, maxHeight: '90vh', overflowY: 'auto' }}
             onClick={e => e.stopPropagation()}>
 
-            <div className="p-5">
-              {/* Header */}
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1 pr-4">
-                  <p className="font-black text-[17px] leading-tight" style={{ color: C.ink }}>{selected.propertyText}</p>
-                  <p className="text-[12px] font-medium mt-0.5" style={{ color: C.muted }}>{selected.address}</p>
-                </div>
-                <button onClick={() => setSelected(null)} className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: C.bg }}>
-                  <X className="w-4 h-4" style={{ color: C.slate }} />
-                </button>
+            {/* Header */}
+            <div className="sticky top-0 z-10 px-5 py-4 flex items-start justify-between" style={{ background: C.white, borderBottom: `1px solid ${C.border}` }}>
+              <div className="flex-1 pr-4">
+                <p className="font-black text-[17px] leading-tight" style={{ color: C.ink }}>{selected.propertyText}</p>
+                <p className="text-[12px] font-medium mt-0.5" style={{ color: C.muted }}>{selected.address}</p>
               </div>
+              <button onClick={() => setSelected(null)} className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: C.bg }}>
+                <X className="w-4 h-4" style={{ color: C.slate }} />
+              </button>
+            </div>
 
-              {/* Status */}
-              {(() => {
-                const sc = STATUS_COLORS[selected.status] || STATUS_COLORS['Programmed']
-                return <span className="text-[11px] font-bold px-3 py-1.5 rounded-full inline-block mb-3" style={{ background: sc.bg, color: sc.color }}>{sc.label}</span>
-              })()}
+            <div className="p-5 space-y-4">
 
-              {/* Times grid */}
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                {[
-                  { label: 'Inicio Prog.', value: selected.scheduledTime, color: C.ink },
-                  { label: 'Inicio Real', value: selected.startTime, color: selected.startTime ? C.green : C.muted },
-                  { label: 'Fin Prog.', value: selected.estimatedEndTime, color: C.ink },
-                  { label: 'Fin Real', value: selected.endTime, color: selected.endTime ? C.green : C.muted },
-                ].map(t => (
-                  <div key={t.label} className="p-2.5 rounded-2xl" style={{ background: C.bg }}>
-                    <p className="text-[9px] font-black uppercase tracking-widest mb-0.5" style={{ color: C.muted }}>{t.label}</p>
-                    <p className="font-black text-[15px]" style={{ color: t.color }}>{fmt(t.value)}</p>
-                  </div>
-                ))}
+              {/* Status + times */}
+              <div>
+                {(() => {
+                  const sc = STATUS_COLORS[selected.status] || STATUS_COLORS['Programmed']
+                  return <span className="text-[11px] font-bold px-3 py-1.5 rounded-full inline-block mb-3" style={{ background: sc.bg, color: sc.color }}>{sc.label}</span>
+                })()}
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Inicio Prog.', value: selected.scheduledTime, color: C.ink },
+                    { label: 'Inicio Real',  value: selected.startTime,     color: selected.startTime ? C.green : C.muted },
+                    { label: 'Fin Prog.',    value: selected.estimatedEndTime, color: C.ink },
+                    { label: 'Fin Real',     value: selected.endTime,       color: selected.endTime ? C.green : C.muted },
+                  ].map(t => (
+                    <div key={t.label} className="p-2.5 rounded-2xl" style={{ background: C.bg }}>
+                      <p className="text-[9px] font-black uppercase tracking-widest mb-0.5" style={{ color: C.muted }}>{t.label}</p>
+                      <p className="font-black text-[15px]" style={{ color: t.color }}>{fmt(t.value)}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {/* Staff */}
               {selected.staffList?.length > 0 && (
-                <div className="flex items-center gap-2 mb-3 p-2.5 rounded-2xl" style={{ background: C.bg }}>
+                <div className="flex items-center gap-2 p-2.5 rounded-2xl" style={{ background: C.bg }}>
                   <Users className="w-3.5 h-3.5 shrink-0" style={{ color: C.muted }} />
                   <p className="text-[12px] font-semibold" style={{ color: C.slate }}>{selected.staffList.map(s => s.name).join(', ')}</p>
                 </div>
               )}
 
-              {/* Incidents */}
+              {/* Open comments */}
+              {selected.openComments && (
+                <div className="p-3 rounded-2xl" style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                  <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: C.amber }}>Notas de apertura</p>
+                  <p className="text-[12px] font-medium leading-relaxed" style={{ color: C.ink }}>{selected.openComments}</p>
+                </div>
+              )}
+
+              {/* VIDEO INICIAL */}
+              {selected.videoInicial && selected.videoInicial.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: C.muted }}>Video Inicial ({selected.videoInicial.length})</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {selected.videoInicial.map((url, i) => {
+                      const isVid = url.includes('/video/') || /\.(mp4|mov|webm)$/i.test(url)
+                      return (
+                        <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                          className="relative w-20 h-20 rounded-2xl overflow-hidden flex items-center justify-center hover:opacity-80 transition-opacity"
+                          style={{ background: isVid ? C.ink : C.bg, border: `2px solid ${C.border}` }}>
+                          {isVid ? (
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="text-2xl">🎥</span>
+                              <span className="text-[8px] font-black text-white">VER</span>
+                            </div>
+                          ) : (
+                            <img src={url} alt="" className="w-full h-full object-cover" />
+                          )}
+                          <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity" style={{ background: 'rgba(0,0,0,0.4)' }}>
+                            <ExternalLink className="w-5 h-5 text-white" />
+                          </div>
+                        </a>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* FOTOS/VIDEOS DE CIERRE */}
+              {selected.photosVideos && selected.photosVideos.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: C.muted }}>Fotos/Videos de Cierre ({selected.photosVideos.length})</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {selected.photosVideos.map((photo, i) => {
+                      const isVid = photo.url.includes('/video/') || /\.(mp4|mov|webm)$/i.test(photo.filename || '')
+                      return (
+                        <a key={i} href={photo.url} target="_blank" rel="noopener noreferrer"
+                          className="relative w-20 h-20 rounded-2xl overflow-hidden flex items-center justify-center hover:opacity-80 transition-opacity"
+                          style={{ background: isVid ? C.ink : C.bg, border: `2px solid ${C.border}` }}>
+                          {isVid ? (
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="text-2xl">🎥</span>
+                              <span className="text-[8px] font-black text-white">VER</span>
+                            </div>
+                          ) : (
+                            <img src={photo.url} alt="" className="w-full h-full object-cover"
+                              onError={e => { (e.target as HTMLImageElement).style.display='none' }} />
+                          )}
+                          <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity" style={{ background: 'rgba(0,0,0,0.4)' }}>
+                            <ExternalLink className="w-5 h-5 text-white" />
+                          </div>
+                        </a>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* FOTO DEL ALMACÉN */}
+              {selected.storagePhoto && (
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: C.muted }}>Foto del Almacén</p>
+                  <a href={selected.storagePhoto} target="_blank" rel="noopener noreferrer"
+                    className="relative block rounded-2xl overflow-hidden hover:opacity-90 transition-opacity" style={{ height: '120px' }}>
+                    <img src={selected.storagePhoto} alt="almacén" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity" style={{ background: 'rgba(0,0,0,0.3)' }}>
+                      <ExternalLink className="w-6 h-6 text-white" />
+                    </div>
+                  </a>
+                </div>
+              )}
+
+              {/* INCIDENTES + RUPTURAS */}
               {loadingDetail ? (
                 <div className="flex justify-center py-3"><div className="w-5 h-5 border-2 rounded-full animate-spin" style={{ borderColor: C.border, borderTopColor: C.primary }} /></div>
               ) : (
-                <>
-                  {incidents.length > 0 && (
-                    <div className="mb-3">
-                      <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: C.muted }}>Incidentes ({incidents.length})</p>
-                      <div className="space-y-1.5">
-                        {incidents.map(inc => (
-                          <div key={inc.id} className="flex items-center gap-2 p-2.5 rounded-xl" style={{ background: '#FEF3C7' }}>
-                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: C.amber }} />
-                            <p className="text-[12px] font-semibold flex-1 truncate" style={{ color: C.ink }}>{inc.name}</p>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: C.amber, color: 'white' }}>{inc.status}</span>
-                          </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Incidentes */}
+                  <div className="rounded-2xl p-3" style={{ background: incidents.length > 0 ? '#FEF3C7' : C.bg, border: `1px solid ${incidents.length > 0 ? '#FDE68A' : C.border}` }}>
+                    <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: C.muted }}>Incidentes</p>
+                    <p className="font-black text-[28px] leading-none mb-1" style={{ color: incidents.length > 0 ? C.amber : C.muted }}>{incidents.length}</p>
+                    {incidents.length > 0 && (
+                      <div className="space-y-1 mt-2">
+                        {incidents.slice(0, 3).map(inc => (
+                          <p key={inc.id} className="text-[10px] font-semibold truncate" style={{ color: C.slate }}>• {inc.name}</p>
                         ))}
+                        {incidents.length > 3 && <p className="text-[10px] font-bold" style={{ color: C.amber }}>+{incidents.length - 3} más</p>}
                       </div>
-                    </div>
-                  )}
-
-                  {inventory.length > 0 && (
-                    <div className="mb-3">
-                      <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: C.muted }}>Inventario ({inventory.length})</p>
-                      <div className="space-y-1.5">
-                        {inventory.map(inv => (
-                          <div key={inv.id} className="flex items-center gap-2 p-2.5 rounded-xl" style={{ background: inv.status === 'Out of Stock' ? '#FEE2E2' : '#FEF3C7' }}>
-                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: inv.status === 'Out of Stock' ? C.red : C.amber }} />
-                            <p className="text-[12px] font-semibold flex-1 truncate" style={{ color: C.ink }}>{inv.comment || inv.status}</p>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: inv.status === 'Out of Stock' ? C.red : C.amber, color: 'white' }}>{inv.status}</span>
-                          </div>
+                    )}
+                  </div>
+                  {/* Rupturas */}
+                  <div className="rounded-2xl p-3" style={{ background: inventory.length > 0 ? '#FEE2E2' : C.bg, border: `1px solid ${inventory.length > 0 ? '#FECACA' : C.border}` }}>
+                    <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: C.muted }}>Rupturas</p>
+                    <p className="font-black text-[28px] leading-none mb-1" style={{ color: inventory.length > 0 ? C.red : C.muted }}>{inventory.length}</p>
+                    {inventory.length > 0 && (
+                      <div className="space-y-1 mt-2">
+                        {inventory.slice(0, 3).map(inv => (
+                          <p key={inv.id} className="text-[10px] font-semibold truncate" style={{ color: C.slate }}>• {inv.comment || inv.status}</p>
                         ))}
+                        {inventory.length > 3 && <p className="text-[10px] font-bold" style={{ color: C.red }}>+{inventory.length - 3} más</p>}
                       </div>
-                    </div>
-                  )}
-                </>
+                    )}
+                  </div>
+                </div>
               )}
 
               {/* Actions */}
-              <div className="flex gap-2 mt-1">
+              <div className="flex gap-2">
                 {selected.googleMapsUrl && (
                   <a href={selected.googleMapsUrl} target="_blank" rel="noopener noreferrer"
                     className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl text-[12px] font-bold"
