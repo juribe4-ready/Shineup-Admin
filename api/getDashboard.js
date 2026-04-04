@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     let allRecords = [];
     let offset = null;
     do {
-      const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblabOdNknnjrYUU1?pageSize=100&sort[0][field]=Scheduled%20Time&sort[0][direction]=asc${offset ? `&offset=${offset}` : ''}`;
+      const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblabOdNknnjrYUU1?pageSize=100&sort[0][field]=Scheduled%20Time&sort[0][direction]=asc${offset ? `&offset=${offset}` : ''}&fields[]=Status&fields[]=Date&fields[]=Scheduled%20Time&fields[]=Start%20Time&fields[]=End%20Time&fields[]=Property&fields[]=Property%20Text&fields[]=Address&fields[]=Assigned%20Staff&fields[]=staffList&fields[]=Google%20Maps%20URL&fields[]=FrontView&fields[]=VideoInicial&fields[]=Photos%20%26%20Videos&fields[]=StoragePhoto&fields[]=OpenComments&fields[]=Labor&fields[]=Rating&fields[]=Cleaning%20ID`;
       const airtableRes = await fetch(url, {
         headers: { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` }
       });
@@ -61,6 +61,32 @@ export default async function handler(req, res) {
         ? frontView[0]?.thumbnails?.large?.url || frontView[0]?.url || null
         : null;
 
+      // Estimated End Time calculation (same logic as getCleaningTasks)
+      const labor = Number(f['Labor'] || 0);
+      const resolveRating = (r) => {
+        if (!r) return undefined;
+        if (typeof r === 'number') return r;
+        const s = String(r).toLowerCase();
+        if (s.includes('bueno')) return 3;
+        if (s.includes('normal')) return 2;
+        if (s.includes('malo')) return 1;
+        return undefined;
+      };
+      const rating = resolveRating(f['Rating']);
+      let estimatedEndTime = null;
+      if (labor > 0 && f['Scheduled Time']) {
+        const cleanerCount = staffIds.filter(id => {
+          const s = staffMap[id];
+          return s && (s.role || '').toLowerCase().includes('cleaner');
+        }).length;
+        const effectiveCleaners = Math.max(cleanerCount, 1);
+        const minutesRaw = labor / effectiveCleaners;
+        const minutesRounded = Math.ceil(minutesRaw / 15) * 15;
+        const ratingAdj = rating === 1 ? 30 : rating === 3 ? -30 : 0;
+        const totalMinutes = Math.max(minutesRounded + ratingAdj, 45);
+        estimatedEndTime = new Date(new Date(f['Scheduled Time']).getTime() + totalMinutes * 60000).toISOString();
+      }
+
       // VideoInicial
       const videoInicialRaw = f['VideoInicial'] || [];
       const videoInicial = Array.isArray(videoInicialRaw)
@@ -92,6 +118,8 @@ export default async function handler(req, res) {
         scheduledTime: f['Scheduled Time'] || null,
         startTime: f['Start Time'] || null,
         endTime: f['End Time'] || null,
+        estimatedEndTime,
+        labor,
         staffList: staffList,
         staffListText,
         googleMapsUrl: Array.isArray(f['Google Maps URL']) ? f['Google Maps URL'][0] : f['Google Maps URL'] || '',
