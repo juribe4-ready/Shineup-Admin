@@ -46,6 +46,31 @@ export default async function handler(req, res) {
       };
     }
 
+    // Fetch Labor from Properties for all unique property IDs
+    const propertyIds = [...new Set(filtered.map(r => {
+      const p = r.fields['Property'];
+      return Array.isArray(p) ? p[0] : p;
+    }).filter(Boolean))];
+
+    const propertyLaborMap = {};
+    if (propertyIds.length > 0) {
+      try {
+        const propFormula = encodeURIComponent(`OR(${propertyIds.map(id => `RECORD_ID()='${id}'`).join(',')})`);
+        const propRes = await fetch(
+          `https://api.airtable.com/v0/${AIRTABLE_BASE}/tbl1iETmcFP460oWN?filterByFormula=${propFormula}&fields[]=Labor`,
+          { headers: { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` } }
+        );
+        if (propRes.ok) {
+          const propData = await propRes.json();
+          for (const r of (propData.records || [])) {
+            propertyLaborMap[r.id] = Number(r.fields?.Labor || 0);
+          }
+        }
+      } catch (e) {
+        console.error('[getDashboard] Property labor fetch error:', e.message);
+      }
+    }
+
     // Build cleanings with geocoding
     const cleanings = await Promise.all(filtered.map(async record => {
       const f = record.fields;
@@ -61,8 +86,12 @@ export default async function handler(req, res) {
         ? frontView[0]?.thumbnails?.large?.url || frontView[0]?.url || null
         : null;
 
-      // EstimatedEndTime calculation
-      const labor = Number(f['Labor'] || 0);
+      // Get Labor from Property record
+      const propId = Array.isArray(f['Property']) ? f['Property'][0] : (f['Property'] || '');
+      let labor = 0;
+      if (propId && propertyLaborMap[propId] !== undefined) {
+        labor = propertyLaborMap[propId];
+      }
       const resolveRating = (r) => {
         if (!r) return undefined;
         const s = String(r).toLowerCase();
