@@ -43,6 +43,7 @@ interface Cleaning {
   photosVideos?: { url: string; filename: string }[]
   storagePhoto?: string | null
   openComments?: string
+  labor?: number
 }
 
 interface Incident {
@@ -176,8 +177,14 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
                   return (
                     <div key={c.id} className="flex items-center border-t" style={{ borderColor: C.border }}>
                       <div className="px-3 py-1.5 flex items-center gap-2" style={{ width: '180px', minWidth: '180px', position: 'sticky', left: 0, background: C.white, zIndex: 10 }}>
-                        <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: sc.dot }} />
-                        <p className="text-[11px] font-medium truncate" style={{ color: C.slate }}>{c.propertyText}</p>
+                        <div className="w-1.5 h-1.5 rounded-full shrink-0 mt-0.5" style={{ background: sc.dot }} />
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-medium truncate leading-tight" style={{ color: C.slate }}>{c.propertyText}</p>
+                          <p className="text-[9px] font-bold" style={{ color: C.muted }}>
+                            {c.scheduledTime ? new Date(c.scheduledTime).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : ''}
+                            {c.estimatedEndTime ? ` → ${new Date(c.estimatedEndTime).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                          </p>
+                        </div>
                       </div>
                       <div className="flex-1 relative py-2 pr-4 cursor-pointer" style={{ height: '40px' }} onClick={() => onSelect(c)}>
                         {/* Grid lines */}
