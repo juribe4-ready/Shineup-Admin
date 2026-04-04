@@ -61,6 +61,27 @@ export default async function handler(req, res) {
         ? frontView[0]?.thumbnails?.large?.url || frontView[0]?.url || null
         : null;
 
+      // VideoInicial
+      const videoInicialRaw = f['VideoInicial'] || [];
+      const videoInicial = Array.isArray(videoInicialRaw)
+        ? videoInicialRaw.filter(v => v?.url).map(v => v.url)
+        : [];
+
+      // Photos & Videos (closing)
+      const photosVideosRaw = f['Photos & Videos'] || [];
+      const photosVideos = Array.isArray(photosVideosRaw)
+        ? photosVideosRaw.filter(p => p?.url).map(p => ({ url: p.url, filename: p.filename || '' }))
+        : [];
+
+      // StoragePhoto
+      const storagePhotoRaw = f['StoragePhoto'] || [];
+      const storagePhoto = Array.isArray(storagePhotoRaw) && storagePhotoRaw[0]
+        ? (storagePhotoRaw[0].thumbnails?.large?.url || storagePhotoRaw[0].url || null)
+        : null;
+
+      // OpenComments
+      const openComments = f['OpenComments'] || '';
+
       return {
         id: record.id,
         cleaningId: f['Cleaning ID'] || '',
@@ -77,6 +98,10 @@ export default async function handler(req, res) {
         thumbnail,
         coords,
         bookUrl: null,
+        videoInicial,
+        photosVideos,
+        storagePhoto,
+        openComments,
       };
     }));
 
