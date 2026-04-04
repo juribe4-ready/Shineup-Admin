@@ -15,7 +15,8 @@ export default async function handler(req, res) {
     let allRecords = [];
     let offset = null;
     do {
-      const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblabOdNknnjrYUU1?pageSize=100&sort[0][field]=Scheduled%20Time&sort[0][direction]=asc${offset ? `&offset=${offset}` : ''}&fields[]=Status&fields[]=Date&fields[]=Scheduled%20Time&fields[]=Start%20Time&fields[]=End%20Time&fields[]=Property&fields[]=Property%20Text&fields[]=Address&fields[]=Assigned%20Staff&fields[]=staffList&fields[]=Google%20Maps%20URL&fields[]=FrontView&fields[]=VideoInicial&fields[]=Photos%20%26%20Videos&fields[]=StoragePhoto&fields[]=OpenComments&fields[]=Labor&fields[]=Rating&fields[]=Cleaning%20ID`;
+      const offsetParam = offset ? `&offset=${offset}` : '';
+      const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblabOdNknnjrYUU1?pageSize=100&sort[0][field]=Scheduled%20Time&sort[0][direction]=asc${offsetParam}&fields[]=Status&fields[]=Date&fields[]=Scheduled%20Time&fields[]=Start%20Time&fields[]=End%20Time&fields[]=Property&fields[]=Property%20Text&fields[]=Address&fields[]=Assigned%20Staff&fields[]=staffList&fields[]=Google%20Maps%20URL&fields[]=FrontView&fields[]=VideoInicial&fields[]=Photos%20%26%20Videos&fields[]=StoragePhoto&fields[]=OpenComments&fields[]=Labor&fields[]=Rating&fields[]=Cleaning%20ID`;
       const airtableRes = await fetch(url, {
         headers: { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` }
       });
