@@ -46,9 +46,9 @@ export default function App() {
 
   return (
     <Layout profile={profile} page={page} onNavigate={setPage} onSignOut={handleSignOut}>
-      {page === 'dashboard'  && <DashboardPage />}
+      {page === 'dashboard'  && <DashboardPage profile={profile} />}
       {page === 'planning'   && <PlanningPage />}
-      {page === 'users'      && <UsersPage />}
+      {page === 'users'      && <UsersPage profile={profile} onSignOut={handleSignOut} />}
       {page === 'backup'     && <BackupPage />}
       {page === 'incidents'  && <ComingSoon title="Incidentes" />}
       {page === 'inventory'  && <ComingSoon title="Rupturas de Inventario" />}
