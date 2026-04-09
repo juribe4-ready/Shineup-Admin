@@ -22,7 +22,6 @@ interface LogEntry {
   msg: string
 }
 
-const CLOUDINARY_KEY   = '458251832895334'
 
 function getWeekKey(date: Date): string {
   const d = new Date(date)
