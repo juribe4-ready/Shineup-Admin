@@ -6,6 +6,8 @@ import DashboardPage from './components/DashboardPage'
 import PlanningPage from './components/PlanningPage'
 import UsersPage from './components/UsersPage'
 import BackupPage from './components/BackupPage'
+import IncidentsPage from './components/IncidentsPage'
+import InventoryPage from './components/InventoryPage'
 
 export default function App() {
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -50,8 +52,8 @@ export default function App() {
       {page === 'planning'   && <PlanningPage />}
       {page === 'users'      && <UsersPage profile={profile} onSignOut={handleSignOut} />}
       {page === 'backup'     && <BackupPage />}
-      {page === 'incidents'  && <ComingSoon title="Incidentes" />}
-      {page === 'inventory'  && <ComingSoon title="Rupturas de Inventario" />}
+      {page === 'incidents'  && <IncidentsPage />}
+      {page === 'inventory'  && <InventoryPage />}
     </Layout>
   )
 }
