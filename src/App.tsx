@@ -57,13 +57,3 @@ export default function App() {
     </Layout>
   )
 }
-
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, fontFamily: 'Poppins, sans-serif' }}>
-      <div style={{ fontSize: 48 }}>🚧</div>
-      <p style={{ fontSize: 18, fontWeight: 700, color: '#0F172A' }}>{title}</p>
-      <p style={{ fontSize: 14, color: '#94A3B8' }}>Próximamente disponible</p>
-    </div>
-  )
-}
