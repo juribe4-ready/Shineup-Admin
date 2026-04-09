@@ -38,7 +38,7 @@ export default function IncidentsPage() {
   const load = async () => {
     setLoading(true)
     try {
-      const r = await fetch('/api/getIncidentsAdmin')
+      const r = await fetch('/api/getReports?type=incidents')
       if (r.ok) setIncidents(await r.json())
     } finally { setLoading(false) }
   }

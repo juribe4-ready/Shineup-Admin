@@ -76,7 +76,7 @@ export default function BackupPage() {
     addLog('info', 'Conectando con Cloudinary...')
 
     try {
-      const res = await fetch('/api/cloudinaryList')
+      const res = await fetch('/api/cloudinary?action=list')
       if (!res.ok) throw new Error('Error al listar archivos')
       const data = await res.json()
       const resources = data.resources || []
@@ -127,10 +127,10 @@ export default function BackupPage() {
 
       for (const file of week.files) {
         try {
-          const res = await fetch('/api/cloudinaryDownload', {
+          const res = await fetch('/api/cloudinary', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: file.url, publicId: file.public_id, weekKey: week.weekKey, createdAt: file.created_at })
+            body: JSON.stringify({ action: "download", url: file.url, publicId: file.public_id, weekKey: week.weekKey, createdAt: file.created_at })
           })
           if (!res.ok) throw new Error(`HTTP ${res.status}`)
           const data = await res.json()
@@ -160,10 +160,10 @@ export default function BackupPage() {
     for (let i = 0; i < successIds.length; i += batchSize) {
       const batch = successIds.slice(i, i + batchSize)
       try {
-        const res = await fetch('/api/cloudinaryDelete', {
+        const res = await fetch('/api/cloudinary', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ publicIds: batch })
+          body: JSON.stringify({ action: "delete", publicIds: batch })
         })
         if (!res.ok) throw new Error('Error al eliminar lote')
         const data = await res.json()

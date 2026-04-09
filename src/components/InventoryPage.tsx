@@ -44,7 +44,7 @@ export default function InventoryPage() {
   const load = async () => {
     setLoading(true)
     try {
-      const r = await fetch('/api/getInventoryAdmin')
+      const r = await fetch('/api/getReports?type=inventory')
       if (r.ok) setRecords(await r.json())
     } finally { setLoading(false) }
   }
