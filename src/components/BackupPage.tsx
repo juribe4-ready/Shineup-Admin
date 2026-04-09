@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Download, Trash2, CheckCircle2, AlertCircle, RefreshCw, FolderOpen } from 'lucide-react'
+import { Download, RefreshCw, FolderOpen } from 'lucide-react'
 
 const C = {
   primary: '#6366F1', primaryLight: '#EEF2FF', primaryDark: '#4F46E5',
@@ -22,9 +22,7 @@ interface LogEntry {
   msg: string
 }
 
-const CLOUDINARY_CLOUD = 'dw93dwwrh'
 const CLOUDINARY_KEY   = '458251832895334'
-const CLOUDINARY_SECRET = '1dIQ_8wsDtI5bH6TmBwgLZ-19ng'
 
 function getWeekKey(date: Date): string {
   const d = new Date(date)
