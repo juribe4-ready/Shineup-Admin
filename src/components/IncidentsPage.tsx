@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, X, ExternalLink, RefreshCw } from 'lucide-react'
+import { AlertCircle, X, RefreshCw } from 'lucide-react'
 
 const C = {
   primary: '#6366F1', primaryLight: '#EEF2FF',
