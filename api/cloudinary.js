@@ -19,10 +19,15 @@ async function handleList(req, res) {
   for (const rtype of ['image', 'video']) {
     nextCursor = null
     do {
-      const params = new URLSearchParams({ max_results: '500', resource_type: rtype })
-      if (nextCursor) params.set('next_cursor', nextCursor)
-      const r = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/resources/upload?${params}`, { headers: { Authorization: `Basic ${auth}` } })
-      if (!r.ok) break
+      // resource_type must be in the URL path, not as query param
+      let url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/resources/${rtype}/upload?max_results=500`
+      if (nextCursor) url += `&next_cursor=${encodeURIComponent(nextCursor)}`
+      const r = await fetch(url, { headers: { Authorization: `Basic ${auth}` } })
+      if (!r.ok) {
+        const err = await r.text()
+        console.error(`[cloudinaryList] ${rtype} error ${r.status}:`, err)
+        break
+      }
       const data = await r.json()
       all = all.concat(data.resources || [])
       nextCursor = data.next_cursor || null
