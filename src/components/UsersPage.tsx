@@ -39,7 +39,7 @@ interface Props {
   onSignOut: () => void
 }
 
-export default function UsersPage({ profile, onSignOut }: Props) {
+export default function UsersPage({ profile: _profile, onSignOut: _onSignOut }: Props) {
   const [users, setUsers]             = useState<Profile[]>([])
   const [staffList, setStaffList]     = useState<StaffRecord[]>([])
   const [loading, setLoading]         = useState(true)
