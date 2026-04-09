@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase, Profile } from '../supabase'
-import { Users, Mail, ToggleLeft, ToggleRight, Plus, Search, X, Check, LogOut, Trash2 } from 'lucide-react'
+import { Users, Mail, ToggleLeft, ToggleRight, Plus, Search, X, Check, Trash2 } from 'lucide-react'
 
 const C = {
   primary:      '#6366F1',
@@ -163,35 +163,6 @@ export default function UsersPage({ profile, onSignOut }: Props) {
         </div>
       )}
 
-      {/* HEADER */}
-      <div style={{ background: `linear-gradient(135deg, ${C.headerBg}, ${C.headerMid})` }}>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tighter">
-              Shine<span style={{ color: '#FFD700' }}>UP</span>
-              <span className="text-[11px] sm:text-[13px] font-semibold text-white/40 ml-2 tracking-widest uppercase hidden sm:inline">Admin</span>
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-xl" style={{ background: 'rgba(255,255,255,0.1)' }}>
-              <div className="w-7 h-7 rounded-xl flex items-center justify-center text-white font-black text-[12px]" style={{ background: C.primary }}>
-                {profile.initials || 'AD'}
-              </div>
-              <span className="text-white font-semibold text-[13px] hidden sm:block">{profile.full_name?.split(' ')[0] || 'Admin'}</span>
-            </div>
-            <button onClick={onSignOut} className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-white/60 text-[12px] font-semibold hover:text-white transition-colors"
-              style={{ background: 'rgba(255,255,255,0.08)' }}>
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:block">Salir</span>
-            </button>
-          </div>
-        </div>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex gap-1">
-          <button className="flex items-center gap-2 px-4 py-3 text-[13px] font-bold text-white border-b-2" style={{ borderColor: C.primary }}>
-            <Users className="w-4 h-4" /> Usuarios
-          </button>
-        </div>
-      </div>
 
       {/* CONTENT */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
