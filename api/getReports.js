@@ -20,8 +20,7 @@ async function buildMaps(headers) {
 }
 
 async function getIncidents(headers, staffMap, propMap) {
-  const formula = encodeURIComponent(`NOT({Status}='Closed')`)
-  const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Incidents?filterByFormula=${formula}&sort[0][field]=Creation%20Date&sort[0][direction]=desc`, { headers })
+  const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Incidents?sort[0][field]=Creation%20Date&sort[0][direction]=desc`, { headers })
   if (!r.ok) throw new Error('Error Airtable Incidents')
   const data = await r.json()
   return (data.records||[]).map(rec => {
@@ -54,8 +53,7 @@ async function getInventory(headers, staffMap, propMap) {
     }
   } catch {}
 
-  const formula = encodeURIComponent(`NOT({Status}='Optimal')`)
-  const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${INV_TABLE}?filterByFormula=${formula}&sort[0][field]=Date&sort[0][direction]=desc`, { headers })
+  const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${INV_TABLE}?sort[0][field]=Date&sort[0][direction]=desc`, { headers })
   if (!r.ok) throw new Error('Error Airtable Inventory')
   const data = await r.json()
   return (data.records||[]).map(rec => {
