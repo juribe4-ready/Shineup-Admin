@@ -166,18 +166,31 @@ export default async function handler(req, res) {
       return CLEANER_ROLES.some(cr => lower.includes(cr) || lower === cr);
     };
 
-    // Group by staffListText for timeline - only groups with cleaners
+    // Group by CLEANERS ONLY (not by staffListText which includes non-cleaners)
     const groups = {};
     for (const c of cleanings) {
-      const hasCleanerStaff = c.staffList.some(s => isCleanerRole(s.role));
-      if (!hasCleanerStaff && c.staffList.length > 0) continue;
+      // Filter to only cleaner roles
+      const cleanerStaff = c.staffList.filter(s => isCleanerRole(s.role));
       
-      const key = c.staffListText || 'Sin asignar';
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(c);
+      // Skip if no cleaners assigned
+      if (cleanerStaff.length === 0) continue;
+      
+      // Create grouping key from cleaner names only (sorted for consistency)
+      const cleanerNames = cleanerStaff.map(s => s.name).sort().join(', ');
+      
+      if (!groups[cleanerNames]) {
+        groups[cleanerNames] = {
+          cleanerStaff, // Store the actual cleaner staff for display
+          cleanings: []
+        };
+      }
+      groups[cleanerNames].cleanings.push(c);
     }
 
-    const timeline = Object.entries(groups).map(([staffListText, items]) => {
+    const timeline = Object.entries(groups).map(([cleanerNames, data]) => {
+      const items = data.cleanings;
+      const cleanerStaff = data.cleanerStaff;
+      
       const doneWithRating = items.filter(i => i.status === 'Done' && i.rating);
       const avgRating = doneWithRating.length > 0 
         ? doneWithRating.reduce((sum, i) => sum + i.rating, 0) / doneWithRating.length 
@@ -203,7 +216,8 @@ export default async function handler(req, res) {
       }
 
       return {
-        staffListText,
+        staffListText: cleanerNames,
+        cleanerStaff, // Pass cleaner staff for frontend display
         cleanings: items,
         total: items.length,
         done: items.filter(i => i.status === 'Done').length,
