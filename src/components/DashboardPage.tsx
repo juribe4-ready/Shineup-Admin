@@ -179,13 +179,18 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
                 {group.cleanings.map(c => {
                   const sc = STATUS_COLORS[c.status] || STATUS_COLORS['Programmed']
                   const schedPct = timeToPercent(c.scheduledTime)
+                  const estEndPct = timeToPercent(c.estimatedEndTime || null)
 
-                  // Estimate duration: default 2hrs, adjust if we have start+end
-                  let durationPct = (2 / TOTAL_HOURS) * 100
+                  // Calculate duration from scheduled to estimated end, or use actual times if available
+                  let durationPct = (1.5 / TOTAL_HOURS) * 100 // default 1.5hrs if no estimate
                   if (c.startTime && c.endTime) {
+                    // Use actual duration for completed cleanings
                     const start = timeToPercent(c.startTime) || schedPct || 0
                     const end = timeToPercent(c.endTime) || start + durationPct
-                    durationPct = end - start
+                    durationPct = Math.max(end - start, 2)
+                  } else if (schedPct !== null && estEndPct !== null) {
+                    // Use estimated duration
+                    durationPct = Math.max(estEndPct - schedPct, 2)
                   }
 
                   const barLeft = schedPct ?? 0
@@ -212,12 +217,12 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
                         {nowPct !== null && (
                           <div className="absolute top-0 bottom-0 w-0.5 z-10" style={{ left: `${nowPct}%`, background: C.red, opacity: 0.5 }} />
                         )}
-                        {/* Scheduled bar (gray) */}
+                        {/* Scheduled bar (gray) - width based on estimated duration */}
                         {schedPct !== null && (
                           <div className="absolute rounded-xl flex items-center px-2 overflow-hidden"
                             style={{
                               left: `${barLeft}%`,
-                              width: `${Math.max(durationPct, 4)}%`,
+                              width: `${Math.max(durationPct, 3)}%`,
                               top: '6px', bottom: '6px',
                               background: '#E2E8F0',
                               opacity: c.startTime ? 0.5 : 1,
