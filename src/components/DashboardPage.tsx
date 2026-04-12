@@ -58,6 +58,7 @@ interface InventoryItem {
 
 interface TimelineGroup {
   staffListText: string
+  cleanerStaff?: { name: string; initials: string; role?: string }[]
   cleanings: Cleaning[]
   total: number; done: number; inProgress: number; programmed: number
   avgRating?: number | null
@@ -133,10 +134,8 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
           {/* Groups */}
           {timeline.map(group => {
             const groupPct = group.total > 0 ? Math.round((group.done / group.total) * 100) : 0
-            const cleanerStaff = group.cleanings[0]?.staffList.filter(s => {
-              const role = (s.role || '').toLowerCase()
-              return role.includes('cleaner') || role === ''
-            }) || []
+            // Use cleanerStaff from API (already filtered to cleaners only)
+            const cleanerStaff = group.cleanerStaff || []
             return (
               <div key={group.staffListText} className="border-b last:border-0" style={{ borderColor: C.border }}>
                 {/* Group header row */}
