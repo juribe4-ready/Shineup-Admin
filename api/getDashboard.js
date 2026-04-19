@@ -11,7 +11,7 @@ export default async function handler(req, res) {
 
     console.log(`[getDashboard] date: ${effectiveDate}`);
 
-    // Fetch all cleanings
+    // Fetch all cleanings (removed early termination optimization)
     let allRecords = [];
     let offset = null;
     do {
@@ -23,9 +23,6 @@ export default async function handler(req, res) {
       const pageData = await airtableRes.json();
       allRecords = allRecords.concat(pageData.records || []);
       offset = pageData.offset || null;
-      const hasToday = allRecords.some(r => r.fields['Date']?.startsWith(effectiveDate));
-      const hasFuture = allRecords.some(r => r.fields['Date'] > effectiveDate);
-      if (hasToday && hasFuture) offset = null;
     } while (offset);
 
     const filtered = allRecords.filter(r => r.fields['Date']?.startsWith(effectiveDate));
@@ -144,7 +141,6 @@ export default async function handler(req, res) {
         startTime: f['Start Time'] || null,
         endTime: f['End Time'] || null,
         estimatedEndTime,
-        rating: ratingVal || null,
         staffList: staffList,
         staffListText,
         googleMapsUrl: Array.isArray(f['Google Maps URL']) ? f['Google Maps URL'][0] : f['Google Maps URL'] || '',
@@ -158,76 +154,22 @@ export default async function handler(req, res) {
       };
     }));
 
-    // Roles that represent actual cleaners (not support/admin)
-    const CLEANER_ROLES = ['cleaner', 'cleaner wknd', 'cleaner en prueba'];
-    const isCleanerRole = (role) => {
-      if (!role) return false;
-      const lower = role.toLowerCase().trim();
-      return CLEANER_ROLES.some(cr => lower.includes(cr) || lower === cr);
-    };
-
-    // Group by CLEANERS ONLY (not by staffListText which includes non-cleaners)
+    // Group by staffListText for timeline
     const groups = {};
     for (const c of cleanings) {
-      // Filter to only cleaner roles
-      const cleanerStaff = c.staffList.filter(s => isCleanerRole(s.role));
-      
-      // Skip if no cleaners assigned
-      if (cleanerStaff.length === 0) continue;
-      
-      // Create grouping key from cleaner names only (sorted for consistency)
-      const cleanerNames = cleanerStaff.map(s => s.name).sort().join(', ');
-      
-      if (!groups[cleanerNames]) {
-        groups[cleanerNames] = {
-          cleanerStaff, // Store the actual cleaner staff for display
-          cleanings: []
-        };
-      }
-      groups[cleanerNames].cleanings.push(c);
+      const key = c.staffListText || 'Sin asignar';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(c);
     }
 
-    const timeline = Object.entries(groups).map(([cleanerNames, data]) => {
-      const items = data.cleanings;
-      const cleanerStaff = data.cleanerStaff;
-      
-      const doneWithRating = items.filter(i => i.status === 'Done' && i.rating);
-      const avgRating = doneWithRating.length > 0 
-        ? doneWithRating.reduce((sum, i) => sum + i.rating, 0) / doneWithRating.length 
-        : null;
-
-      const doneWithTimes = items.filter(i => i.status === 'Done' && i.startTime && i.endTime);
-      let avgDurationMin = null;
-      if (doneWithTimes.length > 0) {
-        const totalRealMin = doneWithTimes.reduce((sum, i) => {
-          return sum + (new Date(i.endTime).getTime() - new Date(i.startTime).getTime()) / 60000;
-        }, 0);
-        avgDurationMin = Math.round(totalRealMin / doneWithTimes.length);
-      }
-
-      const withScheduledAndStart = items.filter(i => i.scheduledTime && i.startTime);
-      let onTimeRate = null;
-      if (withScheduledAndStart.length > 0) {
-        const onTimeCount = withScheduledAndStart.filter(i => {
-          const diffMin = (new Date(i.startTime).getTime() - new Date(i.scheduledTime).getTime()) / 60000;
-          return diffMin <= 15;
-        }).length;
-        onTimeRate = Math.round((onTimeCount / withScheduledAndStart.length) * 100);
-      }
-
-      return {
-        staffListText: cleanerNames,
-        cleanerStaff, // Pass cleaner staff for frontend display
-        cleanings: items,
-        total: items.length,
-        done: items.filter(i => i.status === 'Done').length,
-        inProgress: items.filter(i => i.status === 'In Progress').length,
-        programmed: items.filter(i => i.status === 'Programmed' || i.status === 'Scheduled').length,
-        avgRating: avgRating ? Math.round(avgRating * 10) / 10 : null,
-        avgDurationMin,
-        onTimeRate,
-      };
-    }).sort((a, b) => b.total - a.total);
+    const timeline = Object.entries(groups).map(([staffListText, items]) => ({
+      staffListText,
+      cleanings: items,
+      total: items.length,
+      done: items.filter(i => i.status === 'Done').length,
+      inProgress: items.filter(i => i.status === 'In Progress').length,
+      programmed: items.filter(i => i.status === 'Programmed' || i.status === 'Scheduled').length,
+    })).sort((a, b) => b.total - a.total);
 
     const stats = {
       total: cleanings.length,
