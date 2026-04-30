@@ -6,6 +6,11 @@ import {
   Clock, Filter, Zap
 } from 'lucide-react'
 
+// Leaflet types
+declare global {
+  interface Window { L: any }
+}
+
 const C = {
   primary:     '#6366F1',
   primaryDark: '#4F46E5',
@@ -84,10 +89,6 @@ const fmt = (v?: string | null) => {
 }
 
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
-
-declare global {
-  interface Window { google: any; initMap: () => void }
-}
 
 
 // ─── Gantt Timeline ───────────────────────────────────────────────────────────
@@ -272,7 +273,6 @@ export default function DashboardPage({ profile: _profile }: Props) {
   const mapRef    = useRef<HTMLDivElement>(null)
   const mapObj    = useRef<any>(null)
   const markers   = useRef<any[]>([])
-  const infoWindow = useRef<any>(null)
 
   const loadDetail = async (cleaning: Cleaning) => {
     setSelected(cleaning)
@@ -305,21 +305,21 @@ export default function DashboardPage({ profile: _profile }: Props) {
     }
   }, [date])
 
-  // Load Google Maps script
+  // Load Leaflet (FREE - no API key needed)
   useEffect(() => {
-    if (window.google?.maps) { setMapReady(true); return }
-    const key = (import.meta as any).env?.VITE_GOOGLE_MAPS_KEY || ''
-    ;(window as any).initMap = () => setMapReady(true)
-    const existing = document.getElementById('gmaps-script')
-    if (!existing) {
-      const script = document.createElement('script')
-      script.id = 'gmaps-script'
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=initMap&loading=async`
-      script.async = true
-      script.defer = true
-      document.head.appendChild(script)
-    }
-    return () => { (window as any).initMap = undefined }
+    if (window.L) { setMapReady(true); return }
+    
+    // Load Leaflet CSS
+    const css = document.createElement('link')
+    css.rel = 'stylesheet'
+    css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+    document.head.appendChild(css)
+    
+    // Load Leaflet JS
+    const script = document.createElement('script')
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+    script.onload = () => setMapReady(true)
+    document.head.appendChild(script)
   }, [])
 
   useEffect(() => { loadData(date) }, [date])
@@ -334,54 +334,56 @@ export default function DashboardPage({ profile: _profile }: Props) {
   // GEOCODING REMOVED - Was causing $331/day in API costs
   // Coordinates should come from Airtable (Google Maps URL field) via getDashboard API
 
-  // Initialize map
+  // Initialize Leaflet map (FREE)
   useEffect(() => {
-    if (!mapReady || !mapRef.current || !data) return
+    if (!mapReady || !mapRef.current || !data || !window.L) return
+    
+    // Initialize map if not exists
     if (!mapObj.current) {
-      mapObj.current = new window.google.maps.Map(mapRef.current, {
-        center: { lat: 39.9612, lng: -82.9988 }, // Columbus, OH
-        zoom: 11,
-        styles: [
-          { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-          { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-        ],
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false,
-      })
-      infoWindow.current = new window.google.maps.InfoWindow()
+      mapObj.current = window.L.map(mapRef.current).setView([39.9612, -82.9988], 11)
+      
+      // Add OpenStreetMap tiles (FREE)
+      window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      }).addTo(mapObj.current)
     }
 
     // Clear existing markers
-    markers.current.forEach(m => m.setMap(null))
+    markers.current.forEach((m: any) => m.remove())
     markers.current = []
 
     // Add markers
+    const bounds: [number, number][] = []
     for (const c of data.cleanings) {
       if (!c.coords) continue
       const sc = STATUS_COLORS[c.status] || STATUS_COLORS['Programmed']
-      const marker = new window.google.maps.Marker({
-        position: c.coords,
-        map: mapObj.current,
-        title: c.propertyText,
-        icon: {
-          path: window.google.maps.SymbolPath.CIRCLE,
-          scale: 10,
-          fillColor: sc.dot,
-          fillOpacity: 1,
-          strokeColor: '#FFFFFF',
-          strokeWeight: 2,
-        },
-      })
-      marker.addListener('click', () => setSelected(c))
+      
+      // Create colored circle marker
+      const marker = window.L.circleMarker([c.coords.lat, c.coords.lng], {
+        radius: 10,
+        fillColor: sc.dot,
+        fillOpacity: 1,
+        color: '#FFFFFF',
+        weight: 2,
+      }).addTo(mapObj.current)
+      
+      // Add popup with info
+      marker.bindPopup(`
+        <div style="font-family: sans-serif; min-width: 150px;">
+          <strong style="font-size: 13px;">${c.propertyText}</strong><br/>
+          <span style="font-size: 11px; color: #666;">${c.address}</span><br/>
+          <span style="display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; background: ${sc.bg}; color: ${sc.color};">${sc.label}</span>
+        </div>
+      `)
+      
+      marker.on('click', () => setSelected(c))
       markers.current.push(marker)
+      bounds.push([c.coords.lat, c.coords.lng])
     }
 
-    // Fit bounds
-    if (data.cleanings.filter(c => c.coords).length > 0) {
-      const bounds = new window.google.maps.LatLngBounds()
-      data.cleanings.filter(c => c.coords).forEach(c => bounds.extend(c.coords!))
-      mapObj.current.fitBounds(bounds)
+    // Fit bounds if we have markers
+    if (bounds.length > 0) {
+      mapObj.current.fitBounds(bounds, { padding: [20, 20] })
     }
   }, [mapReady, data])
 
