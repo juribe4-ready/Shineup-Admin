@@ -88,22 +88,26 @@ export default async function handler(req, res) {
       return Array.isArray(p) ? p[0] : p;
     }).filter(Boolean))];
 
-    const propertyLaborMap = {};
+    const propertyDataMap = {};  // { id: { labor, lat, lng } }
     if (propertyIds.length > 0) {
       try {
         const propFormula = encodeURIComponent(`OR(${propertyIds.map(id => `RECORD_ID()='${id}'`).join(',')})`);
         const propRes = await fetch(
-          `https://api.airtable.com/v0/${AIRTABLE_BASE}/tbl1iETmcFP460oWN?filterByFormula=${propFormula}&fields[]=Labor`,
+          `https://api.airtable.com/v0/${AIRTABLE_BASE}/tbl1iETmcFP460oWN?filterByFormula=${propFormula}&fields[]=Labor&fields[]=Latitude&fields[]=Longitude`,
           { headers: { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` } }
         );
         if (propRes.ok) {
           const propData = await propRes.json();
           for (const r of (propData.records || [])) {
-            propertyLaborMap[r.id] = Number(r.fields?.Labor || 0);
+            propertyDataMap[r.id] = {
+              labor: Number(r.fields?.Labor || 0),
+              lat: r.fields?.Latitude || null,
+              lng: r.fields?.Longitude || null,
+            };
           }
         }
       } catch (e) {
-        console.error('[getDashboard] Property labor fetch error:', e.message);
+        console.error('[getDashboard] Property data fetch error:', e.message);
       }
     }
 
@@ -116,9 +120,16 @@ export default async function handler(req, res) {
       const staffList = staffIds.map(id => staffMap[id] || { name: '?', initials: '?' });
       const staffListText = f['staffList'] || '';
 
-      // Extract coords from Google Maps URL
+      // Extract coords from Google Maps URL OR from Property Lat/Lng
       const googleMapsUrl = Array.isArray(f['Google Maps URL']) ? f['Google Maps URL'][0] : (f['Google Maps URL'] || '');
-      const coords = extractCoordsFromGoogleUrl(googleMapsUrl);
+      let coords = extractCoordsFromGoogleUrl(googleMapsUrl);
+      
+      // Fallback: use Latitude/Longitude from Properties table
+      const propId = Array.isArray(f['Property']) ? f['Property'][0] : (f['Property'] || '');
+      const propData = propertyDataMap[propId] || {};
+      if (!coords && propData.lat && propData.lng) {
+        coords = { lat: propData.lat, lng: propData.lng };
+      }
 
       const frontView = f['FrontView'] || [];
       const thumbnail = Array.isArray(frontView) && frontView[0]
@@ -126,11 +137,7 @@ export default async function handler(req, res) {
         : null;
 
       // Get Labor from Property record
-      const propId = Array.isArray(f['Property']) ? f['Property'][0] : (f['Property'] || '');
-      let labor = 0;
-      if (propId && propertyLaborMap[propId] !== undefined) {
-        labor = propertyLaborMap[propId];
-      }
+      let labor = propData.labor || 0;
 
       const resolveRating = (r) => {
         if (!r) return undefined;
