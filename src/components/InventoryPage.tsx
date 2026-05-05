@@ -22,9 +22,14 @@ interface InvRecord {
   closeComment?: string
 }
 const fmtDate = (v?: string | null) => {
-  if (!v) return null
-  try { return new Date(v + 'T12:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) }
-  catch { return v }
+  if (!v) return '—'
+  try { 
+    // Handle ISO strings and date-only strings
+    const d = v.includes('T') ? new Date(v) : new Date(v + 'T12:00:00')
+    if (isNaN(d.getTime())) return '—'
+    return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) 
+  }
+  catch { return '—' }
 }
 
 export default function InventoryPage() {

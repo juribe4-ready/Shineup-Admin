@@ -182,16 +182,18 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
                   const schedPct = timeToPercent(c.scheduledTime)
                   const estEndPct = timeToPercent(c.estimatedEndTime || null)
 
-                  // Calculate duration from scheduled to estimated end, or use actual times if available
-                  let durationPct = (1.5 / TOTAL_HOURS) * 100 // default 1.5hrs if no estimate
+                  // Calculate scheduled duration (gray bar)
+                  let scheduledDurationPct = (1.5 / TOTAL_HOURS) * 100 // default 1.5hrs
+                  if (schedPct !== null && estEndPct !== null) {
+                    scheduledDurationPct = Math.max(estEndPct - schedPct, 2)
+                  }
+                  
+                  // Calculate real duration (colored bar) - only for started cleanings
+                  let realDurationPct = scheduledDurationPct * 0.6 // default while in progress
                   if (c.startTime && c.endTime) {
-                    // Use actual duration for completed cleanings
-                    const start = timeToPercent(c.startTime) || schedPct || 0
-                    const end = timeToPercent(c.endTime) || start + durationPct
-                    durationPct = Math.max(end - start, 2)
-                  } else if (schedPct !== null && estEndPct !== null) {
-                    // Use estimated duration
-                    durationPct = Math.max(estEndPct - schedPct, 2)
+                    const realStart = timeToPercent(c.startTime) || 0
+                    const realEnd = timeToPercent(c.endTime) || realStart
+                    realDurationPct = Math.max(realEnd - realStart, 2)
                   }
 
                   const barLeft = schedPct ?? 0
@@ -223,41 +225,36 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
                         ))}
                         {/* Now line */}
                         {nowPct !== null && (
-                          <div className="absolute top-0 bottom-0 w-0.5 z-10" style={{ left: `${nowPct}%`, background: C.red, opacity: 0.5 }} />
+                          <div className="absolute top-0 bottom-0 w-0.5 z-20" style={{ left: `${nowPct}%`, background: C.red, opacity: 0.7 }} />
                         )}
-                        {/* Scheduled bar (gray, thinner, behind) */}
+                        {/* Scheduled bar (gray, full estimated duration) - always visible */}
                         {schedPct !== null && (
-                          <div className="absolute rounded-lg flex items-center px-2 overflow-hidden"
+                          <div className="absolute rounded-md"
                             style={{
                               left: `${barLeft}%`,
-                              width: `${Math.max(durationPct, 3)}%`,
-                              top: '10px', bottom: '10px',
-                              background: '#E2E8F0',
+                              width: `${Math.max(scheduledDurationPct, 3)}%`,
+                              top: '12px', bottom: '12px',
+                              background: '#CBD5E1',
                               zIndex: 1,
                             }}>
-                            {!c.startTime && (
-                              <span className="text-[9px] font-bold truncate" style={{ color: C.muted }}>
-                                {c.scheduledTime ? new Date(c.scheduledTime).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : ''}
-                              </span>
-                            )}
                           </div>
                         )}
-                        {/* Real bar (colored, thicker, on top) */}
+                        {/* Real bar (colored, actual duration) */}
                         {realLeft !== null && (
-                          <div className="absolute rounded-xl flex items-center justify-between px-2 overflow-hidden hover:opacity-90 transition-opacity"
+                          <div className="absolute rounded-xl flex items-center px-2 overflow-hidden hover:opacity-90 transition-opacity"
                             style={{
                               left: `${realLeft}%`,
-                              width: `${Math.max(c.status === 'Done' && c.endTime ? (timeToPercent(c.endTime)! - realLeft) : durationPct * 0.6, 3)}%`,
-                              top: '4px', bottom: '4px',
+                              width: `${Math.max(realDurationPct, 3)}%`,
+                              top: '6px', bottom: '6px',
                               background: sc.dot,
                               zIndex: 2,
                             }}>
                             <span className="text-[9px] font-black text-white truncate">
                               {c.status === 'Done' ? '✓' : c.status === 'In Progress' ? '▶' : ''} {c.startTime ? new Date(c.startTime).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : ''}
+                              {c.status === 'Done' && c.endTime ? ` → ${new Date(c.endTime).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}` : ''}
                             </span>
-                            {c.status === 'Done' && c.rating && (
-                              <span className="text-[10px] ml-1 shrink-0">⭐</span>
-                            )}
+                          </div>
+                        )}
                           </div>
                         )}
                       </div>
