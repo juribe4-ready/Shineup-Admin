@@ -255,8 +255,6 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
                             </span>
                           </div>
                         )}
-                          </div>
-                        )}
                       </div>
                     </div>
                   )
