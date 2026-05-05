@@ -21,14 +21,6 @@ interface InvRecord {
   storagePhoto: { url: string; date: string } | null
   closeComment?: string
 }
-const fmtDT = (v?: string | null) => {
-  if (!v) return null
-  try {
-    const d = new Date(v)
-    return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) + ' ' +
-      d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
-  } catch { return null }
-}
 const fmtDate = (v?: string | null) => {
   if (!v) return null
   try { return new Date(v + 'T12:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) }

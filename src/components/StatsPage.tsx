@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
-  TrendingUp, Clock, Star, Zap, AlertTriangle, Users,
-  ChevronDown, ExternalLink, X, Calendar, Filter,
-  ArrowUp, ArrowDown, Minus
+  TrendingUp, Clock, Star, Zap, AlertTriangle,
+  ExternalLink, X, Filter
 } from 'lucide-react'
 
 const C = {

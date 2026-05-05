@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Profile } from '../supabase'
 import {
-  LayoutDashboard, CalendarDays, Users, AlertCircle,
+  CalendarDays, Users, AlertCircle,
   Package, Download, LogOut, ChevronLeft, Menu, BarChart3, Activity
 } from 'lucide-react'
 
