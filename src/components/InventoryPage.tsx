@@ -64,7 +64,7 @@ export default function InventoryPage() {
     
     setSaving(true)
     try {
-      const res = await fetch('/api/updateReport', {
+      const res = await fetch('/api/stats', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -79,7 +79,7 @@ export default function StatsPage() {
   const loadData = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/getStats?period=${period}`)
+      const res = await fetch(`/api/stats?period=${period}`)
       if (res.ok) {
         const json = await res.json()
         setData(json)
