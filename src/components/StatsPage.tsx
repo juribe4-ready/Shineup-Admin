@@ -400,7 +400,7 @@ export default function StatsPage() {
               </tr>
             </thead>
             <tbody>
-              {propertyStats.map((prop, idx) => (
+              {propertyStats.map((prop) => (
                 <tr key={prop.propertyText} 
                   className="cursor-pointer hover:bg-gray-50 transition-colors" 
                   style={{ borderBottom: `1px solid ${C.border}` }}
