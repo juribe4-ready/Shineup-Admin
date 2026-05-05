@@ -3,6 +3,7 @@ import { supabase, Profile } from './supabase'
 import LoginPage from './components/LoginPage'
 import Layout, { PageKey } from './components/Layout'
 import DashboardPage from './components/DashboardPage'
+import StatsPage from './components/StatsPage'
 import PlanningPage from './components/PlanningPage'
 import UsersPage from './components/UsersPage'
 import BackupPage from './components/BackupPage'
@@ -49,6 +50,7 @@ export default function App() {
   return (
     <Layout profile={profile} page={page} onNavigate={setPage} onSignOut={handleSignOut}>
       {page === 'dashboard'  && <DashboardPage profile={profile} />}
+      {page === 'stats'      && <StatsPage />}
       {page === 'planning'   && <PlanningPage />}
       {page === 'users'      && <UsersPage profile={profile} onSignOut={handleSignOut} />}
       {page === 'backup'     && <BackupPage />}
