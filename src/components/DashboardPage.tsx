@@ -201,8 +201,15 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
                     <div key={c.id} className="flex items-center border-t" style={{ borderColor: C.border }}>
                       <div className="px-3 py-1.5 flex items-center gap-2" style={{ width: '180px', minWidth: '180px', position: 'sticky', left: 0, background: C.white, zIndex: 10 }}>
                         <div className="w-1.5 h-1.5 rounded-full shrink-0 mt-0.5" style={{ background: sc.dot }} />
-                        <div className="min-w-0">
-                          <p className="text-[11px] font-medium truncate leading-tight" style={{ color: C.slate }}>{c.propertyText}</p>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1">
+                            <p className="text-[11px] font-medium truncate leading-tight" style={{ color: C.slate }}>{c.propertyText}</p>
+                            {c.status === 'Done' && c.rating && (
+                              <span className="text-[9px] shrink-0" style={{ color: c.rating >= 2.5 ? '#10B981' : c.rating >= 1.5 ? '#F59E0B' : '#EF4444' }}>
+                                {c.rating}⭐
+                              </span>
+                            )}
+                          </div>
                           <p className="text-[9px] font-bold" style={{ color: C.muted }}>
                             {c.scheduledTime ? new Date(c.scheduledTime).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : ''}
                             {c.estimatedEndTime ? ` → ${new Date(c.estimatedEndTime).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}` : ''}
@@ -218,31 +225,39 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
                         {nowPct !== null && (
                           <div className="absolute top-0 bottom-0 w-0.5 z-10" style={{ left: `${nowPct}%`, background: C.red, opacity: 0.5 }} />
                         )}
-                        {/* Scheduled bar (gray) - width based on estimated duration */}
+                        {/* Scheduled bar (gray, thinner, behind) */}
                         {schedPct !== null && (
-                          <div className="absolute rounded-xl flex items-center px-2 overflow-hidden"
+                          <div className="absolute rounded-lg flex items-center px-2 overflow-hidden"
                             style={{
                               left: `${barLeft}%`,
                               width: `${Math.max(durationPct, 3)}%`,
-                              top: '6px', bottom: '6px',
+                              top: '10px', bottom: '10px',
                               background: '#E2E8F0',
-                              opacity: c.startTime ? 0.5 : 1,
+                              zIndex: 1,
                             }}>
-                            <span className="text-[9px] font-bold truncate" style={{ color: C.muted }}>{c.scheduledTime ? new Date(c.scheduledTime).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                            {!c.startTime && (
+                              <span className="text-[9px] font-bold truncate" style={{ color: C.muted }}>
+                                {c.scheduledTime ? new Date(c.scheduledTime).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : ''}
+                              </span>
+                            )}
                           </div>
                         )}
-                        {/* Real bar (colored) */}
+                        {/* Real bar (colored, thicker, on top) */}
                         {realLeft !== null && (
-                          <div className="absolute rounded-xl flex items-center px-2 overflow-hidden hover:opacity-90 transition-opacity"
+                          <div className="absolute rounded-xl flex items-center justify-between px-2 overflow-hidden hover:opacity-90 transition-opacity"
                             style={{
                               left: `${realLeft}%`,
                               width: `${Math.max(c.status === 'Done' && c.endTime ? (timeToPercent(c.endTime)! - realLeft) : durationPct * 0.6, 3)}%`,
                               top: '4px', bottom: '4px',
                               background: sc.dot,
+                              zIndex: 2,
                             }}>
                             <span className="text-[9px] font-black text-white truncate">
                               {c.status === 'Done' ? '✓' : c.status === 'In Progress' ? '▶' : ''} {c.startTime ? new Date(c.startTime).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : ''}
                             </span>
+                            {c.status === 'Done' && c.rating && (
+                              <span className="text-[10px] ml-1 shrink-0">⭐</span>
+                            )}
                           </div>
                         )}
                       </div>
@@ -376,7 +391,7 @@ export default function DashboardPage({ profile: _profile }: Props) {
         </div>
       `)
       
-      marker.on('click', () => setSelected(c))
+      // Solo popup, no abrir panel
       markers.current.push(marker)
       bounds.push([c.coords.lat, c.coords.lng])
     }
@@ -732,37 +747,47 @@ export default function DashboardPage({ profile: _profile }: Props) {
                 </div>
               )}
 
-              {/* INCIDENTES + RUPTURAS */}
+              {/* INCIDENTES + RUPTURAS (solo abiertos) */}
               {loadingDetail ? (
                 <div className="flex justify-center py-3"><div className="w-5 h-5 border-2 rounded-full animate-spin" style={{ borderColor: C.border, borderTopColor: C.primary }} /></div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
                   {/* Incidentes */}
-                  <div className="rounded-2xl p-3" style={{ background: incidents.length > 0 ? '#FEF3C7' : C.bg, border: `1px solid ${incidents.length > 0 ? '#FDE68A' : C.border}` }}>
-                    <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: C.muted }}>Incidentes</p>
-                    <p className="font-black text-[28px] leading-none mb-1" style={{ color: incidents.length > 0 ? C.amber : C.muted }}>{incidents.length}</p>
-                    {incidents.length > 0 && (
-                      <div className="space-y-1 mt-2">
-                        {incidents.slice(0, 3).map(inc => (
-                          <p key={inc.id} className="text-[10px] font-semibold truncate" style={{ color: C.slate }}>• {inc.name}</p>
-                        ))}
-                        {incidents.length > 3 && <p className="text-[10px] font-bold" style={{ color: C.amber }}>+{incidents.length - 3} más</p>}
+                  {(() => {
+                    const openIncidents = incidents.filter(i => i.status !== 'Closed')
+                    return (
+                      <div className="rounded-2xl p-3" style={{ background: openIncidents.length > 0 ? '#FEF3C7' : C.bg, border: `1px solid ${openIncidents.length > 0 ? '#FDE68A' : C.border}` }}>
+                        <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: C.muted }}>Incidentes</p>
+                        <p className="font-black text-[28px] leading-none mb-1" style={{ color: openIncidents.length > 0 ? C.amber : C.muted }}>{openIncidents.length}</p>
+                        {openIncidents.length > 0 && (
+                          <div className="space-y-1 mt-2">
+                            {openIncidents.slice(0, 3).map(inc => (
+                              <p key={inc.id} className="text-[10px] font-semibold truncate" style={{ color: C.slate }}>• {inc.name}</p>
+                            ))}
+                            {openIncidents.length > 3 && <p className="text-[10px] font-bold" style={{ color: C.amber }}>+{openIncidents.length - 3} más</p>}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    )
+                  })()}
                   {/* Rupturas */}
-                  <div className="rounded-2xl p-3" style={{ background: inventory.length > 0 ? '#FEE2E2' : C.bg, border: `1px solid ${inventory.length > 0 ? '#FECACA' : C.border}` }}>
-                    <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: C.muted }}>Rupturas</p>
-                    <p className="font-black text-[28px] leading-none mb-1" style={{ color: inventory.length > 0 ? C.red : C.muted }}>{inventory.length}</p>
-                    {inventory.length > 0 && (
-                      <div className="space-y-1 mt-2">
-                        {inventory.slice(0, 3).map(inv => (
-                          <p key={inv.id} className="text-[10px] font-semibold truncate" style={{ color: C.slate }}>• {inv.comment || inv.status}</p>
-                        ))}
-                        {inventory.length > 3 && <p className="text-[10px] font-bold" style={{ color: C.red }}>+{inventory.length - 3} más</p>}
+                  {(() => {
+                    const openInventory = inventory.filter(i => i.status !== 'Optimal')
+                    return (
+                      <div className="rounded-2xl p-3" style={{ background: openInventory.length > 0 ? '#FEE2E2' : C.bg, border: `1px solid ${openInventory.length > 0 ? '#FECACA' : C.border}` }}>
+                        <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: C.muted }}>Rupturas</p>
+                        <p className="font-black text-[28px] leading-none mb-1" style={{ color: openInventory.length > 0 ? C.red : C.muted }}>{openInventory.length}</p>
+                        {openInventory.length > 0 && (
+                          <div className="space-y-1 mt-2">
+                            {openInventory.slice(0, 3).map(inv => (
+                              <p key={inv.id} className="text-[10px] font-semibold truncate" style={{ color: C.slate }}>• {inv.comment || inv.status}</p>
+                            ))}
+                            {openInventory.length > 3 && <p className="text-[10px] font-bold" style={{ color: C.red }}>+{openInventory.length - 3} más</p>}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    )
+                  })()}
                 </div>
               )}
 

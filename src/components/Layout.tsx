@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Profile } from '../supabase'
 import {
   LayoutDashboard, CalendarDays, Users, AlertCircle,
-  Package, Download, LogOut, ChevronLeft, Menu
+  Package, Download, LogOut, ChevronLeft, Menu, BarChart3, Activity
 } from 'lucide-react'
 
 const C = {
@@ -19,7 +19,7 @@ const C = {
   amber:      '#F59E0B',
 }
 
-export type PageKey = 'dashboard' | 'planning' | 'users' | 'incidents' | 'inventory' | 'backup'
+export type PageKey = 'dashboard' | 'stats' | 'planning' | 'users' | 'incidents' | 'inventory' | 'backup'
 
 interface NavItem {
   key: PageKey
@@ -30,7 +30,8 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { key: 'dashboard', label: 'Dashboard',    Icon: LayoutDashboard, section: 'ops' },
+  { key: 'dashboard', label: 'Monitoreo',     Icon: Activity,        section: 'ops' },
+  { key: 'stats',     label: 'Estadísticas',  Icon: BarChart3,       section: 'ops' },
   { key: 'planning',  label: 'Planificación', Icon: CalendarDays,    section: 'ops' },
   { key: 'incidents', label: 'Incidentes',    Icon: AlertCircle,     section: 'ops' },
   { key: 'inventory', label: 'Rupturas',      Icon: Package,         section: 'ops' },
@@ -39,7 +40,8 @@ const NAV_ITEMS: NavItem[] = [
 ]
 
 const PAGE_TITLES: Record<PageKey, string> = {
-  dashboard: 'Dashboard',
+  dashboard: 'Monitoreo',
+  stats:     'Estadísticas',
   planning:  'Planificación',
   incidents: 'Incidentes',
   inventory: 'Rupturas de Inventario',

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { AlertCircle, X, RefreshCw, Filter } from 'lucide-react'
+import { AlertCircle, X, RefreshCw, Filter, Check, Loader2 } from 'lucide-react'
 
 const C = {
   primary: '#6366F1', primaryLight: '#EEF2FF',
@@ -12,10 +12,12 @@ const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
   'In Progress': { bg: '#DBEAFE', color: '#2563EB' },
   'Closed':      { bg: '#DCFCE7', color: '#059669' },
 }
+const STATUS_OPTIONS = ['Reported', 'In Progress', 'Closed']
+
 interface Incident {
   id: string; name: string; status: string; creationDate: string | null
   comment: string; propertyName: string; propertyId: string
-  photoUrls: string[]; reportedBy: string
+  photoUrls: string[]; reportedBy: string; closeComment?: string
 }
 const fmtDT = (v?: string | null) => {
   if (!v) return null
@@ -35,6 +37,11 @@ export default function IncidentsPage() {
   const [dateFrom, setDateFrom]         = useState('')
   const [dateTo, setDateTo]             = useState('')
   const [showFilters, setShowFilters]   = useState(false)
+  
+  // For status change
+  const [editStatus, setEditStatus] = useState<string>('')
+  const [closeComment, setCloseComment] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -44,6 +51,48 @@ export default function IncidentsPage() {
     } finally { setLoading(false) }
   }
   useEffect(() => { load() }, [])
+
+  // When selecting an incident, initialize edit state
+  useEffect(() => {
+    if (selected) {
+      setEditStatus(selected.status)
+      setCloseComment(selected.closeComment || '')
+    }
+  }, [selected])
+
+  const handleSaveStatus = async () => {
+    if (!selected || editStatus === selected.status) return
+    
+    setSaving(true)
+    try {
+      const res = await fetch('/api/updateReport', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'incident',
+          recordId: selected.id,
+          status: editStatus,
+          closeComment: editStatus === 'Closed' ? closeComment : undefined,
+        }),
+      })
+      
+      if (res.ok) {
+        // Update local state
+        setIncidents(prev => prev.map(i => 
+          i.id === selected.id 
+            ? { ...i, status: editStatus, closeComment: editStatus === 'Closed' ? closeComment : i.closeComment }
+            : i
+        ))
+        setSelected(prev => prev ? { ...prev, status: editStatus, closeComment: editStatus === 'Closed' ? closeComment : prev.closeComment } : null)
+      } else {
+        alert('Error al guardar')
+      }
+    } catch (err) {
+      alert('Error al guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const properties = useMemo(() => {
     const names = [...new Set(incidents.map(i => i.propertyName))].sort()
@@ -160,10 +209,11 @@ export default function IncidentsPage() {
         )}
       </div>
 
+      {/* Detail Modal */}
       {selected && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(15,23,42,0.7)' }}
           onClick={() => setSelected(null)}>
-          <div style={{ width: '100%', maxWidth: 440, background: C.white, borderRadius: 24, overflow: 'hidden', maxHeight: '90vh', overflowY: 'auto' }}
+          <div style={{ width: '100%', maxWidth: 480, background: C.white, borderRadius: 24, overflow: 'hidden', maxHeight: '90vh', overflowY: 'auto' }}
             onClick={e => e.stopPropagation()}>
             {selected.photoUrls[0] && (
               <div style={{ height: 200, overflow: 'hidden' }}>
@@ -180,9 +230,62 @@ export default function IncidentsPage() {
                   <X style={{ width: 16, height: 16, color: C.slate }} />
                 </button>
               </div>
-              {(() => { const ss = STATUS_STYLES[selected.status] || STATUS_STYLES['Reported']
-                return <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 10, background: ss.bg, color: ss.color, display: 'inline-block', marginBottom: 14 }}>{selected.status}</span>
-              })()}
+              
+              {/* Status Selector */}
+              <div style={{ marginBottom: 14 }}>
+                <p style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>Estado</p>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {STATUS_OPTIONS.map(status => {
+                    const ss = STATUS_STYLES[status]
+                    const isSelected = editStatus === status
+                    return (
+                      <button key={status} onClick={() => setEditStatus(status)}
+                        style={{
+                          padding: '6px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700,
+                          background: isSelected ? ss.bg : C.bg,
+                          color: isSelected ? ss.color : C.muted,
+                          border: `2px solid ${isSelected ? ss.color : 'transparent'}`,
+                          cursor: 'pointer',
+                        }}>
+                        {status === 'Reported' ? 'Reported' : status === 'In Progress' ? 'En Progreso' : 'Cerrado'}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              
+              {/* Close Comment (only when changing to Closed) */}
+              {editStatus === 'Closed' && (
+                <div style={{ marginBottom: 14 }}>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>Comentario de cierre</p>
+                  <textarea
+                    value={closeComment}
+                    onChange={e => setCloseComment(e.target.value)}
+                    placeholder="Describe cómo se resolvió..."
+                    style={{
+                      width: '100%', padding: 12, borderRadius: 12, border: `1px solid ${C.border}`,
+                      fontSize: 13, fontFamily: 'Poppins, sans-serif', resize: 'vertical', minHeight: 80,
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+              )}
+              
+              {/* Save Button (only if status changed) */}
+              {editStatus !== selected.status && (
+                <button onClick={handleSaveStatus} disabled={saving}
+                  style={{
+                    width: '100%', padding: '12px', borderRadius: 12, border: 'none',
+                    background: C.green, color: 'white', fontSize: 13, fontWeight: 700,
+                    cursor: saving ? 'not-allowed' : 'pointer', marginBottom: 14,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    opacity: saving ? 0.7 : 1,
+                  }}>
+                  {saving ? <Loader2 style={{ width: 16, height: 16, animation: 'spin 1s linear infinite' }} /> : <Check style={{ width: 16, height: 16 }} />}
+                  {saving ? 'Guardando...' : 'Guardar cambio'}
+                </button>
+              )}
+              
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
                 {[{ label: 'Registrado por', value: selected.reportedBy||'—' }, { label: 'Fecha y hora', value: fmtDT(selected.creationDate)||'—' }]
                   .map(f => (
@@ -196,6 +299,12 @@ export default function IncidentsPage() {
                 <div style={{ background: '#FEF3C7', borderRadius: 12, padding: '10px 14px', marginBottom: 14 }}>
                   <p style={{ fontSize: 9, fontWeight: 700, color: C.amber, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>Comentario</p>
                   <p style={{ fontSize: 13, color: C.ink, lineHeight: 1.5 }}>{selected.comment}</p>
+                </div>
+              )}
+              {selected.closeComment && selected.status === 'Closed' && (
+                <div style={{ background: '#DCFCE7', borderRadius: 12, padding: '10px 14px', marginBottom: 14 }}>
+                  <p style={{ fontSize: 9, fontWeight: 700, color: C.green, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>Comentario de cierre</p>
+                  <p style={{ fontSize: 13, color: C.ink, lineHeight: 1.5 }}>{selected.closeComment}</p>
                 </div>
               )}
               {selected.photoUrls.length > 1 && (
