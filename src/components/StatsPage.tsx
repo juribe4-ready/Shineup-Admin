@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   TrendingUp, Clock, Star, Zap, AlertTriangle, AlertCircle, Package,
-  ExternalLink, X, Home, Calendar, Users, BarChart3
+  ExternalLink, X, Home, Calendar, Users, BarChart3, Activity
 } from 'lucide-react'
 
 const C = {
@@ -24,6 +24,8 @@ interface Cleaning {
   estimatedEndTime: string | null
   rating: number | null
   staffListText: string
+  cleanerNames?: string
+  cleanerCount?: number
   labor: number
 }
 
@@ -151,10 +153,11 @@ export default function StatsPage() {
   const dailyStats = useMemo(() => {
     if (!filteredCleanings.length) return []
     
-    const byDate: Record<string, { count: number; totalDuration: number; doneCount: number }> = {}
+    const byDate: Record<string, { count: number; totalDuration: number; doneCount: number; totalCleaners: number }> = {}
     filteredCleanings.forEach(c => {
-      if (!byDate[c.date]) byDate[c.date] = { count: 0, totalDuration: 0, doneCount: 0 }
+      if (!byDate[c.date]) byDate[c.date] = { count: 0, totalDuration: 0, doneCount: 0, totalCleaners: 0 }
       byDate[c.date].count++
+      byDate[c.date].totalCleaners += c.cleanerCount || 0
       if (c.status === 'Done' && c.startTime && c.endTime) {
         const dur = (new Date(c.endTime).getTime() - new Date(c.startTime).getTime()) / 60000
         byDate[c.date].totalDuration += dur
@@ -167,25 +170,28 @@ export default function StatsPage() {
         date,
         count: stats.count,
         avgDuration: stats.doneCount > 0 ? Math.round(stats.totalDuration / stats.doneCount) : 0,
+        cleaners: stats.totalCleaners,
+        housesPerCleaner: stats.totalCleaners > 0 ? Math.round((stats.count / stats.totalCleaners) * 10) / 10 : 0,
       }))
       .sort((a, b) => a.date.localeCompare(b.date))
   }, [filteredCleanings])
 
-  // Waterfall chart data
+  // Waterfall chart data - using labor field for scheduled time
   const waterfallData = useMemo(() => {
-    const done = filteredCleanings.filter(c => c.status === 'Done' && c.scheduledTime && c.estimatedEndTime && c.startTime && c.endTime)
+    const done = filteredCleanings.filter(c => c.status === 'Done' && c.startTime && c.endTime && c.labor > 0)
+    
+    if (done.length === 0) return { scheduled: 0, ratingEffect: 0, otherEffect: 0, actual: 0 }
     
     let totalScheduledMin = 0
     let totalActualMin = 0
     let ratingEffect = 0
     
     done.forEach(c => {
-      const scheduled = (new Date(c.estimatedEndTime!).getTime() - new Date(c.scheduledTime!).getTime()) / 60000
+      totalScheduledMin += c.labor
       const actual = (new Date(c.endTime!).getTime() - new Date(c.startTime!).getTime()) / 60000
-      totalScheduledMin += scheduled
       totalActualMin += actual
       
-      // Rating effect: good rating = faster, bad = slower (simplified model)
+      // Rating effect: good rating (clean house) = faster, bad = slower
       if (c.rating === 3) ratingEffect -= 5
       else if (c.rating === 1) ratingEffect += 10
     })
@@ -200,6 +206,17 @@ export default function StatsPage() {
       actual: Math.round(totalActualMin / 60 * 10) / 10,
     }
   }, [filteredCleanings])
+
+  // Productivity stats (houses per cleaner)
+  const productivityStats = useMemo(() => {
+    if (!dailyStats.length) return { avgHousesPerCleaner: 0, totalHouses: 0, totalCleanerDays: 0 }
+    
+    const totalHouses = dailyStats.reduce((s, d) => s + d.count, 0)
+    const totalCleaners = dailyStats.reduce((s, d) => s + d.cleaners, 0)
+    const avgHousesPerCleaner = totalCleaners > 0 ? Math.round((totalHouses / totalCleaners) * 10) / 10 : 0
+    
+    return { avgHousesPerCleaner, totalHouses, totalCleanerDays: totalCleaners }
+  }, [dailyStats])
 
   // Property stats
   const propertyStats = useMemo(() => {
@@ -222,12 +239,10 @@ export default function StatsPage() {
       })
       const avgDurationMin = durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : null
       
-      const withBoth = done.filter(c => c.startTime && c.endTime && c.scheduledTime && c.estimatedEndTime)
+      const withBoth = done.filter(c => c.startTime && c.endTime && c.labor > 0)
       let efficiencyRate: number | null = null
       if (withBoth.length > 0) {
-        const totalEstimated = withBoth.reduce((s, c) => {
-          return s + (new Date(c.estimatedEndTime!).getTime() - new Date(c.scheduledTime!).getTime()) / 60000
-        }, 0)
+        const totalEstimated = withBoth.reduce((s, c) => s + c.labor, 0)
         const totalActual = withBoth.reduce((s, c) => {
           return s + (new Date(c.endTime!).getTime() - new Date(c.startTime!).getTime()) / 60000
         }, 0)
@@ -245,13 +260,9 @@ export default function StatsPage() {
       
       const propData = data.byProperty.find(p => p.propertyText === propertyText)
       
-      // Count cleaners
-      const cleanerSet = new Set<string>()
-      cleanings.forEach(c => {
-        if (c.staffListText) {
-          c.staffListText.split(',').forEach(name => cleanerSet.add(name.trim()))
-        }
-      })
+      // Count unique cleaners (from API cleanerCount)
+      const totalCleaners = cleanings.reduce((s, c) => s + (c.cleanerCount || 0), 0)
+      const avgCleaners = cleanings.length > 0 ? Math.round((totalCleaners / cleanings.length) * 10) / 10 : 0
       
       return {
         propertyText,
@@ -263,10 +274,20 @@ export default function StatsPage() {
         incidents: propData?.incidents || 0,
         inventory: propData?.inventory || 0,
         cleanings,
-        cleanerCount: cleanerSet.size,
+        avgCleaners,
       }
     }).sort((a, b) => b.total - a.total)
   }, [data, filteredCleanings])
+
+  // Rating distribution for pie chart
+  const ratingDistribution = useMemo(() => {
+    const done = filteredCleanings.filter(c => c.status === 'Done' && c.rating)
+    const good = done.filter(c => c.rating === 3).length
+    const normal = done.filter(c => c.rating === 2).length
+    const bad = done.filter(c => c.rating === 1).length
+    const total = done.length
+    return { good, normal, bad, total }
+  }, [filteredCleanings])
 
   const hasFilters = selectedProperty !== 'all' || dateFrom || dateTo
 
@@ -332,7 +353,7 @@ export default function StatsPage() {
         <KpiCard icon={<Clock className="w-3.5 h-3.5" />} label="Duración" value={filteredMetrics.avgDurationMin ? `${Math.floor(filteredMetrics.avgDurationMin / 60)}h ${filteredMetrics.avgDurationMin % 60}m` : '--'} subtitle="promedio" color={C.blue} />
         <KpiCard icon={<Zap className="w-3.5 h-3.5" />} label="Puntualidad" value={filteredMetrics.onTimeRate !== null ? `${filteredMetrics.onTimeRate}%` : '--'} subtitle="a tiempo ±15m" color={filteredMetrics.onTimeRate && filteredMetrics.onTimeRate >= 70 ? C.green : C.amber} />
         <KpiCard icon={<AlertTriangle className="w-3.5 h-3.5" />} label="Retrasos" value={String(filteredMetrics.lateStarts)} subtitle=">15m tarde" color={filteredMetrics.lateStarts > 0 ? C.red : C.green} />
-        <KpiCard icon={<Clock className="w-3.5 h-3.5" />} label="Overtime" value={String(filteredMetrics.overtime)} subtitle=">15m extra" color={filteredMetrics.overtime > 0 ? C.amber : C.green} />
+        <KpiCard icon={<Activity className="w-3.5 h-3.5" />} label="Casas/Cleaner" value={productivityStats.avgHousesPerCleaner.toFixed(1)} subtitle="promedio diario" color={C.primary} />
       </div>
 
       {/* Incidentes y Rupturas */}
@@ -407,7 +428,8 @@ export default function StatsPage() {
                 const isLate = c.scheduledTime && c.startTime
                   ? (new Date(c.startTime).getTime() - new Date(c.scheduledTime).getTime()) > 15 * 60000
                   : false
-                const cleanerCount = c.staffListText ? c.staffListText.split(',').length : 0
+                // Use cleanerCount from API (only cleaners, not managers/runners)
+                const cleanerCount = c.cleanerCount || 0
                 
                 return (
                   <tr key={c.id} 
@@ -417,7 +439,9 @@ export default function StatsPage() {
                     <td className="px-4 py-2.5 font-medium" style={{ color: C.ink }}>{c.date}</td>
                     <td className="px-3 py-2.5 font-semibold" style={{ color: C.slate }}>{c.propertyText}</td>
                     <td className="px-3 py-2.5 text-center">
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ background: C.bg, color: C.slate }}>
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold" 
+                        style={{ background: C.bg, color: C.slate }}
+                        title={c.cleanerNames || c.staffListText}>
                         <Users className="w-3 h-3" /> {cleanerCount}
                       </span>
                     </td>
@@ -452,18 +476,30 @@ export default function StatsPage() {
         </div>
       </div>
 
-      {/* Gráfico de barras: Limpiezas por día + Tendencia tiempo promedio */}
-      <div className="rounded-2xl overflow-hidden p-4" style={{ background: C.white, border: `1px solid ${C.border}` }}>
-        <div className="flex items-center gap-2 mb-4">
-          <BarChart3 className="w-4 h-4" style={{ color: C.primary }} />
-          <p className="font-bold text-[13px]" style={{ color: C.ink }}>Limpiezas por Día</p>
-          <div className="flex-1" />
-          <div className="flex items-center gap-3 text-[10px]">
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: C.primary }} /> Limpiezas</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-1 rounded" style={{ background: C.amber }} /> Tiempo prom.</span>
+      {/* Gráficos en grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Gráfico de barras: Limpiezas por día + Tendencia tiempo promedio */}
+        <div className="rounded-2xl overflow-hidden p-4" style={{ background: C.white, border: `1px solid ${C.border}` }}>
+          <div className="flex items-center gap-2 mb-4">
+            <BarChart3 className="w-4 h-4" style={{ color: C.primary }} />
+            <p className="font-bold text-[13px]" style={{ color: C.ink }}>Limpiezas por Día</p>
+            <div className="flex-1" />
+            <div className="flex items-center gap-3 text-[9px]">
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: C.primary }} /> Limpiezas</span>
+              <span className="flex items-center gap-1"><span className="w-6 h-0.5 rounded" style={{ background: C.amber }} /> Tiempo</span>
+            </div>
           </div>
+          <DailyChart data={dailyStats} />
         </div>
-        <DailyChart data={dailyStats} />
+
+        {/* Rating Distribution */}
+        <div className="rounded-2xl overflow-hidden p-4" style={{ background: C.white, border: `1px solid ${C.border}` }}>
+          <div className="flex items-center gap-2 mb-4">
+            <Star className="w-4 h-4" style={{ color: C.amber }} />
+            <p className="font-bold text-[13px]" style={{ color: C.ink }}>Distribución de Ratings</p>
+          </div>
+          <RatingChart data={ratingDistribution} />
+        </div>
       </div>
 
       {/* Gráfico de cascada: Tiempo programado vs real */}
@@ -471,6 +507,9 @@ export default function StatsPage() {
         <div className="flex items-center gap-2 mb-4">
           <Clock className="w-4 h-4" style={{ color: C.blue }} />
           <p className="font-bold text-[13px]" style={{ color: C.ink }}>Análisis de Horas: Programado vs Real</p>
+          <p className="text-[10px] ml-2" style={{ color: C.muted }}>
+            (basado en {filteredCleanings.filter(c => c.status === 'Done' && c.labor > 0).length} limpiezas con labor estimado)
+          </p>
         </div>
         <WaterfallChart data={waterfallData} />
       </div>
@@ -509,7 +548,7 @@ export default function StatsPage() {
                   <td className="px-3 py-2.5 text-center font-bold" style={{ color: C.slate }}>{prop.total}</td>
                   <td className="px-3 py-2.5 text-center">
                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ background: C.bg, color: C.slate }}>
-                      <Users className="w-3 h-3" /> {prop.cleanerCount}
+                      <Users className="w-3 h-3" /> ~{prop.avgCleaners}
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-center">
@@ -564,104 +603,177 @@ export default function StatsPage() {
   )
 }
 
-// Daily bar chart component
-function DailyChart({ data }: { data: { date: string; count: number; avgDuration: number }[] }) {
+// Daily bar chart component with tooltip
+function DailyChart({ data }: { data: { date: string; count: number; avgDuration: number; housesPerCleaner: number }[] }) {
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; content: string } | null>(null)
+  
   if (!data.length) return <p className="text-center py-8 text-[12px]" style={{ color: C.muted }}>Sin datos</p>
   
   const maxCount = Math.max(...data.map(d => d.count), 1)
   const maxDuration = Math.max(...data.map(d => d.avgDuration), 1)
   
   return (
-    <div className="relative h-[160px]">
-      <div className="flex items-end justify-between gap-1 h-[140px] px-2">
+    <div className="relative h-[180px]">
+      {/* Y-axis labels */}
+      <div className="absolute left-0 top-0 h-[140px] flex flex-col justify-between text-[8px] font-medium" style={{ color: C.muted, width: 30 }}>
+        <span>{maxCount}</span>
+        <span>{Math.round(maxCount / 2)}</span>
+        <span>0</span>
+      </div>
+      <div className="absolute right-0 top-0 h-[140px] flex flex-col justify-between text-[8px] font-medium text-right" style={{ color: C.amber, width: 35 }}>
+        <span>{Math.floor(maxDuration / 60)}h{maxDuration % 60}m</span>
+        <span>{Math.floor(maxDuration / 2 / 60)}h{Math.round(maxDuration / 2) % 60}m</span>
+        <span>0</span>
+      </div>
+      
+      <div className="flex items-end justify-between gap-1 h-[140px] px-10">
         {data.map((d, i) => {
           const barHeight = (d.count / maxCount) * 120
           const lineY = 140 - (d.avgDuration / maxDuration) * 120
           const prevLineY = i > 0 ? 140 - (data[i - 1].avgDuration / maxDuration) * 120 : lineY
           
           return (
-            <div key={d.date} className="flex-1 flex flex-col items-center relative" style={{ minWidth: 20 }}>
+            <div key={d.date} className="flex-1 flex flex-col items-center relative" style={{ minWidth: 16 }}>
               {/* Bar */}
-              <div className="w-full max-w-[24px] rounded-t-md transition-all hover:opacity-80" 
+              <div 
+                className="w-full max-w-[20px] rounded-t-md transition-all cursor-pointer hover:opacity-80" 
                 style={{ height: barHeight, background: C.primary, marginTop: 'auto' }}
-                title={`${d.date}: ${d.count} limpiezas, ${Math.floor(d.avgDuration / 60)}h${d.avgDuration % 60}m promedio`} />
+                onMouseEnter={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  setTooltip({
+                    x: rect.left + rect.width / 2,
+                    y: rect.top - 10,
+                    content: `${d.date}\n${d.count} limpiezas\n${Math.floor(d.avgDuration / 60)}h${d.avgDuration % 60}m prom.\n${d.housesPerCleaner} casas/cleaner`
+                  })
+                }}
+                onMouseLeave={() => setTooltip(null)}
+              />
               {/* Trend line dot */}
-              <div className="absolute w-2 h-2 rounded-full" 
-                style={{ background: C.amber, top: lineY - 4, left: '50%', transform: 'translateX(-50%)' }} />
+              <div className="absolute w-2.5 h-2.5 rounded-full border-2 border-white" 
+                style={{ background: C.amber, top: lineY - 5, left: '50%', transform: 'translateX(-50%)', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }} />
               {/* Trend line segment */}
               {i > 0 && (
                 <svg className="absolute pointer-events-none" style={{ top: 0, left: '-50%', width: '100%', height: 140, overflow: 'visible' }}>
-                  <line x1="50%" y1={prevLineY} x2="150%" y2={lineY} stroke={C.amber} strokeWidth="2" />
+                  <line x1="50%" y1={prevLineY} x2="150%" y2={lineY} stroke={C.amber} strokeWidth="2.5" />
                 </svg>
               )}
             </div>
           )
         })}
       </div>
-      <div className="flex justify-between px-2 mt-1">
+      
+      {/* X-axis labels */}
+      <div className="flex justify-between px-10 mt-1">
         {data.length <= 14 ? data.map(d => (
-          <span key={d.date} className="text-[8px] font-medium" style={{ color: C.muted, flex: 1, textAlign: 'center' }}>
+          <span key={d.date} className="text-[7px] font-medium" style={{ color: C.muted, flex: 1, textAlign: 'center' }}>
             {d.date.slice(5)}
           </span>
         )) : (
           <>
             <span className="text-[9px] font-medium" style={{ color: C.muted }}>{data[0]?.date.slice(5)}</span>
+            <span className="text-[9px] font-medium" style={{ color: C.muted }}>{data[Math.floor(data.length / 2)]?.date.slice(5)}</span>
             <span className="text-[9px] font-medium" style={{ color: C.muted }}>{data[data.length - 1]?.date.slice(5)}</span>
           </>
         )}
       </div>
+      
+      {/* Tooltip */}
+      {tooltip && (
+        <div className="fixed z-50 px-3 py-2 rounded-xl text-[10px] font-medium whitespace-pre-line pointer-events-none"
+          style={{ 
+            background: C.ink, 
+            color: 'white', 
+            left: tooltip.x, 
+            top: tooltip.y, 
+            transform: 'translate(-50%, -100%)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+          }}>
+          {tooltip.content}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Rating distribution chart (horizontal bars)
+function RatingChart({ data }: { data: { good: number; normal: number; bad: number; total: number } }) {
+  if (data.total === 0) return <p className="text-center py-8 text-[12px]" style={{ color: C.muted }}>Sin ratings</p>
+  
+  const items = [
+    { label: 'Bueno (3⭐)', value: data.good, pct: Math.round((data.good / data.total) * 100), color: C.green },
+    { label: 'Normal (2⭐)', value: data.normal, pct: Math.round((data.normal / data.total) * 100), color: C.amber },
+    { label: 'Malo (1⭐)', value: data.bad, pct: Math.round((data.bad / data.total) * 100), color: C.red },
+  ]
+  
+  return (
+    <div className="space-y-3">
+      {items.map(item => (
+        <div key={item.label}>
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-[11px] font-medium" style={{ color: C.ink }}>{item.label}</span>
+            <span className="text-[11px] font-bold" style={{ color: item.color }}>{item.value} ({item.pct}%)</span>
+          </div>
+          <div className="h-4 rounded-full overflow-hidden" style={{ background: C.bg }}>
+            <div className="h-full rounded-full transition-all" style={{ width: `${item.pct}%`, background: item.color }} />
+          </div>
+        </div>
+      ))}
+      <p className="text-center text-[10px] pt-2" style={{ color: C.muted }}>Total: {data.total} limpiezas con rating</p>
     </div>
   )
 }
 
 // Waterfall chart component
 function WaterfallChart({ data }: { data: { scheduled: number; ratingEffect: number; otherEffect: number; actual: number } }) {
-  const maxVal = Math.max(data.scheduled, data.actual, 0.1)
-  const scale = 200 / maxVal
+  if (data.scheduled === 0 && data.actual === 0) {
+    return <p className="text-center py-8 text-[12px]" style={{ color: C.muted }}>Sin datos de labor para calcular</p>
+  }
+  
+  const maxVal = Math.max(data.scheduled, data.actual, Math.abs(data.ratingEffect) + Math.abs(data.otherEffect) + data.scheduled, 0.1)
+  const scale = 120 / maxVal
+  
+  // Calculate cumulative positions
+  let cumulative = data.scheduled
   
   const bars = [
-    { label: 'Programado', value: data.scheduled, color: C.blue, isBase: true },
-    { label: 'Rating', value: data.ratingEffect, color: data.ratingEffect >= 0 ? C.red : C.green, isBase: false },
-    { label: 'Otros', value: data.otherEffect, color: data.otherEffect >= 0 ? C.amber : C.green, isBase: false },
-    { label: 'Real', value: data.actual, color: C.primary, isBase: true },
+    { label: 'Programado', value: data.scheduled, cumStart: 0, color: C.blue, isTotal: true },
+    { label: 'Rating', value: data.ratingEffect, cumStart: data.scheduled, color: data.ratingEffect >= 0 ? C.red : C.green, isTotal: false },
+    { label: 'Otros', value: data.otherEffect, cumStart: data.scheduled + data.ratingEffect, color: data.otherEffect >= 0 ? C.amber : C.green, isTotal: false },
+    { label: 'Real', value: data.actual, cumStart: 0, color: C.primary, isTotal: true },
   ]
   
-  let runningTotal = data.scheduled
-  
   return (
-    <div className="flex items-end justify-around h-[180px] px-4 gap-4">
+    <div className="flex items-end justify-around h-[200px] px-4 gap-6 pt-4">
       {bars.map((bar) => {
-        let barHeight: number
-        let barBottom: number
-        
-        if (bar.isBase) {
-          barHeight = Math.abs(bar.value) * scale
-          barBottom = 0
-        } else {
-          barHeight = Math.abs(bar.value) * scale
-          if (bar.value >= 0) {
-            barBottom = runningTotal * scale
-          } else {
-            barBottom = (runningTotal + bar.value) * scale
-          }
-          runningTotal += bar.value
-        }
+        const barHeight = Math.abs(bar.value) * scale
+        const barBottom = bar.isTotal ? 0 : (bar.value >= 0 ? bar.cumStart * scale : (bar.cumStart + bar.value) * scale)
         
         return (
           <div key={bar.label} className="flex flex-col items-center flex-1">
             <div className="relative w-full flex justify-center" style={{ height: 140 }}>
-              <div className="w-12 rounded-t-lg transition-all hover:opacity-80"
+              {/* Connector line for waterfall */}
+              {!bar.isTotal && (
+                <div className="absolute w-full h-0.5" style={{ background: C.border, bottom: bar.cumStart * scale, left: '-50%' }} />
+              )}
+              <div 
+                className="w-16 rounded-lg transition-all hover:opacity-80 cursor-pointer relative"
                 style={{ 
-                  height: Math.max(barHeight, 4), 
+                  height: Math.max(barHeight, 8), 
                   background: bar.color,
                   position: 'absolute',
                   bottom: barBottom,
                 }}
-                title={`${bar.label}: ${bar.value >= 0 ? '+' : ''}${bar.value}h`} />
+                title={`${bar.label}: ${bar.value >= 0 ? '+' : ''}${bar.value}h`}
+              >
+                {/* Value label inside bar */}
+                <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white">
+                  {bar.isTotal ? `${bar.value}h` : `${bar.value >= 0 ? '+' : ''}${bar.value}h`}
+                </span>
+              </div>
             </div>
-            <p className="text-[10px] font-bold mt-2" style={{ color: C.ink }}>{bar.label}</p>
-            <p className="text-[12px] font-black" style={{ color: bar.color }}>
-              {bar.isBase ? `${bar.value}h` : `${bar.value >= 0 ? '+' : ''}${bar.value}h`}
+            <p className="text-[11px] font-bold mt-3" style={{ color: C.ink }}>{bar.label}</p>
+            <p className="text-[9px]" style={{ color: C.muted }}>
+              {bar.isTotal ? 'Total' : (bar.value >= 0 ? 'Aumenta' : 'Reduce')}
             </p>
           </div>
         )
@@ -724,7 +836,7 @@ function PropertyDetailModal({ propertyText, cleanings, onClose, onSelectCleanin
                       </span>
                     )}
                   </div>
-                  <p className="text-[10px] truncate" style={{ color: C.muted }}>{c.staffListText || 'Sin asignar'}</p>
+                  <p className="text-[10px] truncate" style={{ color: C.muted }}>{c.cleanerNames || c.staffListText || 'Sin asignar'}</p>
                 </div>
                 <div className="text-right shrink-0">
                   <p className="text-[11px] font-bold" style={{ color: c.status === 'Done' ? C.green : C.slate }}>
@@ -757,6 +869,13 @@ function CleaningDetailModal({ cleaning, onClose }: { cleaning: Cleaning; onClos
     try { return new Date(v).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) }
     catch { return '--:--' }
   }
+  
+  // Calculate estimated end time from labor if not available
+  const estEndDisplay = cleaning.estimatedEndTime 
+    ? fmt(cleaning.estimatedEndTime)
+    : (cleaning.scheduledTime && cleaning.labor > 0 
+      ? fmt(new Date(new Date(cleaning.scheduledTime).getTime() + cleaning.labor * 60000).toISOString())
+      : '--:--')
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center px-4" style={{ background: 'rgba(15,23,42,0.8)' }} onClick={onClose}>
@@ -772,13 +891,20 @@ function CleaningDetailModal({ cleaning, onClose }: { cleaning: Cleaning; onClos
         </div>
         <div className="p-5 space-y-3">
           <div className="grid grid-cols-2 gap-2">
-            <InfoBox label="Equipo" value={cleaning.staffListText || 'Sin asignar'} />
+            <InfoBox label="Equipo" value={cleaning.cleanerNames || cleaning.staffListText || 'Sin asignar'} />
             <InfoBox label="Estado" value={cleaning.status} color={cleaning.status === 'Done' ? C.green : undefined} />
             <InfoBox label="Inicio Prog." value={fmt(cleaning.scheduledTime)} />
             <InfoBox label="Inicio Real" value={fmt(cleaning.startTime)} color={cleaning.startTime ? C.green : undefined} />
-            <InfoBox label="Fin Prog." value={fmt(cleaning.estimatedEndTime)} />
+            <InfoBox label="Fin Prog." value={estEndDisplay} />
             <InfoBox label="Fin Real" value={fmt(cleaning.endTime)} color={cleaning.endTime ? C.green : undefined} />
           </div>
+          
+          {cleaning.labor > 0 && (
+            <div className="flex items-center justify-between p-3 rounded-2xl" style={{ background: C.primaryLight }}>
+              <span className="text-[12px] font-medium" style={{ color: C.slate }}>Tiempo estimado (Labor)</span>
+              <span className="font-bold text-[14px]" style={{ color: C.primary }}>{Math.floor(cleaning.labor / 60)}h {cleaning.labor % 60}m</span>
+            </div>
+          )}
           
           {cleaning.rating && (
             <div className="flex items-center gap-2 p-3 rounded-2xl" style={{ background: cleaning.rating >= 2.5 ? '#DCFCE7' : '#FEF3C7' }}>
