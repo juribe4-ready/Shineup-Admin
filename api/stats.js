@@ -58,6 +58,17 @@ async function handleGetStats(req, res) {
     const formula = `AND({Date}>='${from}',{Date}<='${to}')`;
     const records = await fetchAllRecords('tblabOdNknnjrYUU1', formula);
     
+    // Fetch all staff to get roles
+    const staffRecords = await fetchAllRecords('tblgHwN1wX6u3ZtNY');
+    const staffMap = {};
+    staffRecords.forEach(r => {
+      staffMap[r.id] = {
+        name: r.fields['Name'] || '',
+        role: r.fields['Role'] || '',
+        initials: r.fields['Initials'] || '',
+      };
+    });
+    
     // Fetch all incidents
     const incidentRecords = await fetchAllRecords('Incidents');
     
@@ -76,6 +87,15 @@ async function handleGetStats(req, res) {
         return null;
       };
       
+      // Get staff IDs and filter to cleaners only
+      const staffIds = f['Staff'] || [];
+      const allStaff = staffIds.map(id => staffMap[id]).filter(Boolean);
+      const cleanerStaff = allStaff.filter(s => 
+        s.role && s.role.toLowerCase().includes('cleaner')
+      );
+      const cleanerCount = cleanerStaff.length;
+      const cleanerNames = cleanerStaff.map(s => s.name).join(', ');
+      
       return {
         id: r.id,
         cleaningId: f['Cleaning ID'] || '',
@@ -89,6 +109,8 @@ async function handleGetStats(req, res) {
         estimatedEndTime: f['Estimated End Time'] || null,
         rating: resolveRating(f['Rating']),
         staffListText: f['staffList'] || '',
+        cleanerNames,
+        cleanerCount,
         labor: Number(f['Labor'] || 0),
       };
     }).sort((a, b) => b.date.localeCompare(a.date));
