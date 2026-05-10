@@ -630,7 +630,7 @@ function WaterfallChart({ data }: { data: { scheduled: number; ratingEffect: num
   
   return (
     <div className="flex items-end justify-around h-[180px] px-4 gap-4">
-      {bars.map((bar, i) => {
+      {bars.map((bar) => {
         let barHeight: number
         let barBottom: number
         
