@@ -63,6 +63,7 @@ async function handleGetStats(req, res) {
     const staffMap = {};
     staffRecords.forEach(r => {
       staffMap[r.id] = {
+        id: r.id,
         name: r.fields['Name'] || '',
         role: r.fields['Role'] || '',
         initials: r.fields['Initials'] || '',
@@ -87,14 +88,33 @@ async function handleGetStats(req, res) {
         return null;
       };
       
-      // Get staff IDs and filter to cleaners only
+      // Get staff IDs and build staffList with roles
       const staffIds = f['Staff'] || [];
-      const allStaff = staffIds.map(id => staffMap[id]).filter(Boolean);
-      const cleanerStaff = allStaff.filter(s => 
+      const staffList = staffIds.map(id => staffMap[id]).filter(Boolean);
+      
+      // Filter to cleaners only (role contains 'cleaner')
+      const cleanerStaff = staffList.filter(s => 
         s.role && s.role.toLowerCase().includes('cleaner')
       );
       const cleanerCount = cleanerStaff.length;
       const cleanerNames = cleanerStaff.map(s => s.name).join(', ');
+      
+      // Get labor (minutes) - this is the estimated time
+      const labor = Number(f['Labor'] || 0);
+      
+      // Calculate estimated end time from scheduled + labor if not provided
+      let estimatedEndTime = f['Estimated End Time'] || null;
+      if (!estimatedEndTime && f['Scheduled Time'] && labor > 0) {
+        const scheduledMs = new Date(f['Scheduled Time']).getTime();
+        // Adjust labor per cleaner count
+        const effectiveCleaners = Math.max(cleanerCount, 1);
+        const minutesRaw = labor / effectiveCleaners;
+        const minutesRounded = Math.ceil(minutesRaw / 15) * 15;
+        const ratingVal = resolveRating(f['Rating']);
+        const ratingAdj = ratingVal === 1 ? 30 : ratingVal === 3 ? -30 : 0;
+        const totalMinutes = Math.max(minutesRounded + ratingAdj, 45);
+        estimatedEndTime = new Date(scheduledMs + totalMinutes * 60000).toISOString();
+      }
       
       return {
         id: r.id,
@@ -106,12 +126,13 @@ async function handleGetStats(req, res) {
         scheduledTime: f['Scheduled Time'] || null,
         startTime: f['Start Time'] || null,
         endTime: f['End Time'] || null,
-        estimatedEndTime: f['Estimated End Time'] || null,
+        estimatedEndTime,
         rating: resolveRating(f['Rating']),
         staffListText: f['staffList'] || '',
         cleanerNames,
         cleanerCount,
-        labor: Number(f['Labor'] || 0),
+        labor,
+        staffList,
       };
     }).sort((a, b) => b.date.localeCompare(a.date));
 
@@ -143,59 +164,6 @@ async function handleGetStats(req, res) {
       const estimatedEnd = new Date(c.estimatedEndTime).getTime();
       return actualEnd > estimatedEnd + 15 * 60000;
     }).length;
-
-    // By Team
-    const teamGroups = {};
-    cleanings.forEach(c => {
-      const team = c.staffListText || 'Sin asignar';
-      if (!teamGroups[team]) teamGroups[team] = [];
-      teamGroups[team].push(c);
-    });
-    
-    const byTeam = Object.entries(teamGroups).map(([staffListText, items]) => {
-      const done = items.filter(i => i.status === 'Done');
-      const teamRatings = done.filter(i => i.rating).map(i => i.rating);
-      const teamDurations = done.filter(i => i.startTime && i.endTime).map(i => {
-        return (new Date(i.endTime).getTime() - new Date(i.startTime).getTime()) / 60000;
-      });
-      const teamOnTime = done.filter(i => i.scheduledTime && i.startTime);
-      const teamOnTimeCount = teamOnTime.filter(i => {
-        const diff = Math.abs(new Date(i.startTime).getTime() - new Date(i.scheduledTime).getTime());
-        return diff <= 15 * 60000;
-      }).length;
-      
-      // Efficiency: estimated vs actual (100% = on time, >100% = faster)
-      const withBoth = done.filter(i => i.startTime && i.endTime && i.labor > 0);
-      let efficiencyRate = null;
-      if (withBoth.length > 0) {
-        const totalEstimated = withBoth.reduce((s, i) => s + i.labor, 0);
-        const totalActual = withBoth.reduce((s, i) => {
-          return s + (new Date(i.endTime).getTime() - new Date(i.startTime).getTime()) / 60000;
-        }, 0);
-        if (totalActual > 0) {
-          efficiencyRate = Math.round((totalEstimated / totalActual) * 100);
-        }
-      }
-      
-      return {
-        staffListText,
-        total: items.length,
-        done: done.length,
-        avgRating: teamRatings.length > 0 ? teamRatings.reduce((a, b) => a + b, 0) / teamRatings.length : null,
-        avgDurationMin: teamDurations.length > 0 ? Math.round(teamDurations.reduce((a, b) => a + b, 0) / teamDurations.length) : null,
-        onTimeRate: teamOnTime.length > 0 ? Math.round((teamOnTimeCount / teamOnTime.length) * 100) : null,
-        efficiencyRate,
-      };
-    }).sort((a, b) => {
-      // Sort by efficiency, then by avgRating
-      if (b.efficiencyRate !== null && a.efficiencyRate !== null) {
-        return b.efficiencyRate - a.efficiencyRate;
-      }
-      if (b.avgRating !== null && a.avgRating !== null) {
-        return b.avgRating - a.avgRating;
-      }
-      return b.done - a.done;
-    });
 
     // By Property
     const propGroups = {};
@@ -261,11 +229,9 @@ async function handleGetStats(req, res) {
         avgRating,
         avgDurationMin,
         onTimeRate,
-        efficiencyRate: null,
         lateStarts,
         overtime,
       },
-      byTeam,
       byProperty,
       incidents: incidentCounts,
       inventory: inventoryCounts,
@@ -286,7 +252,6 @@ async function handleUpdateReport(req, res) {
       return res.status(400).json({ error: 'Missing required fields: type, recordId, status' });
     }
 
-    // Determine table based on type
     let tableId;
     if (type === 'incident') {
       tableId = 'Incidents';
@@ -296,17 +261,13 @@ async function handleUpdateReport(req, res) {
       return res.status(400).json({ error: 'Invalid type. Must be "incident" or "inventory"' });
     }
 
-    // Build fields to update
     const fields = { Status: status };
-    
-    // Add CloseComment if provided and status is closed/optimal
     if (closeComment && (status === 'Closed' || status === 'Optimal')) {
       fields.CloseComment = closeComment;
     }
 
     console.log(`[stats] POST type=${type}, recordId=${recordId}, status=${status}`);
 
-    // Update the record in Airtable
     const response = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${tableId}/${recordId}`, {
       method: 'PATCH',
       headers: {
