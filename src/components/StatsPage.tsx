@@ -291,7 +291,7 @@ export default function StatsPage() {
       let efficiencyRate: number | null = null
       if (withBoth.length > 0) {
         const totalEstimated = withBoth.reduce((s, c) => s + c.labor, 0)
-        const totalActual = withBoth.reduce((s, c) => (new Date(c.endTime!).getTime() - new Date(c.startTime!).getTime()) / 60000, 0)
+        const totalActual = withBoth.reduce((s, c) => s + (new Date(c.endTime!).getTime() - new Date(c.startTime!).getTime()) / 60000, 0)
         if (totalActual > 0) efficiencyRate = Math.round((totalEstimated / totalActual) * 100)
       }
       
