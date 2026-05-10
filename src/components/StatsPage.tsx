@@ -9,6 +9,7 @@ const C = {
   ink: '#0F172A', slate: '#475569', muted: '#94A3B8',
   border: '#E2E8F0', bg: '#F8FAFC', white: '#FFFFFF',
   green: '#10B981', red: '#EF4444', amber: '#F59E0B', blue: '#3B82F6',
+  teal: '#14B8A6', purple: '#8B5CF6', pink: '#EC4899',
 }
 
 interface Cleaning {
@@ -91,7 +92,6 @@ export default function StatsPage() {
     return [...new Set(data.cleanings.map(c => c.propertyText))].sort()
   }, [data])
 
-  // Filter cleanings by property and date
   const filteredCleanings = useMemo(() => {
     if (!data) return []
     return data.cleanings.filter(c => {
@@ -102,7 +102,6 @@ export default function StatsPage() {
     })
   }, [data, selectedProperty, dateFrom, dateTo])
 
-  // Filtered incidents/inventory by property
   const filteredIncidents = useMemo(() => {
     if (!data) return { open: 0, closed: 0 }
     if (selectedProperty === 'all') return data.incidents
@@ -117,7 +116,6 @@ export default function StatsPage() {
     return { outOfStock: 0, low: prop?.inventory || 0 }
   }, [data, selectedProperty])
 
-  // Recalculate metrics for filtered data
   const filteredMetrics = useMemo(() => {
     const cleanings = filteredCleanings
     const done = cleanings.filter(c => c.status === 'Done')
@@ -149,15 +147,16 @@ export default function StatsPage() {
     return { total: cleanings.length, done: done.length, onTimeRate, lateStarts, overtime, avgRating, avgDurationMin }
   }, [filteredCleanings])
 
-  // Daily stats for bar chart
+  // Daily stats
   const dailyStats = useMemo(() => {
     if (!filteredCleanings.length) return []
     
-    const byDate: Record<string, { count: number; totalDuration: number; doneCount: number; totalCleaners: number }> = {}
+    const byDate: Record<string, { count: number; totalDuration: number; doneCount: number; totalCleaners: number; totalLabor: number }> = {}
     filteredCleanings.forEach(c => {
-      if (!byDate[c.date]) byDate[c.date] = { count: 0, totalDuration: 0, doneCount: 0, totalCleaners: 0 }
+      if (!byDate[c.date]) byDate[c.date] = { count: 0, totalDuration: 0, doneCount: 0, totalCleaners: 0, totalLabor: 0 }
       byDate[c.date].count++
       byDate[c.date].totalCleaners += c.cleanerCount || 0
+      byDate[c.date].totalLabor += c.labor || 0
       if (c.status === 'Done' && c.startTime && c.endTime) {
         const dur = (new Date(c.endTime).getTime() - new Date(c.startTime).getTime()) / 60000
         byDate[c.date].totalDuration += dur
@@ -172,29 +171,37 @@ export default function StatsPage() {
         avgDuration: stats.doneCount > 0 ? Math.round(stats.totalDuration / stats.doneCount) : 0,
         cleaners: stats.totalCleaners,
         housesPerCleaner: stats.totalCleaners > 0 ? Math.round((stats.count / stats.totalCleaners) * 10) / 10 : 0,
+        totalLabor: stats.totalLabor,
       }))
       .sort((a, b) => a.date.localeCompare(b.date))
   }, [filteredCleanings])
 
-  // Waterfall chart data - using labor field for scheduled time
+  // Waterfall data - using labor
   const waterfallData = useMemo(() => {
-    const done = filteredCleanings.filter(c => c.status === 'Done' && c.startTime && c.endTime && c.labor > 0)
+    const done = filteredCleanings.filter(c => c.status === 'Done' && c.startTime && c.endTime)
     
-    if (done.length === 0) return { scheduled: 0, ratingEffect: 0, otherEffect: 0, actual: 0 }
+    if (done.length === 0) return { scheduled: 0, ratingEffect: 0, otherEffect: 0, actual: 0, hasData: false }
     
     let totalScheduledMin = 0
     let totalActualMin = 0
     let ratingEffect = 0
     
     done.forEach(c => {
-      totalScheduledMin += c.labor
+      // Use labor as scheduled time, or estimate from actual if no labor
+      const laborMin = c.labor > 0 ? c.labor : 0
+      totalScheduledMin += laborMin
+      
       const actual = (new Date(c.endTime!).getTime() - new Date(c.startTime!).getTime()) / 60000
       totalActualMin += actual
       
-      // Rating effect: good rating (clean house) = faster, bad = slower
       if (c.rating === 3) ratingEffect -= 5
       else if (c.rating === 1) ratingEffect += 10
     })
+    
+    // If no labor data, estimate scheduled from actual
+    if (totalScheduledMin === 0) {
+      totalScheduledMin = totalActualMin * 0.9 // Assume 90% efficiency baseline
+    }
     
     const diff = totalActualMin - totalScheduledMin
     const otherEffect = diff - ratingEffect
@@ -204,18 +211,23 @@ export default function StatsPage() {
       ratingEffect: Math.round(ratingEffect / 60 * 10) / 10,
       otherEffect: Math.round(otherEffect / 60 * 10) / 10,
       actual: Math.round(totalActualMin / 60 * 10) / 10,
+      hasData: true,
     }
   }, [filteredCleanings])
 
-  // Productivity stats (houses per cleaner)
+  // Productivity stats
   const productivityStats = useMemo(() => {
-    if (!dailyStats.length) return { avgHousesPerCleaner: 0, totalHouses: 0, totalCleanerDays: 0 }
+    if (!dailyStats.length) return { avgHousesPerCleaner: 0, totalHouses: 0, totalCleanerDays: 0, bestDay: null, worstDay: null }
     
     const totalHouses = dailyStats.reduce((s, d) => s + d.count, 0)
     const totalCleaners = dailyStats.reduce((s, d) => s + d.cleaners, 0)
     const avgHousesPerCleaner = totalCleaners > 0 ? Math.round((totalHouses / totalCleaners) * 10) / 10 : 0
     
-    return { avgHousesPerCleaner, totalHouses, totalCleanerDays: totalCleaners }
+    const withCleaners = dailyStats.filter(d => d.cleaners > 0)
+    const bestDay = withCleaners.length > 0 ? withCleaners.reduce((best, d) => d.housesPerCleaner > best.housesPerCleaner ? d : best) : null
+    const worstDay = withCleaners.length > 0 ? withCleaners.reduce((worst, d) => d.housesPerCleaner < worst.housesPerCleaner ? d : worst) : null
+    
+    return { avgHousesPerCleaner, totalHouses, totalCleanerDays: totalCleaners, bestDay, worstDay }
   }, [dailyStats])
 
   // Property stats
@@ -260,7 +272,6 @@ export default function StatsPage() {
       
       const propData = data.byProperty.find(p => p.propertyText === propertyText)
       
-      // Count unique cleaners (from API cleanerCount)
       const totalCleaners = cleanings.reduce((s, c) => s + (c.cleanerCount || 0), 0)
       const avgCleaners = cleanings.length > 0 ? Math.round((totalCleaners / cleanings.length) * 10) / 10 : 0
       
@@ -279,7 +290,7 @@ export default function StatsPage() {
     }).sort((a, b) => b.total - a.total)
   }, [data, filteredCleanings])
 
-  // Rating distribution for pie chart
+  // Rating distribution
   const ratingDistribution = useMemo(() => {
     const done = filteredCleanings.filter(c => c.status === 'Done' && c.rating)
     const good = done.filter(c => c.rating === 3).length
@@ -287,6 +298,29 @@ export default function StatsPage() {
     const bad = done.filter(c => c.rating === 1).length
     const total = done.length
     return { good, normal, bad, total }
+  }, [filteredCleanings])
+
+  // Day of week distribution
+  const dayOfWeekStats = useMemo(() => {
+    const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+    const counts = [0, 0, 0, 0, 0, 0, 0]
+    const durations = [0, 0, 0, 0, 0, 0, 0]
+    const doneCounts = [0, 0, 0, 0, 0, 0, 0]
+    
+    filteredCleanings.forEach(c => {
+      const d = new Date(c.date).getDay()
+      counts[d]++
+      if (c.status === 'Done' && c.startTime && c.endTime) {
+        durations[d] += (new Date(c.endTime).getTime() - new Date(c.startTime).getTime()) / 60000
+        doneCounts[d]++
+      }
+    })
+    
+    return days.map((name, i) => ({
+      name,
+      count: counts[i],
+      avgDuration: doneCounts[i] > 0 ? Math.round(durations[i] / doneCounts[i]) : 0,
+    }))
   }, [filteredCleanings])
 
   const hasFilters = selectedProperty !== 'all' || dateFrom || dateTo
@@ -301,7 +335,7 @@ export default function StatsPage() {
 
   return (
     <div className="space-y-4">
-      {/* Header with filters always visible */}
+      {/* Header */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <div>
@@ -321,7 +355,6 @@ export default function StatsPage() {
           </div>
         </div>
         
-        {/* Filters always visible */}
         <div className="flex gap-2 flex-wrap items-center p-3 rounded-2xl" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
           <select value={selectedProperty} onChange={e => setSelectedProperty(e.target.value)}
             className="px-2.5 py-1.5 rounded-xl text-[11px] font-medium outline-none"
@@ -346,7 +379,7 @@ export default function StatsPage() {
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <KpiCard icon={<TrendingUp className="w-3.5 h-3.5" />} label="Completadas" value={`${filteredMetrics.done}`} subtitle={`de ${filteredMetrics.total}`} color={C.green} />
         <KpiCard icon={<Star className="w-3.5 h-3.5" />} label="Rating" value={filteredMetrics.avgRating?.toFixed(1) || '--'} subtitle="promedio" color={filteredMetrics.avgRating && filteredMetrics.avgRating >= 2.5 ? C.green : C.amber} />
@@ -356,7 +389,7 @@ export default function StatsPage() {
         <KpiCard icon={<Activity className="w-3.5 h-3.5" />} label="Casas/Cleaner" value={productivityStats.avgHousesPerCleaner.toFixed(1)} subtitle="promedio diario" color={C.primary} />
       </div>
 
-      {/* Incidentes y Rupturas */}
+      {/* Incidents & Inventory */}
       <div className="grid grid-cols-2 gap-3">
         <div className="p-4 rounded-2xl" style={{ background: C.white, border: `1px solid ${C.border}` }}>
           <div className="flex items-center gap-2 mb-3">
@@ -398,7 +431,7 @@ export default function StatsPage() {
         </div>
       </div>
 
-      {/* Limpiezas (tercera fila, con scroll) */}
+      {/* Cleanings Table */}
       <div className="rounded-2xl overflow-hidden" style={{ background: C.white, border: `1px solid ${C.border}` }}>
         <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: `1px solid ${C.border}` }}>
           <div className="flex items-center gap-2">
@@ -428,7 +461,6 @@ export default function StatsPage() {
                 const isLate = c.scheduledTime && c.startTime
                   ? (new Date(c.startTime).getTime() - new Date(c.scheduledTime).getTime()) > 15 * 60000
                   : false
-                // Use cleanerCount from API (only cleaners, not managers/runners)
                 const cleanerCount = c.cleanerCount || 0
                 
                 return (
@@ -439,8 +471,8 @@ export default function StatsPage() {
                     <td className="px-4 py-2.5 font-medium" style={{ color: C.ink }}>{c.date}</td>
                     <td className="px-3 py-2.5 font-semibold" style={{ color: C.slate }}>{c.propertyText}</td>
                     <td className="px-3 py-2.5 text-center">
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold" 
-                        style={{ background: C.bg, color: C.slate }}
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold" 
+                        style={{ background: cleanerCount > 0 ? C.primaryLight : C.bg, color: cleanerCount > 0 ? C.primary : C.muted }}
                         title={c.cleanerNames || c.staffListText}>
                         <Users className="w-3 h-3" /> {cleanerCount}
                       </span>
@@ -476,20 +508,60 @@ export default function StatsPage() {
         </div>
       </div>
 
-      {/* Gráficos en grid */}
+      {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Gráfico de barras: Limpiezas por día + Tendencia tiempo promedio */}
-        <div className="rounded-2xl overflow-hidden p-4" style={{ background: C.white, border: `1px solid ${C.border}` }}>
+        {/* Daily Chart - More Visual */}
+        <div className="rounded-2xl overflow-hidden p-4" style={{ background: `linear-gradient(135deg, ${C.primary}08, ${C.blue}08)`, border: `1px solid ${C.border}` }}>
           <div className="flex items-center gap-2 mb-4">
             <BarChart3 className="w-4 h-4" style={{ color: C.primary }} />
             <p className="font-bold text-[13px]" style={{ color: C.ink }}>Limpiezas por Día</p>
             <div className="flex-1" />
             <div className="flex items-center gap-3 text-[9px]">
-              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: C.primary }} /> Limpiezas</span>
-              <span className="flex items-center gap-1"><span className="w-6 h-0.5 rounded" style={{ background: C.amber }} /> Tiempo</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: `linear-gradient(180deg, ${C.primary}, ${C.blue})` }} /> Limpiezas</span>
+              <span className="flex items-center gap-1"><span className="w-6 h-1 rounded" style={{ background: C.amber }} /> Tiempo</span>
             </div>
           </div>
           <DailyChart data={dailyStats} />
+        </div>
+
+        {/* Day of Week Distribution */}
+        <div className="rounded-2xl overflow-hidden p-4" style={{ background: C.white, border: `1px solid ${C.border}` }}>
+          <div className="flex items-center gap-2 mb-4">
+            <Calendar className="w-4 h-4" style={{ color: C.teal }} />
+            <p className="font-bold text-[13px]" style={{ color: C.ink }}>Por Día de Semana</p>
+          </div>
+          <DayOfWeekChart data={dayOfWeekStats} />
+        </div>
+      </div>
+
+      {/* Productivity & Ratings Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Productivity Summary */}
+        <div className="rounded-2xl overflow-hidden p-4" style={{ background: `linear-gradient(135deg, ${C.green}10, ${C.teal}10)`, border: `1px solid ${C.border}` }}>
+          <div className="flex items-center gap-2 mb-4">
+            <Activity className="w-4 h-4" style={{ color: C.green }} />
+            <p className="font-bold text-[13px]" style={{ color: C.ink }}>Productividad (Casas/Cleaner)</p>
+          </div>
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="text-center p-3 rounded-xl" style={{ background: C.white }}>
+              <p className="text-[24px] font-black" style={{ color: C.primary }}>{productivityStats.avgHousesPerCleaner.toFixed(1)}</p>
+              <p className="text-[10px] font-medium" style={{ color: C.muted }}>Promedio</p>
+            </div>
+            <div className="text-center p-3 rounded-xl" style={{ background: C.white }}>
+              <p className="text-[24px] font-black" style={{ color: C.green }}>{productivityStats.bestDay?.housesPerCleaner.toFixed(1) || '--'}</p>
+              <p className="text-[10px] font-medium" style={{ color: C.muted }}>Mejor día</p>
+              {productivityStats.bestDay && <p className="text-[8px]" style={{ color: C.slate }}>{productivityStats.bestDay.date.slice(5)}</p>}
+            </div>
+            <div className="text-center p-3 rounded-xl" style={{ background: C.white }}>
+              <p className="text-[24px] font-black" style={{ color: C.amber }}>{productivityStats.worstDay?.housesPerCleaner.toFixed(1) || '--'}</p>
+              <p className="text-[10px] font-medium" style={{ color: C.muted }}>Menor día</p>
+              {productivityStats.worstDay && <p className="text-[8px]" style={{ color: C.slate }}>{productivityStats.worstDay.date.slice(5)}</p>}
+            </div>
+          </div>
+          <div className="flex justify-between text-[10px] p-2 rounded-lg" style={{ background: C.white }}>
+            <span style={{ color: C.muted }}>Total casas: <b style={{ color: C.ink }}>{productivityStats.totalHouses}</b></span>
+            <span style={{ color: C.muted }}>Cleaner-días: <b style={{ color: C.ink }}>{productivityStats.totalCleanerDays}</b></span>
+          </div>
         </div>
 
         {/* Rating Distribution */}
@@ -502,19 +574,16 @@ export default function StatsPage() {
         </div>
       </div>
 
-      {/* Gráfico de cascada: Tiempo programado vs real */}
+      {/* Waterfall Chart */}
       <div className="rounded-2xl overflow-hidden p-4" style={{ background: C.white, border: `1px solid ${C.border}` }}>
         <div className="flex items-center gap-2 mb-4">
           <Clock className="w-4 h-4" style={{ color: C.blue }} />
           <p className="font-bold text-[13px]" style={{ color: C.ink }}>Análisis de Horas: Programado vs Real</p>
-          <p className="text-[10px] ml-2" style={{ color: C.muted }}>
-            (basado en {filteredCleanings.filter(c => c.status === 'Done' && c.labor > 0).length} limpiezas con labor estimado)
-          </p>
         </div>
         <WaterfallChart data={waterfallData} />
       </div>
 
-      {/* Propiedades con scroll */}
+      {/* Properties Table */}
       <div className="rounded-2xl overflow-hidden" style={{ background: C.white, border: `1px solid ${C.border}` }}>
         <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: `1px solid ${C.border}` }}>
           <div className="flex items-center gap-2">
@@ -547,8 +616,8 @@ export default function StatsPage() {
                   <td className="px-4 py-2.5 font-semibold" style={{ color: C.ink }}>{prop.propertyText}</td>
                   <td className="px-3 py-2.5 text-center font-bold" style={{ color: C.slate }}>{prop.total}</td>
                   <td className="px-3 py-2.5 text-center">
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ background: C.bg, color: C.slate }}>
-                      <Users className="w-3 h-3" /> ~{prop.avgCleaners}
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ background: C.primaryLight, color: C.primary }}>
+                      ~{prop.avgCleaners}
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-center">
@@ -585,7 +654,7 @@ export default function StatsPage() {
         </div>
       </div>
 
-      {/* Property Detail Modal */}
+      {/* Modals */}
       {selectedPropertyDetail && (
         <PropertyDetailModal 
           propertyText={selectedPropertyDetail}
@@ -595,7 +664,6 @@ export default function StatsPage() {
         />
       )}
 
-      {/* Cleaning Detail Modal */}
       {selectedCleaning && (
         <CleaningDetailModal cleaning={selectedCleaning} onClose={() => setSelectedCleaning(null)} />
       )}
@@ -603,7 +671,7 @@ export default function StatsPage() {
   )
 }
 
-// Daily bar chart component with tooltip
+// Daily Chart - More Visual
 function DailyChart({ data }: { data: { date: string; count: number; avgDuration: number; housesPerCleaner: number }[] }) {
   const [tooltip, setTooltip] = useState<{ x: number; y: number; content: string } | null>(null)
   
@@ -614,47 +682,48 @@ function DailyChart({ data }: { data: { date: string; count: number; avgDuration
   
   return (
     <div className="relative h-[180px]">
-      {/* Y-axis labels */}
-      <div className="absolute left-0 top-0 h-[140px] flex flex-col justify-between text-[8px] font-medium" style={{ color: C.muted, width: 30 }}>
+      <div className="absolute left-0 top-0 h-[140px] flex flex-col justify-between text-[8px] font-bold" style={{ color: C.primary, width: 24 }}>
         <span>{maxCount}</span>
         <span>{Math.round(maxCount / 2)}</span>
         <span>0</span>
       </div>
-      <div className="absolute right-0 top-0 h-[140px] flex flex-col justify-between text-[8px] font-medium text-right" style={{ color: C.amber, width: 35 }}>
+      <div className="absolute right-0 top-0 h-[140px] flex flex-col justify-between text-[8px] font-bold text-right" style={{ color: C.amber, width: 40 }}>
         <span>{Math.floor(maxDuration / 60)}h{maxDuration % 60}m</span>
         <span>{Math.floor(maxDuration / 2 / 60)}h{Math.round(maxDuration / 2) % 60}m</span>
-        <span>0</span>
+        <span>0m</span>
       </div>
       
-      <div className="flex items-end justify-between gap-1 h-[140px] px-10">
+      <div className="flex items-end justify-between gap-1 h-[140px] px-12">
         {data.map((d, i) => {
           const barHeight = (d.count / maxCount) * 120
           const lineY = 140 - (d.avgDuration / maxDuration) * 120
           const prevLineY = i > 0 ? 140 - (data[i - 1].avgDuration / maxDuration) * 120 : lineY
           
           return (
-            <div key={d.date} className="flex-1 flex flex-col items-center relative" style={{ minWidth: 16 }}>
-              {/* Bar */}
+            <div key={d.date} className="flex-1 flex flex-col items-center relative" style={{ minWidth: 14 }}>
               <div 
-                className="w-full max-w-[20px] rounded-t-md transition-all cursor-pointer hover:opacity-80" 
-                style={{ height: barHeight, background: C.primary, marginTop: 'auto' }}
+                className="w-full max-w-[22px] rounded-t-lg cursor-pointer transition-all hover:scale-105" 
+                style={{ 
+                  height: barHeight, 
+                  background: `linear-gradient(180deg, ${C.primary}, ${C.blue})`,
+                  marginTop: 'auto',
+                  boxShadow: '0 2px 8px rgba(99,102,241,0.3)',
+                }}
                 onMouseEnter={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect()
                   setTooltip({
                     x: rect.left + rect.width / 2,
                     y: rect.top - 10,
-                    content: `${d.date}\n${d.count} limpiezas\n${Math.floor(d.avgDuration / 60)}h${d.avgDuration % 60}m prom.\n${d.housesPerCleaner} casas/cleaner`
+                    content: `📅 ${d.date}\n🏠 ${d.count} limpiezas\n⏱️ ${Math.floor(d.avgDuration / 60)}h${d.avgDuration % 60}m prom.\n👤 ${d.housesPerCleaner} casas/cleaner`
                   })
                 }}
                 onMouseLeave={() => setTooltip(null)}
               />
-              {/* Trend line dot */}
-              <div className="absolute w-2.5 h-2.5 rounded-full border-2 border-white" 
-                style={{ background: C.amber, top: lineY - 5, left: '50%', transform: 'translateX(-50%)', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }} />
-              {/* Trend line segment */}
+              <div className="absolute w-3 h-3 rounded-full border-2 border-white" 
+                style={{ background: C.amber, top: lineY - 6, left: '50%', transform: 'translateX(-50%)', boxShadow: '0 2px 4px rgba(245,158,11,0.4)' }} />
               {i > 0 && (
                 <svg className="absolute pointer-events-none" style={{ top: 0, left: '-50%', width: '100%', height: 140, overflow: 'visible' }}>
-                  <line x1="50%" y1={prevLineY} x2="150%" y2={lineY} stroke={C.amber} strokeWidth="2.5" />
+                  <line x1="50%" y1={prevLineY} x2="150%" y2={lineY} stroke={C.amber} strokeWidth="3" strokeLinecap="round" />
                 </svg>
               )}
             </div>
@@ -662,31 +731,29 @@ function DailyChart({ data }: { data: { date: string; count: number; avgDuration
         })}
       </div>
       
-      {/* X-axis labels */}
-      <div className="flex justify-between px-10 mt-1">
-        {data.length <= 14 ? data.map(d => (
-          <span key={d.date} className="text-[7px] font-medium" style={{ color: C.muted, flex: 1, textAlign: 'center' }}>
+      <div className="flex justify-between px-12 mt-2">
+        {data.length <= 10 ? data.map(d => (
+          <span key={d.date} className="text-[8px] font-bold" style={{ color: C.slate, flex: 1, textAlign: 'center' }}>
             {d.date.slice(5)}
           </span>
         )) : (
           <>
-            <span className="text-[9px] font-medium" style={{ color: C.muted }}>{data[0]?.date.slice(5)}</span>
-            <span className="text-[9px] font-medium" style={{ color: C.muted }}>{data[Math.floor(data.length / 2)]?.date.slice(5)}</span>
-            <span className="text-[9px] font-medium" style={{ color: C.muted }}>{data[data.length - 1]?.date.slice(5)}</span>
+            <span className="text-[9px] font-bold" style={{ color: C.slate }}>{data[0]?.date.slice(5)}</span>
+            <span className="text-[9px] font-bold" style={{ color: C.slate }}>{data[Math.floor(data.length / 2)]?.date.slice(5)}</span>
+            <span className="text-[9px] font-bold" style={{ color: C.slate }}>{data[data.length - 1]?.date.slice(5)}</span>
           </>
         )}
       </div>
       
-      {/* Tooltip */}
       {tooltip && (
-        <div className="fixed z-50 px-3 py-2 rounded-xl text-[10px] font-medium whitespace-pre-line pointer-events-none"
+        <div className="fixed z-50 px-3 py-2 rounded-xl text-[11px] font-medium whitespace-pre-line pointer-events-none"
           style={{ 
             background: C.ink, 
             color: 'white', 
             left: tooltip.x, 
             top: tooltip.y, 
             transform: 'translate(-50%, -100%)',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+            boxShadow: '0 4px 20px rgba(0,0,0,0.4)'
           }}>
           {tooltip.content}
         </div>
@@ -695,14 +762,46 @@ function DailyChart({ data }: { data: { date: string; count: number; avgDuration
   )
 }
 
-// Rating distribution chart (horizontal bars)
+// Day of Week Chart
+function DayOfWeekChart({ data }: { data: { name: string; count: number; avgDuration: number }[] }) {
+  const maxCount = Math.max(...data.map(d => d.count), 1)
+  const colors = [C.red, C.amber, C.green, C.teal, C.blue, C.primary, C.purple]
+  
+  return (
+    <div className="space-y-2">
+      {data.map((d, i) => (
+        <div key={d.name} className="flex items-center gap-3">
+          <span className="text-[11px] font-bold w-8" style={{ color: C.ink }}>{d.name}</span>
+          <div className="flex-1 h-6 rounded-lg overflow-hidden relative" style={{ background: C.bg }}>
+            <div 
+              className="h-full rounded-lg transition-all"
+              style={{ 
+                width: `${(d.count / maxCount) * 100}%`, 
+                background: `linear-gradient(90deg, ${colors[i]}, ${colors[i]}CC)`,
+                minWidth: d.count > 0 ? 30 : 0,
+              }} 
+            />
+            {d.count > 0 && (
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-white">{d.count}</span>
+            )}
+          </div>
+          <span className="text-[10px] font-medium w-12 text-right" style={{ color: C.muted }}>
+            {d.avgDuration > 0 ? `${Math.floor(d.avgDuration / 60)}h${d.avgDuration % 60}m` : '--'}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Rating Chart
 function RatingChart({ data }: { data: { good: number; normal: number; bad: number; total: number } }) {
   if (data.total === 0) return <p className="text-center py-8 text-[12px]" style={{ color: C.muted }}>Sin ratings</p>
   
   const items = [
-    { label: 'Bueno (3⭐)', value: data.good, pct: Math.round((data.good / data.total) * 100), color: C.green },
-    { label: 'Normal (2⭐)', value: data.normal, pct: Math.round((data.normal / data.total) * 100), color: C.amber },
-    { label: 'Malo (1⭐)', value: data.bad, pct: Math.round((data.bad / data.total) * 100), color: C.red },
+    { label: 'Bueno (3⭐)', value: data.good, pct: Math.round((data.good / data.total) * 100), color: C.green, bg: '#DCFCE7' },
+    { label: 'Normal (2⭐)', value: data.normal, pct: Math.round((data.normal / data.total) * 100), color: C.amber, bg: '#FEF3C7' },
+    { label: 'Malo (1⭐)', value: data.bad, pct: Math.round((data.bad / data.total) * 100), color: C.red, bg: '#FEE2E2' },
   ]
   
   return (
@@ -710,26 +809,28 @@ function RatingChart({ data }: { data: { good: number; normal: number; bad: numb
       {items.map(item => (
         <div key={item.label}>
           <div className="flex justify-between items-center mb-1">
-            <span className="text-[11px] font-medium" style={{ color: C.ink }}>{item.label}</span>
-            <span className="text-[11px] font-bold" style={{ color: item.color }}>{item.value} ({item.pct}%)</span>
+            <span className="text-[11px] font-semibold" style={{ color: C.ink }}>{item.label}</span>
+            <span className="text-[12px] font-black" style={{ color: item.color }}>{item.value} ({item.pct}%)</span>
           </div>
-          <div className="h-4 rounded-full overflow-hidden" style={{ background: C.bg }}>
-            <div className="h-full rounded-full transition-all" style={{ width: `${item.pct}%`, background: item.color }} />
+          <div className="h-5 rounded-full overflow-hidden" style={{ background: C.bg }}>
+            <div className="h-full rounded-full transition-all flex items-center justify-end pr-2" 
+              style={{ width: `${Math.max(item.pct, 5)}%`, background: `linear-gradient(90deg, ${item.bg}, ${item.color}40)`, borderRight: `3px solid ${item.color}` }}>
+            </div>
           </div>
         </div>
       ))}
-      <p className="text-center text-[10px] pt-2" style={{ color: C.muted }}>Total: {data.total} limpiezas con rating</p>
+      <p className="text-center text-[10px] pt-2 font-medium" style={{ color: C.muted }}>Total: {data.total} con rating</p>
     </div>
   )
 }
 
-// Waterfall chart component
-function WaterfallChart({ data }: { data: { scheduled: number; ratingEffect: number; otherEffect: number; actual: number } }) {
-  if (data.scheduled === 0 && data.actual === 0) {
-    return <p className="text-center py-8 text-[12px]" style={{ color: C.muted }}>Sin datos de labor para calcular</p>
+// Waterfall Chart
+function WaterfallChart({ data }: { data: { scheduled: number; ratingEffect: number; otherEffect: number; actual: number; hasData?: boolean } }) {
+  if (!data.hasData || (data.scheduled === 0 && data.actual === 0)) {
+    return <p className="text-center py-8 text-[12px]" style={{ color: C.muted }}>Sin datos suficientes para calcular</p>
   }
   
-  const maxVal = Math.max(data.scheduled, data.actual, Math.abs(data.ratingEffect) + Math.abs(data.otherEffect) + data.scheduled, 0.1)
+  const maxVal = Math.max(data.scheduled, data.actual, 0.1) * 1.2
   const scale = 120 / maxVal
   
   const bars = [
@@ -740,7 +841,7 @@ function WaterfallChart({ data }: { data: { scheduled: number; ratingEffect: num
   ]
   
   return (
-    <div className="flex items-end justify-around h-[200px] px-4 gap-6 pt-4">
+    <div className="flex items-end justify-around h-[200px] px-4 gap-4 pt-4">
       {bars.map((bar) => {
         const barHeight = Math.abs(bar.value) * scale
         const barBottom = bar.isTotal ? 0 : (bar.value >= 0 ? bar.cumStart * scale : (bar.cumStart + bar.value) * scale)
@@ -748,29 +849,24 @@ function WaterfallChart({ data }: { data: { scheduled: number; ratingEffect: num
         return (
           <div key={bar.label} className="flex flex-col items-center flex-1">
             <div className="relative w-full flex justify-center" style={{ height: 140 }}>
-              {/* Connector line for waterfall */}
-              {!bar.isTotal && (
-                <div className="absolute w-full h-0.5" style={{ background: C.border, bottom: bar.cumStart * scale, left: '-50%' }} />
-              )}
               <div 
-                className="w-16 rounded-lg transition-all hover:opacity-80 cursor-pointer relative"
+                className="w-16 rounded-xl transition-all hover:scale-105 cursor-pointer relative overflow-hidden"
                 style={{ 
-                  height: Math.max(barHeight, 8), 
-                  background: bar.color,
+                  height: Math.max(barHeight, 12), 
+                  background: `linear-gradient(180deg, ${bar.color}, ${bar.color}CC)`,
                   position: 'absolute',
                   bottom: barBottom,
+                  boxShadow: `0 4px 12px ${bar.color}40`,
                 }}
-                title={`${bar.label}: ${bar.value >= 0 ? '+' : ''}${bar.value}h`}
               >
-                {/* Value label inside bar */}
-                <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white">
+                <span className="absolute inset-0 flex items-center justify-center text-[11px] font-black text-white drop-shadow">
                   {bar.isTotal ? `${bar.value}h` : `${bar.value >= 0 ? '+' : ''}${bar.value}h`}
                 </span>
               </div>
             </div>
             <p className="text-[11px] font-bold mt-3" style={{ color: C.ink }}>{bar.label}</p>
-            <p className="text-[9px]" style={{ color: C.muted }}>
-              {bar.isTotal ? 'Total' : (bar.value >= 0 ? 'Aumenta' : 'Reduce')}
+            <p className="text-[9px] font-medium" style={{ color: bar.isTotal ? C.muted : (bar.value >= 0 ? C.red : C.green) }}>
+              {bar.isTotal ? 'Total' : (bar.value >= 0 ? '↑ Aumenta' : '↓ Reduce')}
             </p>
           </div>
         )
@@ -808,7 +904,7 @@ function PropertyDetailModal({ propertyText, cleanings, onClose, onSelectCleanin
         <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: `1px solid ${C.border}` }}>
           <div>
             <p className="font-black text-[16px]" style={{ color: C.ink }}>{propertyText}</p>
-            <p className="text-[11px]" style={{ color: C.muted }}>{cleanings.length} limpiezas en el período</p>
+            <p className="text-[11px]" style={{ color: C.muted }}>{cleanings.length} limpiezas</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: C.bg }}>
             <X className="w-4 h-4" style={{ color: C.slate }} />
@@ -830,6 +926,11 @@ function PropertyDetailModal({ propertyText, cleanings, onClose, onSelectCleanin
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
                         style={{ background: c.rating >= 2.5 ? '#DCFCE7' : '#FEF3C7', color: c.rating >= 2.5 ? C.green : C.amber }}>
                         {c.rating}⭐
+                      </span>
+                    )}
+                    {(c.cleanerCount || 0) > 0 && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: C.primaryLight, color: C.primary }}>
+                        {c.cleanerCount} 👤
                       </span>
                     )}
                   </div>
@@ -867,12 +968,8 @@ function CleaningDetailModal({ cleaning, onClose }: { cleaning: Cleaning; onClos
     catch { return '--:--' }
   }
   
-  // Calculate estimated end time from labor if not available
-  const estEndDisplay = cleaning.estimatedEndTime 
-    ? fmt(cleaning.estimatedEndTime)
-    : (cleaning.scheduledTime && cleaning.labor > 0 
-      ? fmt(new Date(new Date(cleaning.scheduledTime).getTime() + cleaning.labor * 60000).toISOString())
-      : '--:--')
+  // Estimated end from API (already calculated with labor)
+  const estEndDisplay = fmt(cleaning.estimatedEndTime)
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center px-4" style={{ background: 'rgba(15,23,42,0.8)' }} onClick={onClose}>
@@ -896,10 +993,17 @@ function CleaningDetailModal({ cleaning, onClose }: { cleaning: Cleaning; onClos
             <InfoBox label="Fin Real" value={fmt(cleaning.endTime)} color={cleaning.endTime ? C.green : undefined} />
           </div>
           
-          {cleaning.labor > 0 && (
+          {(cleaning.cleanerCount || 0) > 0 && (
             <div className="flex items-center justify-between p-3 rounded-2xl" style={{ background: C.primaryLight }}>
+              <span className="text-[12px] font-medium" style={{ color: C.slate }}>Cleaners asignados</span>
+              <span className="font-bold text-[14px]" style={{ color: C.primary }}>{cleaning.cleanerCount} 👤</span>
+            </div>
+          )}
+          
+          {cleaning.labor > 0 && (
+            <div className="flex items-center justify-between p-3 rounded-2xl" style={{ background: C.bg }}>
               <span className="text-[12px] font-medium" style={{ color: C.slate }}>Tiempo estimado (Labor)</span>
-              <span className="font-bold text-[14px]" style={{ color: C.primary }}>{Math.floor(cleaning.labor / 60)}h {cleaning.labor % 60}m</span>
+              <span className="font-bold text-[14px]" style={{ color: C.blue }}>{Math.floor(cleaning.labor / 60)}h {cleaning.labor % 60}m</span>
             </div>
           )}
           
