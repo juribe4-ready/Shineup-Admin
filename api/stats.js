@@ -46,7 +46,6 @@ async function fetchAllRecords(table, formula = null) {
   return all;
 }
 
-// GET: Fetch statistics
 async function handleGetStats(req, res) {
   try {
     const { period = '7d' } = req.query;
@@ -58,7 +57,7 @@ async function handleGetStats(req, res) {
     const formula = `AND({Date}>='${from}',{Date}<='${to}')`;
     const records = await fetchAllRecords('tblabOdNknnjrYUU1', formula);
     
-    // Fetch all staff to get roles
+    // Fetch all staff to get roles - SAME AS getDashboard.js
     const staffRecords = await fetchAllRecords('tblgHwN1wX6u3ZtNY');
     const staffMap = {};
     staffRecords.forEach(r => {
@@ -70,15 +69,29 @@ async function handleGetStats(req, res) {
       };
     });
     
-    // Fetch all incidents
-    const incidentRecords = await fetchAllRecords('Incidents');
+    // Log staff roles for debugging
+    console.log('[stats] Staff roles:', staffRecords.slice(0, 5).map(r => ({ 
+      name: r.fields['Name'], 
+      role: r.fields['Role'] 
+    })));
     
-    // Fetch all inventory
+    // Fetch properties for Labor data
+    const propRecords = await fetchAllRecords('tbl1iETmcFP460oWN');
+    const propDataMap = {};
+    propRecords.forEach(r => {
+      propDataMap[r.id] = {
+        labor: Number(r.fields['Labor'] || 0),
+      };
+    });
+    
+    // Fetch incidents and inventory
+    const incidentRecords = await fetchAllRecords('Incidents');
     const inventoryRecords = await fetchAllRecords('tblppdLDDnyT0eye9');
 
-    // Process cleanings
+    // Process cleanings - SAME LOGIC AS getDashboard.js
     const cleanings = records.map(r => {
       const f = r.fields;
+      
       const resolveRating = (r) => {
         if (!r) return null;
         const s = String(r).toLowerCase();
@@ -88,51 +101,55 @@ async function handleGetStats(req, res) {
         return null;
       };
       
-      // Get staff IDs and build staffList with roles
-      const staffIds = f['Staff'] || [];
+      // USE 'Assigned Staff' - SAME AS getDashboard.js line 119
+      const staffIds = Array.isArray(f['Assigned Staff']) ? f['Assigned Staff'] : [];
       const staffList = staffIds.map(id => staffMap[id]).filter(Boolean);
       
-      // Filter to cleaners only (role contains 'cleaner')
-      const cleanerStaff = staffList.filter(s => 
-        s.role && s.role.toLowerCase().includes('cleaner')
-      );
-      const cleanerCount = cleanerStaff.length;
-      const cleanerNames = cleanerStaff.map(s => s.name).join(', ');
+      // Filter to cleaners only (role contains 'cleaner') - SAME AS getDashboard.js line 154-157
+      const cleanerCount = staffIds.filter(id => {
+        const s = staffMap[id];
+        return s && (s.role || '').toLowerCase().includes('cleaner');
+      }).length;
       
-      // Get labor (minutes) - this is the estimated time
-      const labor = Number(f['Labor'] || 0);
+      const cleanerNames = staffList
+        .filter(s => (s.role || '').toLowerCase().includes('cleaner'))
+        .map(s => s.name)
+        .join(', ');
       
-      // Calculate estimated end time from scheduled + labor if not provided
+      // Get labor from Property
+      const propId = Array.isArray(f['Property']) ? f['Property'][0] : (f['Property'] || '');
+      const propData = propDataMap[propId] || {};
+      const labor = propData.labor || 0;
+      
+      const ratingVal = resolveRating(f['Rating']);
+      
+      // Calculate estimated end time - SAME AS getDashboard.js
       let estimatedEndTime = f['Estimated End Time'] || null;
       if (!estimatedEndTime && f['Scheduled Time'] && labor > 0) {
-        const scheduledMs = new Date(f['Scheduled Time']).getTime();
-        // Adjust labor per cleaner count
         const effectiveCleaners = Math.max(cleanerCount, 1);
         const minutesRaw = labor / effectiveCleaners;
         const minutesRounded = Math.ceil(minutesRaw / 15) * 15;
-        const ratingVal = resolveRating(f['Rating']);
         const ratingAdj = ratingVal === 1 ? 30 : ratingVal === 3 ? -30 : 0;
         const totalMinutes = Math.max(minutesRounded + ratingAdj, 45);
-        estimatedEndTime = new Date(scheduledMs + totalMinutes * 60000).toISOString();
+        estimatedEndTime = new Date(new Date(f['Scheduled Time']).getTime() + totalMinutes * 60000).toISOString();
       }
       
       return {
         id: r.id,
         cleaningId: f['Cleaning ID'] || '',
         propertyText: f['Property Text'] || '',
-        propertyId: Array.isArray(f['Property']) ? f['Property'][0] : (f['Property'] || ''),
+        propertyId: propId,
         date: f['Date'] || '',
         status: f['Status'] || 'Programmed',
         scheduledTime: f['Scheduled Time'] || null,
         startTime: f['Start Time'] || null,
         endTime: f['End Time'] || null,
         estimatedEndTime,
-        rating: resolveRating(f['Rating']),
+        rating: ratingVal,
         staffListText: f['staffList'] || '',
         cleanerNames,
         cleanerCount,
         labor,
-        staffList,
       };
     }).sort((a, b) => b.date.localeCompare(a.date));
 
@@ -146,6 +163,7 @@ async function handleGetStats(req, res) {
       return (new Date(c.endTime).getTime() - new Date(c.startTime).getTime()) / 60000;
     });
     const avgDurationMin = durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : null;
+    const totalDurationMin = durations.reduce((a, b) => a + b, 0);
     
     const onTimeChecks = doneCleanings.filter(c => c.scheduledTime && c.startTime);
     const onTimeCount = onTimeChecks.filter(c => {
@@ -154,16 +172,13 @@ async function handleGetStats(req, res) {
     }).length;
     const onTimeRate = onTimeChecks.length > 0 ? Math.round((onTimeCount / onTimeChecks.length) * 100) : null;
     
-    const lateStarts = onTimeChecks.filter(c => {
+    const lateCleanings = onTimeChecks.filter(c => {
       return (new Date(c.startTime).getTime() - new Date(c.scheduledTime).getTime()) > 15 * 60000;
-    }).length;
-    
-    // Overtime: actual duration > estimated duration + 15 min
-    const overtime = doneCleanings.filter(c => c.startTime && c.endTime && c.estimatedEndTime).filter(c => {
-      const actualEnd = new Date(c.endTime).getTime();
-      const estimatedEnd = new Date(c.estimatedEndTime).getTime();
-      return actualEnd > estimatedEnd + 15 * 60000;
-    }).length;
+    });
+    const lateStarts = lateCleanings.length;
+    const totalLateMinutes = lateCleanings.reduce((sum, c) => {
+      return sum + (new Date(c.startTime).getTime() - new Date(c.scheduledTime).getTime()) / 60000;
+    }, 0);
 
     // By Property
     const propGroups = {};
@@ -183,13 +198,11 @@ async function handleGetStats(req, res) {
         return (new Date(i.endTime).getTime() - new Date(i.startTime).getTime()) / 60000;
       });
       
-      // Count incidents for this property
       const propIncidents = incidentRecords.filter(r => {
         const propIds = r.fields['Property'] || [];
         return propIds.includes(data.propertyId);
       }).length;
       
-      // Count inventory issues for this property
       const propInventory = inventoryRecords.filter(r => {
         const propIds = r.fields['Property'] || [];
         return propIds.includes(data.propertyId) && r.fields['Status'] !== 'Optimal';
@@ -228,9 +241,10 @@ async function handleGetStats(req, res) {
         done: doneCleanings.length,
         avgRating,
         avgDurationMin,
+        totalDurationMin: Math.round(totalDurationMin),
         onTimeRate,
         lateStarts,
-        overtime,
+        totalLateMinutes: Math.round(totalLateMinutes),
       },
       byProperty,
       incidents: incidentCounts,
@@ -243,30 +257,17 @@ async function handleGetStats(req, res) {
   }
 }
 
-// POST: Update report status
 async function handleUpdateReport(req, res) {
   try {
     const { type, recordId, status, closeComment } = req.body;
 
     if (!type || !recordId || !status) {
-      return res.status(400).json({ error: 'Missing required fields: type, recordId, status' });
+      return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    let tableId;
-    if (type === 'incident') {
-      tableId = 'Incidents';
-    } else if (type === 'inventory') {
-      tableId = 'tblppdLDDnyT0eye9';
-    } else {
-      return res.status(400).json({ error: 'Invalid type. Must be "incident" or "inventory"' });
-    }
-
+    let tableId = type === 'incident' ? 'Incidents' : 'tblppdLDDnyT0eye9';
     const fields = { Status: status };
-    if (closeComment && (status === 'Closed' || status === 'Optimal')) {
-      fields.CloseComment = closeComment;
-    }
-
-    console.log(`[stats] POST type=${type}, recordId=${recordId}, status=${status}`);
+    if (closeComment) fields.CloseComment = closeComment;
 
     const response = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${tableId}/${recordId}`, {
       method: 'PATCH',
@@ -279,20 +280,11 @@ async function handleUpdateReport(req, res) {
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('[stats] POST Airtable error:', errorData);
-      return res.status(response.status).json({ error: errorData.error?.message || 'Failed to update record' });
+      return res.status(response.status).json({ error: errorData.error?.message || 'Failed' });
     }
 
-    const updatedRecord = await response.json();
-    
-    return res.status(200).json({
-      success: true,
-      record: {
-        id: updatedRecord.id,
-        status: updatedRecord.fields.Status,
-        closeComment: updatedRecord.fields.CloseComment || null,
-      },
-    });
+    const updated = await response.json();
+    return res.status(200).json({ success: true, record: { id: updated.id, status: updated.fields.Status } });
 
   } catch (err) {
     console.error('[stats] POST Error:', err);
@@ -306,12 +298,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
   if (req.method === 'OPTIONS') return res.status(200).end();
-
-  if (req.method === 'GET') {
-    return handleGetStats(req, res);
-  } else if (req.method === 'POST') {
-    return handleUpdateReport(req, res);
-  } else {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method === 'GET') return handleGetStats(req, res);
+  if (req.method === 'POST') return handleUpdateReport(req, res);
+  return res.status(405).json({ error: 'Method not allowed' });
 }
