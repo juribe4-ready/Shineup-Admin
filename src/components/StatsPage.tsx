@@ -732,9 +732,6 @@ function WaterfallChart({ data }: { data: { scheduled: number; ratingEffect: num
   const maxVal = Math.max(data.scheduled, data.actual, Math.abs(data.ratingEffect) + Math.abs(data.otherEffect) + data.scheduled, 0.1)
   const scale = 120 / maxVal
   
-  // Calculate cumulative positions
-  let cumulative = data.scheduled
-  
   const bars = [
     { label: 'Programado', value: data.scheduled, cumStart: 0, color: C.blue, isTotal: true },
     { label: 'Rating', value: data.ratingEffect, cumStart: data.scheduled, color: data.ratingEffect >= 0 ? C.red : C.green, isTotal: false },
