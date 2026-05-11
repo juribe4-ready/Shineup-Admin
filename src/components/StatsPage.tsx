@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   TrendingUp, Clock, Star, Zap, AlertTriangle, AlertCircle, Package,
-  ExternalLink, X, Home, Calendar, Users, BarChart3, Activity, Timer
+  ExternalLink, X, Home, Calendar, Users, BarChart3, Activity, Timer, Download
 } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 const C = {
   primary: '#6366F1', primaryLight: '#EEF2FF', primaryDark: '#4F46E5',
@@ -382,6 +383,50 @@ export default function StatsPage() {
   const totalHours = Math.round(filteredMetrics.totalDurationMin / 60 * 10) / 10
   const lateHours = Math.round(filteredMetrics.totalLateMinutes / 60 * 10) / 10
 
+  // Export to Excel
+  const exportToExcel = () => {
+    const fmt = (v?: string | null) => {
+      if (!v) return ''
+      try { return new Date(v).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) }
+      catch { return '' }
+    }
+    
+    const rows = filteredCleanings.map(c => {
+      const duration = c.startTime && c.endTime 
+        ? Math.round((new Date(c.endTime).getTime() - new Date(c.startTime).getTime()) / 60000)
+        : null
+      const isLate = c.scheduledTime && c.startTime
+        ? (new Date(c.startTime).getTime() - new Date(c.scheduledTime).getTime()) > 15 * 60000
+        : false
+      
+      return {
+        'Fecha': c.date,
+        'Propiedad': c.propertyText,
+        'Cleaners (#)': c.cleanerCount || 0,
+        'Cleaners (nombres)': c.cleanerNames || '',
+        'Rating': c.rating || '',
+        'Inicio Prog.': fmt(c.scheduledTime),
+        'Inicio Real': fmt(c.startTime),
+        'Fin Prog.': fmt(c.estimatedEndTime),
+        'Fin Real': fmt(c.endTime),
+        'Duración (min)': duration || '',
+        'Puntualidad': isLate ? 'Tarde' : (c.startTime ? 'OK' : ''),
+        'Estado': c.status,
+      }
+    })
+    
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Limpiezas')
+    
+    // Auto-width columns
+    const colWidths = Object.keys(rows[0] || {}).map(key => ({ wch: Math.max(key.length, 12) }))
+    ws['!cols'] = colWidths
+    
+    const fileName = `limpiezas_${dateFrom || period}_${new Date().toISOString().slice(0, 10)}.xlsx`
+    XLSX.writeFile(wb, fileName)
+  }
+
   if (loading && !data) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -488,7 +533,13 @@ export default function StatsPage() {
             <BarChart3 className="w-4 h-4" style={{ color: C.primary }} />
             <p className="font-bold text-[13px]" style={{ color: C.ink }}>Limpiezas ({filteredCleanings.length})</p>
           </div>
-          <p className="text-[10px]" style={{ color: C.muted }}>Clic para ver detalle</p>
+          <div className="flex items-center gap-3">
+            <button onClick={exportToExcel} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all hover:scale-105"
+              style={{ background: C.green, color: 'white' }}>
+              <Download className="w-3.5 h-3.5" /> Exportar Excel
+            </button>
+            <p className="text-[10px]" style={{ color: C.muted }}>Clic para ver detalle</p>
+          </div>
         </div>
         <div className="max-h-[280px] overflow-y-auto">
           <table className="w-full text-[11px]">
