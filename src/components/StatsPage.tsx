@@ -175,11 +175,12 @@ export default function StatsPage() {
   const dailyStats = useMemo(() => {
     if (!filteredCleanings.length) return []
     
-    const byDate: Record<string, { count: number; totalDuration: number; doneCount: number; totalCleaners: number }> = {}
+    const byDate: Record<string, { count: number; totalDuration: number; doneCount: number; cleanerIds: Set<string> }> = {}
     filteredCleanings.forEach(c => {
-      if (!byDate[c.date]) byDate[c.date] = { count: 0, totalDuration: 0, doneCount: 0, totalCleaners: 0 }
+      if (!byDate[c.date]) byDate[c.date] = { count: 0, totalDuration: 0, doneCount: 0, cleanerIds: new Set() }
       byDate[c.date].count++
-      byDate[c.date].totalCleaners += c.cleanerCount || 0
+      // Add unique cleaner IDs for this day
+      ;(c.cleanerIds || []).forEach(id => byDate[c.date].cleanerIds.add(id))
       if (c.status === 'Done' && c.startTime && c.endTime) {
         const dur = (new Date(c.endTime).getTime() - new Date(c.startTime).getTime()) / 60000
         byDate[c.date].totalDuration += dur
@@ -188,30 +189,33 @@ export default function StatsPage() {
     })
     
     return Object.entries(byDate)
-      .map(([date, stats]) => ({
-        date,
-        count: stats.count,
-        avgDuration: stats.doneCount > 0 ? Math.round(stats.totalDuration / stats.doneCount) : 0,
-        cleaners: stats.totalCleaners,
-        housesPerCleaner: stats.totalCleaners > 0 ? Math.round((stats.count / stats.totalCleaners) * 10) / 10 : 0,
-      }))
+      .map(([date, stats]) => {
+        const uniqueCleaners = stats.cleanerIds.size
+        return {
+          date,
+          count: stats.count,
+          avgDuration: stats.doneCount > 0 ? Math.round(stats.totalDuration / stats.doneCount) : 0,
+          cleaners: uniqueCleaners,
+          housesPerCleaner: uniqueCleaners > 0 ? Math.round((stats.count / uniqueCleaners) * 10) / 10 : 0,
+        }
+      })
       .sort((a, b) => a.date.localeCompare(b.date))
   }, [filteredCleanings])
 
-  // Productivity stats - using UNIQUE cleaners
+  // Productivity stats - calculate daily ratios then average
   const productivityStats = useMemo(() => {
     if (!filteredCleanings.length) return { avgHousesPerCleaner: 0, totalHouses: 0, uniqueCleaners: 0, bestDay: null as { date: string; housesPerCleaner: number } | null, worstDay: null as { date: string; housesPerCleaner: number } | null }
     
     const totalHouses = filteredCleanings.length
-    // Get unique cleaner IDs across all filtered cleanings
+    
+    // Get unique cleaner IDs across all filtered cleanings (for display)
     const allCleanerIds = new Set<string>()
     filteredCleanings.forEach(c => {
       (c.cleanerIds || []).forEach(id => allCleanerIds.add(id))
     })
     const uniqueCleaners = allCleanerIds.size
-    const avgHousesPerCleaner = uniqueCleaners > 0 ? Math.round((totalHouses / uniqueCleaners) * 10) / 10 : 0
     
-    // Best/worst day by houses per unique cleaner that day
+    // Calculate ratio PER DAY first
     const byDate: Record<string, { count: number; cleanerIds: Set<string> }> = {}
     filteredCleanings.forEach(c => {
       if (!byDate[c.date]) byDate[c.date] = { count: 0, cleanerIds: new Set() }
@@ -219,10 +223,18 @@ export default function StatsPage() {
       ;(c.cleanerIds || []).forEach(id => byDate[c.date].cleanerIds.add(id))
     })
     
-    const dailyRatios = Object.entries(byDate).map(([date, data]) => ({
-      date,
-      housesPerCleaner: data.cleanerIds.size > 0 ? Math.round((data.count / data.cleanerIds.size) * 10) / 10 : 0,
-    })).filter(d => d.housesPerCleaner > 0)
+    // Get daily ratios (only days with cleaners)
+    const dailyRatios = Object.entries(byDate)
+      .map(([date, data]) => ({
+        date,
+        housesPerCleaner: data.cleanerIds.size > 0 ? Math.round((data.count / data.cleanerIds.size) * 10) / 10 : 0,
+      }))
+      .filter(d => d.housesPerCleaner > 0)
+    
+    // AVERAGE of daily ratios (not total/total)
+    const avgHousesPerCleaner = dailyRatios.length > 0 
+      ? Math.round((dailyRatios.reduce((sum, d) => sum + d.housesPerCleaner, 0) / dailyRatios.length) * 10) / 10 
+      : 0
     
     const bestDay = dailyRatios.length > 0 ? dailyRatios.reduce((best, d) => d.housesPerCleaner > best.housesPerCleaner ? d : best) : null
     const worstDay = dailyRatios.length > 0 ? dailyRatios.reduce((worst, d) => d.housesPerCleaner < worst.housesPerCleaner ? d : worst) : null
@@ -280,31 +292,45 @@ export default function StatsPage() {
   // Day of week - FIXED: Lun=0, Mar=1, ..., Dom=6
   const dayOfWeekStats = useMemo(() => {
     const dayNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
-    const counts = [0, 0, 0, 0, 0, 0, 0]
-    const durations = [0, 0, 0, 0, 0, 0, 0]
-    const doneCounts = [0, 0, 0, 0, 0, 0, 0]
-    const cleanerCounts = [0, 0, 0, 0, 0, 0, 0]
+    
+    // First group by actual date to calculate daily ratios
+    const byDate: Record<string, { dayIdx: number; count: number; duration: number; doneCount: number; cleanerIds: Set<string> }> = {}
     
     filteredCleanings.forEach(c => {
-      // JS: getDay() returns 0=Sunday, 1=Monday...6=Saturday
       const jsDay = new Date(c.date + 'T12:00:00').getDay()
-      // Convert to our index: Mon=0, Tue=1, ..., Sat=5, Sun=6
-      const idx = jsDay === 0 ? 6 : jsDay - 1
+      const dayIdx = jsDay === 0 ? 6 : jsDay - 1
       
-      counts[idx]++
-      cleanerCounts[idx] += c.cleanerCount || 0
+      if (!byDate[c.date]) byDate[c.date] = { dayIdx, count: 0, duration: 0, doneCount: 0, cleanerIds: new Set() }
+      byDate[c.date].count++
+      ;(c.cleanerIds || []).forEach(id => byDate[c.date].cleanerIds.add(id))
       if (c.status === 'Done' && c.startTime && c.endTime) {
-        durations[idx] += (new Date(c.endTime).getTime() - new Date(c.startTime).getTime()) / 60000
-        doneCounts[idx]++
+        byDate[c.date].duration += (new Date(c.endTime).getTime() - new Date(c.startTime).getTime()) / 60000
+        byDate[c.date].doneCount++
+      }
+    })
+    
+    // Now aggregate by day of week
+    const dayData: { count: number; totalDuration: number; doneCount: number; ratios: number[] }[] = 
+      Array(7).fill(null).map(() => ({ count: 0, totalDuration: 0, doneCount: 0, ratios: [] }))
+    
+    Object.values(byDate).forEach(day => {
+      dayData[day.dayIdx].count += day.count
+      dayData[day.dayIdx].totalDuration += day.duration
+      dayData[day.dayIdx].doneCount += day.doneCount
+      // Calculate this specific date's ratio and store it
+      if (day.cleanerIds.size > 0) {
+        dayData[day.dayIdx].ratios.push(day.count / day.cleanerIds.size)
       }
     })
     
     return dayNames.map((name, i) => ({
       name,
-      count: counts[i],
-      avgDuration: doneCounts[i] > 0 ? Math.round(durations[i] / doneCounts[i]) : 0,
-      cleaners: cleanerCounts[i],
-      housesPerCleaner: cleanerCounts[i] > 0 ? Math.round((counts[i] / cleanerCounts[i]) * 10) / 10 : 0,
+      count: dayData[i].count,
+      avgDuration: dayData[i].doneCount > 0 ? Math.round(dayData[i].totalDuration / dayData[i].doneCount) : 0,
+      // Average of daily ratios for this day of week
+      housesPerCleaner: dayData[i].ratios.length > 0 
+        ? Math.round((dayData[i].ratios.reduce((a, b) => a + b, 0) / dayData[i].ratios.length) * 10) / 10 
+        : 0,
     }))
   }, [filteredCleanings])
 
