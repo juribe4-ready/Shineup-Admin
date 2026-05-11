@@ -102,17 +102,37 @@ export default function StatsPage() {
 
   const filteredIncidents = useMemo(() => {
     if (!data) return { open: 0, closed: 0 }
-    if (selectedProperty === 'all') return data.incidents
-    const prop = data.byProperty.find(p => p.propertyText === selectedProperty)
-    return { open: prop?.incidents || 0, closed: 0 }
-  }, [data, selectedProperty])
+    // Si hay filtro de fecha o propiedad, solo contar incidentes de propiedades en el rango filtrado
+    if (selectedProperty !== 'all') {
+      const prop = data.byProperty.find(p => p.propertyText === selectedProperty)
+      return { open: prop?.incidents || 0, closed: 0 }
+    }
+    if (dateFrom || dateTo) {
+      // Get unique properties from filtered cleanings
+      const filteredPropNames = [...new Set(filteredCleanings.map(c => c.propertyText))]
+      const totalIncidents = data.byProperty
+        .filter(p => filteredPropNames.includes(p.propertyText))
+        .reduce((sum, p) => sum + p.incidents, 0)
+      return { open: totalIncidents, closed: 0 }
+    }
+    return data.incidents
+  }, [data, selectedProperty, dateFrom, dateTo, filteredCleanings])
 
   const filteredInventory = useMemo(() => {
     if (!data) return { outOfStock: 0, low: 0 }
-    if (selectedProperty === 'all') return data.inventory
-    const prop = data.byProperty.find(p => p.propertyText === selectedProperty)
-    return { outOfStock: 0, low: prop?.inventory || 0 }
-  }, [data, selectedProperty])
+    if (selectedProperty !== 'all') {
+      const prop = data.byProperty.find(p => p.propertyText === selectedProperty)
+      return { outOfStock: 0, low: prop?.inventory || 0 }
+    }
+    if (dateFrom || dateTo) {
+      const filteredPropNames = [...new Set(filteredCleanings.map(c => c.propertyText))]
+      const totalInventory = data.byProperty
+        .filter(p => filteredPropNames.includes(p.propertyText))
+        .reduce((sum, p) => sum + p.inventory, 0)
+      return { outOfStock: 0, low: totalInventory }
+    }
+    return data.inventory
+  }, [data, selectedProperty, dateFrom, dateTo, filteredCleanings])
 
   const filteredMetrics = useMemo(() => {
     const cleanings = filteredCleanings
