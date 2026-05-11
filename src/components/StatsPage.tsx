@@ -27,6 +27,7 @@ interface Cleaning {
   staffListText: string
   cleanerNames?: string
   cleanerCount?: number
+  cleanerIds?: string[]
   labor: number
 }
 
@@ -94,8 +95,12 @@ export default function StatsPage() {
     if (!data) return []
     return data.cleanings.filter(c => {
       if (selectedProperty !== 'all' && c.propertyText !== selectedProperty) return false
-      if (dateFrom && c.date < dateFrom) return false
-      if (dateTo && c.date > dateTo) return false
+      // Si solo hay dateFrom sin dateTo, filtrar exactamente ese día
+      if (dateFrom && !dateTo && c.date !== dateFrom) return false
+      // Si hay ambas fechas, filtrar rango
+      if (dateFrom && dateTo) {
+        if (c.date < dateFrom || c.date > dateTo) return false
+      }
       return true
     })
   }, [data, selectedProperty, dateFrom, dateTo])
@@ -193,20 +198,37 @@ export default function StatsPage() {
       .sort((a, b) => a.date.localeCompare(b.date))
   }, [filteredCleanings])
 
-  // Productivity stats
+  // Productivity stats - using UNIQUE cleaners
   const productivityStats = useMemo(() => {
-    if (!dailyStats.length) return { avgHousesPerCleaner: 0, totalHouses: 0, totalCleanerDays: 0, bestDay: null as typeof dailyStats[0] | null, worstDay: null as typeof dailyStats[0] | null }
+    if (!filteredCleanings.length) return { avgHousesPerCleaner: 0, totalHouses: 0, uniqueCleaners: 0, bestDay: null as { date: string; housesPerCleaner: number } | null, worstDay: null as { date: string; housesPerCleaner: number } | null }
     
-    const totalHouses = dailyStats.reduce((s, d) => s + d.count, 0)
-    const totalCleaners = dailyStats.reduce((s, d) => s + d.cleaners, 0)
-    const avgHousesPerCleaner = totalCleaners > 0 ? Math.round((totalHouses / totalCleaners) * 10) / 10 : 0
+    const totalHouses = filteredCleanings.length
+    // Get unique cleaner IDs across all filtered cleanings
+    const allCleanerIds = new Set<string>()
+    filteredCleanings.forEach(c => {
+      (c.cleanerIds || []).forEach(id => allCleanerIds.add(id))
+    })
+    const uniqueCleaners = allCleanerIds.size
+    const avgHousesPerCleaner = uniqueCleaners > 0 ? Math.round((totalHouses / uniqueCleaners) * 10) / 10 : 0
     
-    const withCleaners = dailyStats.filter(d => d.cleaners > 0)
-    const bestDay = withCleaners.length > 0 ? withCleaners.reduce((best, d) => d.housesPerCleaner > best.housesPerCleaner ? d : best) : null
-    const worstDay = withCleaners.length > 0 ? withCleaners.reduce((worst, d) => d.housesPerCleaner < worst.housesPerCleaner ? d : worst) : null
+    // Best/worst day by houses per unique cleaner that day
+    const byDate: Record<string, { count: number; cleanerIds: Set<string> }> = {}
+    filteredCleanings.forEach(c => {
+      if (!byDate[c.date]) byDate[c.date] = { count: 0, cleanerIds: new Set() }
+      byDate[c.date].count++
+      ;(c.cleanerIds || []).forEach(id => byDate[c.date].cleanerIds.add(id))
+    })
     
-    return { avgHousesPerCleaner, totalHouses, totalCleanerDays: totalCleaners, bestDay, worstDay }
-  }, [dailyStats])
+    const dailyRatios = Object.entries(byDate).map(([date, data]) => ({
+      date,
+      housesPerCleaner: data.cleanerIds.size > 0 ? Math.round((data.count / data.cleanerIds.size) * 10) / 10 : 0,
+    })).filter(d => d.housesPerCleaner > 0)
+    
+    const bestDay = dailyRatios.length > 0 ? dailyRatios.reduce((best, d) => d.housesPerCleaner > best.housesPerCleaner ? d : best) : null
+    const worstDay = dailyRatios.length > 0 ? dailyRatios.reduce((worst, d) => d.housesPerCleaner < worst.housesPerCleaner ? d : worst) : null
+    
+    return { avgHousesPerCleaner, totalHouses, uniqueCleaners, bestDay, worstDay }
+  }, [filteredCleanings])
 
   // Waterfall data
   const waterfallData = useMemo(() => {
@@ -550,7 +572,7 @@ export default function StatsPage() {
           </div>
           <div className="flex justify-between text-[10px] p-2 rounded-lg" style={{ background: C.white }}>
             <span style={{ color: C.muted }}>Total casas: <b style={{ color: C.ink }}>{productivityStats.totalHouses}</b></span>
-            <span style={{ color: C.muted }}>Cleaner-días: <b style={{ color: C.ink }}>{productivityStats.totalCleanerDays}</b></span>
+            <span style={{ color: C.muted }}>Cleaners únicos: <b style={{ color: C.ink }}>{productivityStats.uniqueCleaners}</b></span>
           </div>
         </div>
 
@@ -626,37 +648,118 @@ function DailyChart({ data }: { data: { date: string; count: number; avgDuration
   const maxCount = Math.max(...data.map(d => d.count), 1)
   const maxDuration = Math.max(...data.map(d => d.avgDuration), 1)
   
+  // Chart dimensions
+  const chartWidth = 100 // percentage based
+  const chartHeight = 120
+  const paddingX = 12 // percentage
+  const usableWidth = chartWidth - paddingX * 2
+  
+  // Calculate line path points
+  const linePoints = data.map((d, i) => {
+    const x = paddingX + (i / Math.max(data.length - 1, 1)) * usableWidth
+    const y = chartHeight - (d.avgDuration / maxDuration) * chartHeight + 10
+    return { x, y }
+  })
+  
+  // Create smooth SVG path
+  const linePath = linePoints.length > 1 
+    ? `M ${linePoints[0].x} ${linePoints[0].y} ` + linePoints.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ')
+    : ''
+  
   return (
-    <div className="relative h-[180px]">
-      <div className="absolute left-0 top-0 h-[140px] flex flex-col justify-between text-[8px] font-bold" style={{ color: C.primary, width: 24 }}>
-        <span>{maxCount}</span><span>{Math.round(maxCount / 2)}</span><span>0</span>
+    <div className="relative h-[200px]">
+      {/* Y-axis labels left (count) */}
+      <div className="absolute left-0 top-2 h-[130px] flex flex-col justify-between text-[9px] font-bold" style={{ color: C.primary, width: 28 }}>
+        <span>{maxCount}</span>
+        <span>{Math.round(maxCount / 2)}</span>
+        <span>0</span>
       </div>
-      <div className="absolute right-0 top-0 h-[140px] flex flex-col justify-between text-[8px] font-bold text-right" style={{ color: C.amber, width: 40 }}>
-        <span>{Math.floor(maxDuration / 60)}h{maxDuration % 60}m</span><span>{Math.floor(maxDuration / 2 / 60)}h{Math.round(maxDuration / 2) % 60}m</span><span>0m</span>
+      
+      {/* Y-axis labels right (duration) */}
+      <div className="absolute right-0 top-2 h-[130px] flex flex-col justify-between text-[9px] font-bold text-right" style={{ color: C.amber, width: 50 }}>
+        <span>{Math.floor(maxDuration / 60)}h{String(maxDuration % 60).padStart(2, '0')}m</span>
+        <span>{Math.floor(maxDuration / 2 / 60)}h{String(Math.round(maxDuration / 2) % 60).padStart(2, '0')}m</span>
+        <span>0m</span>
       </div>
-      <div className="flex items-end justify-between gap-1 h-[140px] px-12">
-        {data.map((d, i) => {
-          const barHeight = (d.count / maxCount) * 120
-          const lineY = 140 - (d.avgDuration / maxDuration) * 120
-          const prevLineY = i > 0 ? 140 - (data[i - 1].avgDuration / maxDuration) * 120 : lineY
-          return (
-            <div key={d.date} className="flex-1 flex flex-col items-center relative" style={{ minWidth: 14 }}>
-              <div className="w-full max-w-[22px] rounded-t-lg cursor-pointer transition-all hover:scale-105" 
-                style={{ height: barHeight, background: `linear-gradient(180deg, ${C.primary}, ${C.blue})`, marginTop: 'auto', boxShadow: '0 2px 8px rgba(99,102,241,0.3)' }}
-                onMouseEnter={(e) => { const rect = e.currentTarget.getBoundingClientRect(); setTooltip({ x: rect.left + rect.width / 2, y: rect.top - 10, content: `📅 ${d.date}\n🏠 ${d.count} limpiezas\n⏱️ ${Math.floor(d.avgDuration / 60)}h${d.avgDuration % 60}m\n👤 ${d.housesPerCleaner} casas/cl` }) }}
-                onMouseLeave={() => setTooltip(null)} />
-              <div className="absolute w-3 h-3 rounded-full border-2 border-white" style={{ background: C.amber, top: lineY - 6, left: '50%', transform: 'translateX(-50%)' }} />
-              {i > 0 && <svg className="absolute pointer-events-none" style={{ top: 0, left: '-50%', width: '100%', height: 140, overflow: 'visible' }}><line x1="50%" y1={prevLineY} x2="150%" y2={lineY} stroke={C.amber} strokeWidth="3" strokeLinecap="round" /></svg>}
-            </div>
-          )
-        })}
+      
+      {/* Chart area */}
+      <div className="absolute left-8 right-14 top-2 h-[130px]">
+        {/* SVG for trend line - rendered BEHIND bars */}
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 140" preserveAspectRatio="none">
+          {linePath && (
+            <path d={linePath} fill="none" stroke={C.amber} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          )}
+        </svg>
+        
+        {/* Bars */}
+        <div className="relative flex items-end justify-between h-full gap-1 px-1">
+          {data.map((d, i) => {
+            const barHeight = (d.count / maxCount) * 120
+            const dotY = 130 - (d.avgDuration / maxDuration) * 120
+            
+            return (
+              <div key={d.date} className="flex-1 flex flex-col items-center relative" style={{ minWidth: 16, maxWidth: 40 }}>
+                {/* Bar */}
+                <div 
+                  className="w-full rounded-t-lg cursor-pointer transition-all hover:scale-105 hover:brightness-110" 
+                  style={{ 
+                    height: Math.max(barHeight, 4), 
+                    background: `linear-gradient(180deg, ${C.primary}, ${C.blue})`, 
+                    marginTop: 'auto', 
+                    boxShadow: '0 2px 8px rgba(99,102,241,0.3)',
+                  }}
+                  onMouseEnter={(e) => { 
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    setTooltip({ 
+                      x: rect.left + rect.width / 2, 
+                      y: rect.top - 10, 
+                      content: `📅 ${d.date}\n🏠 ${d.count} limpiezas\n⏱️ ${Math.floor(d.avgDuration / 60)}h${String(d.avgDuration % 60).padStart(2, '0')}m prom.\n👤 ${d.housesPerCleaner} casas/cleaner` 
+                    }) 
+                  }}
+                  onMouseLeave={() => setTooltip(null)} 
+                />
+                {/* Dot on line */}
+                <div 
+                  className="absolute w-2.5 h-2.5 rounded-full border-2 border-white z-10" 
+                  style={{ background: C.amber, top: dotY - 5, left: '50%', transform: 'translateX(-50%)', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} 
+                />
+              </div>
+            )
+          })}
+        </div>
       </div>
-      <div className="flex justify-between px-12 mt-2">
-        {data.length <= 10 ? data.map(d => <span key={d.date} className="text-[8px] font-bold" style={{ color: C.slate, flex: 1, textAlign: 'center' }}>{d.date.slice(5)}</span>) : (
-          <><span className="text-[9px] font-bold" style={{ color: C.slate }}>{data[0]?.date.slice(5)}</span><span className="text-[9px] font-bold" style={{ color: C.slate }}>{data[Math.floor(data.length / 2)]?.date.slice(5)}</span><span className="text-[9px] font-bold" style={{ color: C.slate }}>{data[data.length - 1]?.date.slice(5)}</span></>
+      
+      {/* X-axis labels */}
+      <div className="absolute left-8 right-14 bottom-0 flex justify-between px-1">
+        {data.length <= 8 ? data.map(d => (
+          <span key={d.date} className="text-[9px] font-medium flex-1 text-center" style={{ color: C.slate }}>
+            {d.date.slice(5)}
+          </span>
+        )) : (
+          <>
+            <span className="text-[9px] font-medium" style={{ color: C.slate }}>{data[0]?.date.slice(5)}</span>
+            <span className="text-[9px] font-medium" style={{ color: C.slate }}>{data[Math.floor(data.length / 2)]?.date.slice(5)}</span>
+            <span className="text-[9px] font-medium" style={{ color: C.slate }}>{data[data.length - 1]?.date.slice(5)}</span>
+          </>
         )}
       </div>
-      {tooltip && <div className="fixed z-50 px-3 py-2 rounded-xl text-[11px] font-medium whitespace-pre-line pointer-events-none" style={{ background: C.ink, color: 'white', left: tooltip.x, top: tooltip.y, transform: 'translate(-50%, -100%)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>{tooltip.content}</div>}
+      
+      {/* Tooltip */}
+      {tooltip && (
+        <div 
+          className="fixed z-50 px-3 py-2 rounded-xl text-[11px] font-medium whitespace-pre-line pointer-events-none" 
+          style={{ 
+            background: C.ink, 
+            color: 'white', 
+            left: tooltip.x, 
+            top: tooltip.y, 
+            transform: 'translate(-50%, -100%)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.4)' 
+          }}
+        >
+          {tooltip.content}
+        </div>
+      )}
     </div>
   )
 }
