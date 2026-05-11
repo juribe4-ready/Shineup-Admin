@@ -693,7 +693,7 @@ function DailyChart({ data }: { data: { date: string; count: number; avgDuration
         
         {/* Bars */}
         <div className="relative flex items-end justify-between h-full gap-1 px-1">
-          {data.map((d, i) => {
+          {data.map((d) => {
             const barHeight = (d.count / maxCount) * 120
             const dotY = 130 - (d.avgDuration / maxDuration) * 120
             
