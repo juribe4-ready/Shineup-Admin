@@ -3,7 +3,6 @@ import {
   TrendingUp, Clock, Star, Zap, AlertTriangle, AlertCircle, Package,
   ExternalLink, X, Home, Calendar, Users, BarChart3, Activity, Timer, Download
 } from 'lucide-react'
-import * as XLSX from 'xlsx'
 
 const C = {
   primary: '#6366F1', primaryLight: '#EEF2FF', primaryDark: '#4F46E5',
@@ -383,7 +382,7 @@ export default function StatsPage() {
   const totalHours = Math.round(filteredMetrics.totalDurationMin / 60 * 10) / 10
   const lateHours = Math.round(filteredMetrics.totalLateMinutes / 60 * 10) / 10
 
-  // Export to Excel
+  // Export to CSV (opens in Excel)
   const exportToExcel = () => {
     const fmt = (v?: string | null) => {
       if (!v) return ''
@@ -391,40 +390,47 @@ export default function StatsPage() {
       catch { return '' }
     }
     
+    const escape = (str: string) => {
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`
+      }
+      return str
+    }
+    
+    const headers = ['Fecha', 'Propiedad', 'Cleaners (#)', 'Cleaners (nombres)', 'Rating', 'Inicio Prog.', 'Inicio Real', 'Fin Prog.', 'Fin Real', 'Duración (min)', 'Puntualidad', 'Estado']
+    
     const rows = filteredCleanings.map(c => {
       const duration = c.startTime && c.endTime 
         ? Math.round((new Date(c.endTime).getTime() - new Date(c.startTime).getTime()) / 60000)
-        : null
+        : ''
       const isLate = c.scheduledTime && c.startTime
         ? (new Date(c.startTime).getTime() - new Date(c.scheduledTime).getTime()) > 15 * 60000
         : false
       
-      return {
-        'Fecha': c.date,
-        'Propiedad': c.propertyText,
-        'Cleaners (#)': c.cleanerCount || 0,
-        'Cleaners (nombres)': c.cleanerNames || '',
-        'Rating': c.rating || '',
-        'Inicio Prog.': fmt(c.scheduledTime),
-        'Inicio Real': fmt(c.startTime),
-        'Fin Prog.': fmt(c.estimatedEndTime),
-        'Fin Real': fmt(c.endTime),
-        'Duración (min)': duration || '',
-        'Puntualidad': isLate ? 'Tarde' : (c.startTime ? 'OK' : ''),
-        'Estado': c.status,
-      }
+      return [
+        c.date,
+        escape(c.propertyText || ''),
+        c.cleanerCount || 0,
+        escape(c.cleanerNames || ''),
+        c.rating || '',
+        fmt(c.scheduledTime),
+        fmt(c.startTime),
+        fmt(c.estimatedEndTime),
+        fmt(c.endTime),
+        duration,
+        isLate ? 'Tarde' : (c.startTime ? 'OK' : ''),
+        c.status,
+      ].join(',')
     })
     
-    const ws = XLSX.utils.json_to_sheet(rows)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Limpiezas')
-    
-    // Auto-width columns
-    const colWidths = Object.keys(rows[0] || {}).map(key => ({ wch: Math.max(key.length, 12) }))
-    ws['!cols'] = colWidths
-    
-    const fileName = `limpiezas_${dateFrom || period}_${new Date().toISOString().slice(0, 10)}.xlsx`
-    XLSX.writeFile(wb, fileName)
+    const csv = [headers.join(','), ...rows].join('\n')
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `limpiezas_${dateFrom || period}_${new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
   }
 
   if (loading && !data) {
@@ -536,7 +542,7 @@ export default function StatsPage() {
           <div className="flex items-center gap-3">
             <button onClick={exportToExcel} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all hover:scale-105"
               style={{ background: C.green, color: 'white' }}>
-              <Download className="w-3.5 h-3.5" /> Exportar Excel
+              <Download className="w-3.5 h-3.5" /> Exportar CSV
             </button>
             <p className="text-[10px]" style={{ color: C.muted }}>Clic para ver detalle</p>
           </div>
