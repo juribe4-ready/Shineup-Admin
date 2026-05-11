@@ -106,10 +106,11 @@ async function handleGetStats(req, res) {
       const staffList = staffIds.map(id => staffMap[id]).filter(Boolean);
       
       // Filter to cleaners only (role contains 'cleaner') - SAME AS getDashboard.js line 154-157
-      const cleanerCount = staffIds.filter(id => {
+      const cleanerIds = staffIds.filter(id => {
         const s = staffMap[id];
         return s && (s.role || '').toLowerCase().includes('cleaner');
-      }).length;
+      });
+      const cleanerCount = cleanerIds.length;
       
       const cleanerNames = staffList
         .filter(s => (s.role || '').toLowerCase().includes('cleaner'))
@@ -149,6 +150,7 @@ async function handleGetStats(req, res) {
         staffListText: f['staffList'] || '',
         cleanerNames,
         cleanerCount,
+        cleanerIds,
         labor,
       };
     }).sort((a, b) => b.date.localeCompare(a.date));
