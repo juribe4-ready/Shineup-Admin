@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   TrendingUp, Clock, Star, Zap, AlertTriangle, AlertCircle, Package,
-  ExternalLink, X, Home, Calendar, Users, BarChart3, Activity, Timer, Download
+  ExternalLink, X, Home, Calendar, Users, BarChart3, Activity, Timer, Download, Calculator
 } from 'lucide-react'
 
 const C = {
@@ -378,6 +378,111 @@ export default function StatsPage() {
     }).sort((a, b) => b.total - a.total)
   }, [data, filteredCleanings])
 
+  // Labor Analysis - Calculate optimal Horas-Hombre per property
+  const laborAnalysis = useMemo(() => {
+    if (!data) return []
+    
+    // Efficiency factors by team size
+    const getEfficiency = (cleaners: number) => {
+      if (cleaners <= 1) return 1.0
+      if (cleaners === 2) return 0.85
+      if (cleaners === 3) return 0.75
+      return 0.65
+    }
+    
+    // Group all cleanings by property (use all data, not filtered)
+    const byProperty: Record<string, { 
+      propertyText: string
+      laborFromAirtable: number
+      samples: { durationMin: number; cleaners: number; rating: number | null }[] 
+    }> = {}
+    
+    data.cleanings.forEach(c => {
+      if (!c.propertyText) return
+      if (!byProperty[c.propertyText]) {
+        byProperty[c.propertyText] = { 
+          propertyText: c.propertyText, 
+          laborFromAirtable: c.labor || 0,
+          samples: [] 
+        }
+      }
+      // Only use completed cleanings with times and cleaners
+      if (c.status === 'Done' && c.startTime && c.endTime && (c.cleanerCount || 0) > 0) {
+        const durationMin = (new Date(c.endTime).getTime() - new Date(c.startTime).getTime()) / 60000
+        byProperty[c.propertyText].samples.push({
+          durationMin,
+          cleaners: c.cleanerCount || 1,
+          rating: c.rating,
+        })
+      }
+    })
+    
+    return Object.values(byProperty).map(prop => {
+      const validSamples = prop.samples.filter(s => s.durationMin > 15 && s.durationMin < 480) // 15min to 8hrs
+      
+      if (validSamples.length === 0) {
+        return {
+          propertyText: prop.propertyText,
+          laborActual: prop.laborFromAirtable,
+          horasHombreSugeridas: null,
+          avgDurationMin: null,
+          avgCleaners: null,
+          samples: 0,
+          diferencia: null,
+        }
+      }
+      
+      // Calculate Horas-Hombre from each sample, then average
+      const horasHombreList = validSamples.map(s => {
+        const eff = getEfficiency(s.cleaners)
+        // HH = duration * cleaners * efficiency
+        // Adjust for rating: rating 3 means house was clean so real HH is higher
+        const ratingAdj = s.rating === 3 ? 1.1 : s.rating === 1 ? 0.9 : 1.0
+        return (s.durationMin / 60) * s.cleaners * eff * ratingAdj
+      })
+      
+      const avgHH = horasHombreList.reduce((a, b) => a + b, 0) / horasHombreList.length
+      const avgDuration = validSamples.reduce((a, s) => a + s.durationMin, 0) / validSamples.length
+      const avgCleaners = validSamples.reduce((a, s) => a + s.cleaners, 0) / validSamples.length
+      
+      const sugeridoMin = Math.round(avgHH * 60)
+      const diferencia = prop.laborFromAirtable > 0 ? sugeridoMin - prop.laborFromAirtable : null
+      
+      return {
+        propertyText: prop.propertyText,
+        laborActual: prop.laborFromAirtable,
+        horasHombreSugeridas: sugeridoMin,
+        avgDurationMin: Math.round(avgDuration),
+        avgCleaners: Math.round(avgCleaners * 10) / 10,
+        samples: validSamples.length,
+        diferencia,
+      }
+    }).filter(p => p.samples > 0).sort((a, b) => b.samples - a.samples)
+  }, [data])
+
+  // Export Labor Analysis to CSV
+  const exportLaborAnalysis = () => {
+    const headers = ['Propiedad', 'Labor Actual (min)', 'HH Sugeridas (min)', 'Diferencia', 'Duración Prom (min)', 'Cleaners Prom', 'Muestras']
+    const rows = laborAnalysis.map(p => [
+      `"${p.propertyText}"`,
+      p.laborActual || '',
+      p.horasHombreSugeridas || '',
+      p.diferencia || '',
+      p.avgDurationMin || '',
+      p.avgCleaners || '',
+      p.samples,
+    ].join(','))
+    
+    const csv = [headers.join(','), ...rows].join('\n')
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `labor_analysis_${new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   const hasFilters = selectedProperty !== 'all' || dateFrom || dateTo
   const totalHours = Math.round(filteredMetrics.totalDurationMin / 60 * 10) / 10
   const lateHours = Math.round(filteredMetrics.totalLateMinutes / 60 * 10) / 10
@@ -711,6 +816,91 @@ export default function StatsPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Labor Analysis Section */}
+      <div className="rounded-2xl overflow-hidden" style={{ background: `linear-gradient(135deg, ${C.purple}08, ${C.primary}08)`, border: `1px solid ${C.border}` }}>
+        <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: `1px solid ${C.border}` }}>
+          <div className="flex items-center gap-2">
+            <Calculator className="w-4 h-4" style={{ color: C.purple }} />
+            <p className="font-bold text-[13px]" style={{ color: C.ink }}>Análisis de Labor (Horas-Hombre)</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={exportLaborAnalysis} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all hover:scale-105"
+              style={{ background: C.purple, color: 'white' }}>
+              <Download className="w-3.5 h-3.5" /> Exportar
+            </button>
+          </div>
+        </div>
+        
+        {/* Explanation */}
+        <div className="px-4 py-3" style={{ background: C.white, borderBottom: `1px solid ${C.border}` }}>
+          <p className="text-[11px] mb-2" style={{ color: C.slate }}>
+            <b>Fórmula:</b> HH = Duración × Cleaners × Factor de Eficiencia
+          </p>
+          <div className="flex gap-4 text-[10px]" style={{ color: C.muted }}>
+            <span>1 cleaner: <b style={{ color: C.ink }}>100%</b></span>
+            <span>2 cleaners: <b style={{ color: C.ink }}>85%</b></span>
+            <span>3 cleaners: <b style={{ color: C.ink }}>75%</b></span>
+            <span>4+ cleaners: <b style={{ color: C.ink }}>65%</b></span>
+          </div>
+        </div>
+
+        <div className="max-h-[320px] overflow-y-auto">
+          <table className="w-full text-[11px]">
+            <thead className="sticky top-0" style={{ background: C.bg }}>
+              <tr>
+                <th className="px-4 py-2 text-left font-bold" style={{ color: C.muted }}>Propiedad</th>
+                <th className="px-3 py-2 text-center font-bold" style={{ color: C.muted }}>Labor Actual</th>
+                <th className="px-3 py-2 text-center font-bold" style={{ color: C.muted }}>HH Sugeridas</th>
+                <th className="px-3 py-2 text-center font-bold" style={{ color: C.muted }}>Diferencia</th>
+                <th className="px-3 py-2 text-center font-bold" style={{ color: C.muted }}>Duración Prom</th>
+                <th className="px-3 py-2 text-center font-bold" style={{ color: C.muted }}>~Cleaners</th>
+                <th className="px-3 py-2 text-center font-bold" style={{ color: C.muted }}>Muestras</th>
+              </tr>
+            </thead>
+            <tbody>
+              {laborAnalysis.map((p) => {
+                const diffColor = p.diferencia === null ? C.muted : p.diferencia > 15 ? C.red : p.diferencia < -15 ? C.green : C.slate
+                const diffBg = p.diferencia === null ? 'transparent' : p.diferencia > 15 ? '#FEE2E2' : p.diferencia < -15 ? '#DCFCE7' : 'transparent'
+                
+                return (
+                  <tr key={p.propertyText} style={{ borderBottom: `1px solid ${C.border}` }}>
+                    <td className="px-4 py-2.5 font-semibold" style={{ color: C.ink }}>{p.propertyText}</td>
+                    <td className="px-3 py-2.5 text-center font-medium" style={{ color: p.laborActual ? C.slate : C.muted }}>
+                      {p.laborActual ? `${Math.floor(p.laborActual / 60)}h ${p.laborActual % 60}m` : 'Sin definir'}
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <span className="font-bold" style={{ color: C.purple }}>
+                        {p.horasHombreSugeridas ? `${Math.floor(p.horasHombreSugeridas / 60)}h ${p.horasHombreSugeridas % 60}m` : '--'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      {p.diferencia !== null ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: diffBg, color: diffColor }}>
+                          {p.diferencia > 0 ? '+' : ''}{p.diferencia}m
+                        </span>
+                      ) : <span style={{ color: C.muted }}>--</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-center font-medium" style={{ color: C.slate }}>
+                      {p.avgDurationMin ? `${Math.floor(p.avgDurationMin / 60)}h ${p.avgDurationMin % 60}m` : '--'}
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ background: C.primaryLight, color: C.primary }}>
+                        {p.avgCleaners}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-center font-medium" style={{ color: C.muted }}>{p.samples}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+        
+        {laborAnalysis.length === 0 && (
+          <p className="text-center py-8 text-[12px]" style={{ color: C.muted }}>No hay suficientes datos para analizar</p>
+        )}
       </div>
 
       {/* Modals */}
