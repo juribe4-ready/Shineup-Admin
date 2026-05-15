@@ -460,6 +460,174 @@ export default function StatsPage() {
     }).filter(p => p.samples > 0).sort((a, b) => b.samples - a.samples)
   }, [data])
 
+  // Executive Dashboard - Cascada con efectos desglosados
+  const executiveDashboard = useMemo(() => {
+    const done = filteredCleanings.filter(c => c.status === 'Done')
+    if (done.length === 0) return null
+    
+    // Efficiency factors
+    const getEfficiency = (cleaners: number) => {
+      if (cleaners <= 1) return 1.0
+      if (cleaners === 2) return 0.85
+      if (cleaners === 3) return 0.75
+      return 0.65
+    }
+    
+    // --- VOLUMEN ---
+    const uniqueProperties = [...new Set(filteredCleanings.map(c => c.propertyText))]
+    const casasActivas = uniqueProperties.length
+    const totalLimpiezas = filteredCleanings.length
+    const limpiezasPorCasa = casasActivas > 0 ? Math.round((totalLimpiezas / casasActivas) * 10) / 10 : 0
+    
+    // Target/Programado (basado en histórico o configuración)
+    // Usamos el Labor de cada propiedad como base para las HH programadas
+    let hhProgramadas = 0
+    let hhBase = 0
+    
+    done.forEach(c => {
+      const cleaners = c.cleanerCount || 1
+      const eff = getEfficiency(cleaners)
+      // HH programadas = Labor / 60 (convertir min a hrs)
+      if (c.labor > 0) {
+        hhProgramadas += c.labor / 60
+      }
+      // HH base sin ajustes = duración * cleaners * eficiencia
+      if (c.startTime && c.endTime) {
+        const durationHrs = (new Date(c.endTime).getTime() - new Date(c.startTime).getTime()) / 3600000
+        hhBase += durationHrs * cleaners * eff
+      }
+    })
+    
+    // Si no hay Labor definido, estimar programado como 90% del real
+    if (hhProgramadas === 0) {
+      hhProgramadas = hhBase * 0.9
+    }
+    
+    // --- HH REALES ---
+    let hhReales = 0
+    done.forEach(c => {
+      if (c.startTime && c.endTime) {
+        const durationHrs = (new Date(c.endTime).getTime() - new Date(c.startTime).getTime()) / 3600000
+        const cleaners = c.cleanerCount || 1
+        const eff = getEfficiency(cleaners)
+        hhReales += durationHrs * cleaners * eff
+      }
+    })
+    
+    // --- EFECTO VOLUMEN (desglosado) ---
+    // Comparar casas y limpiezas/casa vs período anterior o target
+    // Por ahora usamos como target: 1.5 limpiezas/casa
+    const targetLimpPorCasa = 1.5
+    const targetCasas = casasActivas // Asumimos que las casas actuales son el target
+    const targetLimpiezas = targetCasas * targetLimpPorCasa
+    
+    const deltaLimpiezas = totalLimpiezas - targetLimpiezas
+    const hhPorLimpieza = hhProgramadas / Math.max(done.length, 1)
+    const efectoVolumen = deltaLimpiezas * hhPorLimpieza
+    
+    // Desglose: efecto casas vs efecto frecuencia
+    const efectoCasas = 0 // Si las casas son iguales al target
+    const efectoFrecuencia = (limpiezasPorCasa - targetLimpPorCasa) * casasActivas * hhPorLimpieza
+    
+    // --- EFECTO RATING ---
+    // Rating 2 = neutro, Rating 3 = -5min/limpieza, Rating 1 = +10min/limpieza
+    let efectoRatingMin = 0
+    done.forEach(c => {
+      if (c.rating === 3) efectoRatingMin -= 5
+      else if (c.rating === 1) efectoRatingMin += 10
+    })
+    const efectoRating = efectoRatingMin / 60 // convertir a horas
+    
+    const ratingsValidos = done.filter(c => c.rating).map(c => c.rating!)
+    const ratingPromedio = ratingsValidos.length > 0 
+      ? Math.round((ratingsValidos.reduce((a, b) => a + b, 0) / ratingsValidos.length) * 10) / 10 
+      : 2.0
+    
+    // --- EFECTO RETRASOS ---
+    // Tiempo perdido por llegadas tarde
+    let minutosRetraso = 0
+    done.forEach(c => {
+      if (c.scheduledTime && c.startTime) {
+        const diff = (new Date(c.startTime).getTime() - new Date(c.scheduledTime).getTime()) / 60000
+        if (diff > 15) minutosRetraso += diff - 15 // Solo el exceso sobre 15 min
+      }
+    })
+    const efectoRetrasos = minutosRetraso / 60
+    
+    const conTiempos = done.filter(c => c.scheduledTime && c.startTime)
+    const aTiempo = conTiempos.filter(c => {
+      const diff = Math.abs(new Date(c.startTime!).getTime() - new Date(c.scheduledTime!).getTime())
+      return diff <= 15 * 60000
+    })
+    const onTimeRate = conTiempos.length > 0 ? Math.round((aTiempo.length / conTiempos.length) * 100) : 0
+    
+    // --- EFECTO EQUIPO (coordinación) ---
+    // Diferencia entre HH teóricas y reales no explicada por rating/retrasos
+    const hhTeoricasSinAjustes = hhProgramadas + efectoVolumen
+    const efectoEquipo = hhReales - hhTeoricasSinAjustes - efectoRating - efectoRetrasos
+    
+    // --- CLEANERS ---
+    const allCleanerIds = new Set<string>()
+    filteredCleanings.forEach(c => {
+      (c.cleanerIds || []).forEach(id => allCleanerIds.add(id))
+    })
+    const cleanersUnicos = allCleanerIds.size
+    
+    // North Star: HH por Casa
+    const hhPorCasa = casasActivas > 0 ? Math.round((hhReales / casasActivas) * 10) / 10 : 0
+    
+    // Casas por cleaner por día (promedio de ratios diarios)
+    const byDate: Record<string, { count: number; cleanerIds: Set<string> }> = {}
+    filteredCleanings.forEach(c => {
+      if (!byDate[c.date]) byDate[c.date] = { count: 0, cleanerIds: new Set() }
+      byDate[c.date].count++
+      ;(c.cleanerIds || []).forEach(id => byDate[c.date].cleanerIds.add(id))
+    })
+    const dailyRatios = Object.values(byDate)
+      .map(d => d.cleanerIds.size > 0 ? d.count / d.cleanerIds.size : 0)
+      .filter(r => r > 0)
+    const casasPorCleanerDia = dailyRatios.length > 0 
+      ? Math.round((dailyRatios.reduce((a, b) => a + b, 0) / dailyRatios.length) * 10) / 10 
+      : 0
+    
+    return {
+      // North Star
+      hhPorCasa,
+      targetHHPorCasa: 2.5,
+      
+      // Volumen
+      casasActivas,
+      totalLimpiezas,
+      limpiezasPorCasa,
+      targetLimpPorCasa,
+      
+      // Cascada
+      hhProgramadas: Math.round(hhProgramadas * 10) / 10,
+      efectoCasas: Math.round(efectoCasas * 10) / 10,
+      efectoFrecuencia: Math.round(efectoFrecuencia * 10) / 10,
+      efectoVolumen: Math.round(efectoVolumen * 10) / 10,
+      efectoRating: Math.round(efectoRating * 10) / 10,
+      efectoRetrasos: Math.round(efectoRetrasos * 10) / 10,
+      efectoEquipo: Math.round(efectoEquipo * 10) / 10,
+      hhReales: Math.round(hhReales * 10) / 10,
+      
+      // Drivers
+      ratingPromedio,
+      ratingTarget: 2.0,
+      onTimeRate,
+      onTimeTarget: 85,
+      cleanersUnicos,
+      casasPorCleanerDia,
+      
+      // % cambios
+      pctVolumen: hhProgramadas > 0 ? Math.round((efectoVolumen / hhProgramadas) * 100) : 0,
+      pctRating: hhProgramadas > 0 ? Math.round((efectoRating / hhProgramadas) * 100) : 0,
+      pctRetrasos: hhProgramadas > 0 ? Math.round((efectoRetrasos / hhProgramadas) * 100) : 0,
+      pctEquipo: hhProgramadas > 0 ? Math.round((efectoEquipo / hhProgramadas) * 100) : 0,
+      pctTotal: hhProgramadas > 0 ? Math.round(((hhReales - hhProgramadas) / hhProgramadas) * 100) : 0,
+    }
+  }, [filteredCleanings])
+
   // Export Labor Analysis to CSV
   const exportLaborAnalysis = () => {
     const headers = ['Propiedad', 'Labor Actual (min)', 'HH Sugeridas (min)', 'Diferencia', 'Duración Prom (min)', 'Cleaners Prom', 'Muestras']
@@ -589,6 +757,152 @@ export default function StatsPage() {
           )}
         </div>
       </div>
+
+      {/* Executive Dashboard */}
+      {executiveDashboard && (
+        <div className="rounded-2xl overflow-hidden" style={{ background: `linear-gradient(135deg, ${C.ink}05, ${C.primary}08)`, border: `2px solid ${C.primary}30` }}>
+          {/* North Star */}
+          <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: `1px solid ${C.border}` }}>
+            <div className="flex items-center gap-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>North Star Metric</p>
+                <p className="text-[11px] font-medium" style={{ color: C.slate }}>HH por Casa (Target: {executiveDashboard.targetHHPorCasa})</p>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[36px] font-black" style={{ color: executiveDashboard.hhPorCasa <= executiveDashboard.targetHHPorCasa ? C.green : C.amber }}>
+                  {executiveDashboard.hhPorCasa}
+                </span>
+                <span className="text-[14px] font-bold" style={{ color: C.muted }}>HH</span>
+              </div>
+            </div>
+            <div className="flex gap-6">
+              <div className="text-center">
+                <p className="text-[20px] font-black" style={{ color: C.primary }}>{executiveDashboard.casasActivas}</p>
+                <p className="text-[9px] font-medium" style={{ color: C.muted }}>Casas</p>
+              </div>
+              <div className="text-center">
+                <p className="text-[20px] font-black" style={{ color: C.blue }}>{executiveDashboard.totalLimpiezas}</p>
+                <p className="text-[9px] font-medium" style={{ color: C.muted }}>Limpiezas</p>
+              </div>
+              <div className="text-center">
+                <p className="text-[20px] font-black" style={{ color: C.teal }}>{executiveDashboard.cleanersUnicos}</p>
+                <p className="text-[9px] font-medium" style={{ color: C.muted }}>Cleaners</p>
+              </div>
+            </div>
+          </div>
+
+          {/* 4 Pilares */}
+          <div className="grid grid-cols-4 gap-px" style={{ background: C.border }}>
+            <div className="p-3 text-center" style={{ background: C.white }}>
+              <p className="text-[9px] font-bold uppercase" style={{ color: C.muted }}>📈 Volumen</p>
+              <p className="text-[18px] font-black" style={{ color: C.primary }}>{executiveDashboard.limpiezasPorCasa}</p>
+              <p className="text-[9px]" style={{ color: C.slate }}>limp/casa</p>
+              <p className="text-[8px] mt-1" style={{ color: executiveDashboard.limpiezasPorCasa >= executiveDashboard.targetLimpPorCasa ? C.green : C.amber }}>
+                Target: {executiveDashboard.targetLimpPorCasa}
+              </p>
+            </div>
+            <div className="p-3 text-center" style={{ background: C.white }}>
+              <p className="text-[9px] font-bold uppercase" style={{ color: C.muted }}>⚡ Productividad</p>
+              <p className="text-[18px] font-black" style={{ color: C.teal }}>{executiveDashboard.casasPorCleanerDia}</p>
+              <p className="text-[9px]" style={{ color: C.slate }}>casas/cl/día</p>
+              <p className="text-[8px] mt-1" style={{ color: executiveDashboard.casasPorCleanerDia >= 1.5 ? C.green : C.amber }}>
+                Target: 1.5
+              </p>
+            </div>
+            <div className="p-3 text-center" style={{ background: C.white }}>
+              <p className="text-[9px] font-bold uppercase" style={{ color: C.muted }}>✅ Calidad</p>
+              <p className="text-[18px] font-black" style={{ color: executiveDashboard.ratingPromedio >= 2.5 ? C.green : C.amber }}>{executiveDashboard.ratingPromedio}</p>
+              <p className="text-[9px]" style={{ color: C.slate }}>rating prom</p>
+              <p className="text-[8px] mt-1" style={{ color: C.muted }}>
+                Prog: {executiveDashboard.ratingTarget}
+              </p>
+            </div>
+            <div className="p-3 text-center" style={{ background: C.white }}>
+              <p className="text-[9px] font-bold uppercase" style={{ color: C.muted }}>⏱️ Puntualidad</p>
+              <p className="text-[18px] font-black" style={{ color: executiveDashboard.onTimeRate >= executiveDashboard.onTimeTarget ? C.green : C.red }}>{executiveDashboard.onTimeRate}%</p>
+              <p className="text-[9px]" style={{ color: C.slate }}>on-time</p>
+              <p className="text-[8px] mt-1" style={{ color: C.muted }}>
+                Target: {executiveDashboard.onTimeTarget}%
+              </p>
+            </div>
+          </div>
+
+          {/* Cascada */}
+          <div className="p-4" style={{ background: C.white }}>
+            <p className="text-[11px] font-bold mb-3" style={{ color: C.ink }}>Cascada de Horas-Hombre</p>
+            <div className="flex items-end justify-between gap-2 h-[160px]">
+              {/* Programado */}
+              <CascadeBar 
+                label="Programado" 
+                value={executiveDashboard.hhProgramadas} 
+                color={C.blue} 
+                isTotal 
+                maxVal={Math.max(executiveDashboard.hhProgramadas, executiveDashboard.hhReales) * 1.2}
+              />
+              
+              {/* Efecto Casas */}
+              <CascadeBar 
+                label="Δ Casas" 
+                value={executiveDashboard.efectoCasas} 
+                color={executiveDashboard.efectoCasas >= 0 ? C.amber : C.green}
+                pct={executiveDashboard.efectoCasas !== 0 ? `${executiveDashboard.efectoCasas > 0 ? '+' : ''}${Math.round((executiveDashboard.efectoCasas / executiveDashboard.hhProgramadas) * 100)}%` : undefined}
+                driver={`${executiveDashboard.casasActivas} casas`}
+                maxVal={Math.max(executiveDashboard.hhProgramadas, executiveDashboard.hhReales) * 1.2}
+              />
+              
+              {/* Efecto Frecuencia */}
+              <CascadeBar 
+                label="Δ Frecuencia" 
+                value={executiveDashboard.efectoFrecuencia} 
+                color={executiveDashboard.efectoFrecuencia >= 0 ? C.amber : C.green}
+                pct={executiveDashboard.efectoFrecuencia !== 0 ? `${executiveDashboard.efectoFrecuencia > 0 ? '+' : ''}${Math.round((executiveDashboard.efectoFrecuencia / executiveDashboard.hhProgramadas) * 100)}%` : undefined}
+                driver={`${executiveDashboard.limpiezasPorCasa} vs ${executiveDashboard.targetLimpPorCasa} limp/casa`}
+                maxVal={Math.max(executiveDashboard.hhProgramadas, executiveDashboard.hhReales) * 1.2}
+              />
+              
+              {/* Efecto Rating */}
+              <CascadeBar 
+                label="Δ Rating" 
+                value={executiveDashboard.efectoRating} 
+                color={executiveDashboard.efectoRating >= 0 ? C.red : C.green}
+                pct={`${executiveDashboard.pctRating > 0 ? '+' : ''}${executiveDashboard.pctRating}%`}
+                driver={`${executiveDashboard.ratingPromedio} vs ${executiveDashboard.ratingTarget}`}
+                maxVal={Math.max(executiveDashboard.hhProgramadas, executiveDashboard.hhReales) * 1.2}
+              />
+              
+              {/* Efecto Retrasos */}
+              <CascadeBar 
+                label="Δ Retrasos" 
+                value={executiveDashboard.efectoRetrasos} 
+                color={executiveDashboard.efectoRetrasos >= 0 ? C.red : C.green}
+                pct={`${executiveDashboard.pctRetrasos > 0 ? '+' : ''}${executiveDashboard.pctRetrasos}%`}
+                driver={`${executiveDashboard.onTimeRate}% on-time`}
+                maxVal={Math.max(executiveDashboard.hhProgramadas, executiveDashboard.hhReales) * 1.2}
+              />
+              
+              {/* Efecto Equipo */}
+              <CascadeBar 
+                label="Δ Equipo" 
+                value={executiveDashboard.efectoEquipo} 
+                color={executiveDashboard.efectoEquipo >= 0 ? C.amber : C.green}
+                pct={`${executiveDashboard.pctEquipo > 0 ? '+' : ''}${executiveDashboard.pctEquipo}%`}
+                driver="coordinación"
+                maxVal={Math.max(executiveDashboard.hhProgramadas, executiveDashboard.hhReales) * 1.2}
+              />
+              
+              {/* Real */}
+              <CascadeBar 
+                label="Real" 
+                value={executiveDashboard.hhReales} 
+                color={C.primary} 
+                isTotal
+                pct={`${executiveDashboard.pctTotal > 0 ? '+' : ''}${executiveDashboard.pctTotal}%`}
+                maxVal={Math.max(executiveDashboard.hhProgramadas, executiveDashboard.hhReales) * 1.2}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Row 1: Completadas, Duración Total, Retrasos, Incidentes, Rupturas */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -1240,4 +1554,42 @@ function CleaningDetailModal({ cleaning, onClose }: { cleaning: Cleaning; onClos
 
 function InfoBox({ label, value, color }: { label: string; value: string; color?: string }) {
   return <div className="p-2 rounded-xl" style={{ background: C.bg }}><p className="text-[8px] font-bold uppercase tracking-wide mb-0.5" style={{ color: C.muted }}>{label}</p><p className="font-bold text-[12px]" style={{ color: color || C.ink }}>{value}</p></div>
+}
+
+function CascadeBar({ label, value, color, isTotal, pct, driver, maxVal }: { 
+  label: string
+  value: number
+  color: string
+  isTotal?: boolean
+  pct?: string
+  driver?: string
+  maxVal: number
+}) {
+  const absValue = Math.abs(value)
+  const heightPct = isTotal ? (value / maxVal) * 100 : (absValue / maxVal) * 100 * 3 // Scale effects 3x
+  const minHeight = isTotal ? 40 : 20
+  
+  return (
+    <div className="flex-1 flex flex-col items-center">
+      <div className="relative w-full flex justify-center" style={{ height: 100 }}>
+        <div 
+          className="w-12 rounded-lg relative overflow-hidden transition-all"
+          style={{ 
+            height: Math.max(heightPct, minHeight),
+            background: `linear-gradient(180deg, ${color}, ${color}CC)`,
+            position: 'absolute',
+            bottom: isTotal ? 0 : 30,
+            boxShadow: `0 2px 8px ${color}40`,
+          }}
+        >
+          <span className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-white drop-shadow">
+            {isTotal ? `${value}h` : `${value >= 0 ? '+' : ''}${value}h`}
+          </span>
+        </div>
+      </div>
+      <p className="text-[9px] font-bold mt-1 text-center" style={{ color: C.ink }}>{label}</p>
+      {pct && <p className="text-[8px] font-bold" style={{ color: value >= 0 ? (isTotal ? C.muted : C.red) : C.green }}>{pct}</p>}
+      {driver && <p className="text-[7px] text-center mt-0.5 max-w-[60px]" style={{ color: C.muted }}>{driver}</p>}
+    </div>
+  )
 }
