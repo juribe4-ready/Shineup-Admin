@@ -651,6 +651,107 @@ export default function StatsPage() {
     URL.revokeObjectURL(url)
   }
 
+  // Export Dashboard Data - muestra toda la data usada para calcular el dashboard
+  const exportDashboardData = () => {
+    const getEfficiency = (cleaners: number) => {
+      if (cleaners <= 1) return 1.0
+      if (cleaners === 2) return 0.85
+      if (cleaners === 3) return 0.75
+      return 0.65
+    }
+    
+    const fmt = (v?: string | null) => {
+      if (!v) return ''
+      try { return new Date(v).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) }
+      catch { return '' }
+    }
+    
+    const escape = (str: string) => {
+      if (!str) return ''
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`
+      }
+      return str
+    }
+    
+    // Headers para el CSV detallado
+    const headers = [
+      'Fecha', 'Propiedad', 'Estado', 'Cleaners (#)', 'Cleaners (nombres)', 
+      'Eficiencia', 'Rating', 'Labor (min)', 'Inicio Prog', 'Inicio Real', 
+      'Fin Real', 'Duración (min)', 'HH Calculadas', 'Retraso (min)', 
+      'Efecto Rating (min)', 'On-Time'
+    ]
+    
+    const rows = filteredCleanings.map(c => {
+      const cleaners = c.cleanerCount || 1
+      const eff = getEfficiency(cleaners)
+      const durationMin = c.startTime && c.endTime 
+        ? Math.round((new Date(c.endTime).getTime() - new Date(c.startTime).getTime()) / 60000)
+        : 0
+      const hhCalculadas = durationMin > 0 ? Math.round((durationMin / 60) * cleaners * eff * 100) / 100 : 0
+      
+      const retrasoMin = c.scheduledTime && c.startTime
+        ? Math.max(0, Math.round((new Date(c.startTime).getTime() - new Date(c.scheduledTime).getTime()) / 60000) - 15)
+        : 0
+      
+      const efectoRatingMin = c.rating === 3 ? -5 : c.rating === 1 ? 10 : 0
+      
+      const isOnTime = c.scheduledTime && c.startTime
+        ? Math.abs(new Date(c.startTime).getTime() - new Date(c.scheduledTime).getTime()) <= 15 * 60000
+        : false
+      
+      return [
+        c.date,
+        escape(c.propertyText || ''),
+        c.status,
+        cleaners,
+        escape(c.cleanerNames || ''),
+        `${Math.round(eff * 100)}%`,
+        c.rating || '',
+        c.labor || '',
+        fmt(c.scheduledTime),
+        fmt(c.startTime),
+        fmt(c.endTime),
+        durationMin || '',
+        hhCalculadas || '',
+        retrasoMin > 0 ? retrasoMin : '',
+        efectoRatingMin !== 0 ? efectoRatingMin : '',
+        c.startTime ? (isOnTime ? 'SI' : 'NO') : '',
+      ].join(',')
+    })
+    
+    // Agregar resumen al final
+    const resumen = executiveDashboard ? [
+      '',
+      '--- RESUMEN DASHBOARD ---',
+      `Casas Activas,${executiveDashboard.casasActivas}`,
+      `Total Limpiezas,${executiveDashboard.totalLimpiezas}`,
+      `Limpiezas/Casa,${executiveDashboard.limpiezasPorCasa}`,
+      `Cleaners Únicos,${executiveDashboard.cleanersUnicos}`,
+      `HH por Casa (North Star),${executiveDashboard.hhPorCasa}`,
+      `Rating Promedio,${executiveDashboard.ratingPromedio}`,
+      `On-Time Rate,${executiveDashboard.onTimeRate}%`,
+      '',
+      '--- CASCADA ---',
+      `HH Programadas,${executiveDashboard.hhProgramadas}`,
+      `Efecto Casas,${executiveDashboard.efectoCasas}`,
+      `Efecto Frecuencia,${executiveDashboard.efectoFrecuencia}`,
+      `Efecto Rating,${executiveDashboard.efectoRating}`,
+      `Efecto Retrasos,${executiveDashboard.efectoRetrasos}`,
+      `Efecto Equipo,${executiveDashboard.efectoEquipo}`,
+      `HH Reales,${executiveDashboard.hhReales}`,
+    ] : []
+    
+    const csv = [headers.join(','), ...rows, ...resumen].join('\n')
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `dashboard_data_${dateFrom || period}_${new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   const hasFilters = selectedProperty !== 'all' || dateFrom || dateTo
   const totalHours = Math.round(filteredMetrics.totalDurationMin / 60 * 10) / 10
   const lateHours = Math.round(filteredMetrics.totalLateMinutes / 60 * 10) / 10
@@ -775,19 +876,25 @@ export default function StatsPage() {
                 <span className="text-[14px] font-bold" style={{ color: C.muted }}>HH</span>
               </div>
             </div>
-            <div className="flex gap-6">
-              <div className="text-center">
-                <p className="text-[20px] font-black" style={{ color: C.primary }}>{executiveDashboard.casasActivas}</p>
-                <p className="text-[9px] font-medium" style={{ color: C.muted }}>Casas</p>
+            <div className="flex items-center gap-4">
+              <div className="flex gap-6">
+                <div className="text-center">
+                  <p className="text-[20px] font-black" style={{ color: C.primary }}>{executiveDashboard.casasActivas}</p>
+                  <p className="text-[9px] font-medium" style={{ color: C.muted }}>Casas</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[20px] font-black" style={{ color: C.blue }}>{executiveDashboard.totalLimpiezas}</p>
+                  <p className="text-[9px] font-medium" style={{ color: C.muted }}>Limpiezas</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[20px] font-black" style={{ color: C.teal }}>{executiveDashboard.cleanersUnicos}</p>
+                  <p className="text-[9px] font-medium" style={{ color: C.muted }}>Cleaners</p>
+                </div>
               </div>
-              <div className="text-center">
-                <p className="text-[20px] font-black" style={{ color: C.blue }}>{executiveDashboard.totalLimpiezas}</p>
-                <p className="text-[9px] font-medium" style={{ color: C.muted }}>Limpiezas</p>
-              </div>
-              <div className="text-center">
-                <p className="text-[20px] font-black" style={{ color: C.teal }}>{executiveDashboard.cleanersUnicos}</p>
-                <p className="text-[9px] font-medium" style={{ color: C.muted }}>Cleaners</p>
-              </div>
+              <button onClick={exportDashboardData} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-bold transition-all hover:scale-105"
+                style={{ background: C.primary, color: 'white' }}>
+                <Download className="w-3.5 h-3.5" /> Ver Data
+              </button>
             </div>
           </div>
 
