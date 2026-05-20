@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronLeft, ChevronRight, Plus, X, Clock, AlertCircle, RefreshCw, Rocket, Calendar, Home, Users, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, X, Clock, AlertCircle, RefreshCw, Rocket, CheckCircle2, AlertTriangle } from 'lucide-react'
 
 const C = {
   primary: '#6366F1', primaryDark: '#4F46E5', primaryLight: '#EEF2FF',
