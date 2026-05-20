@@ -50,7 +50,7 @@ async function handleListAppointments(req, res) {
     const endStr = end.toISOString().split('T')[0]
 
     const formula = encodeURIComponent(
-      `AND({Requested Date & Time}>='${startStr}', {Requested Date & Time}<='${endStr}T23:59:59')`
+      `AND(IS_SAME_OR_AFTER({Requested Date & Time}, '${startStr}'), IS_SAME_OR_BEFORE({Requested Date & Time}, '${endStr}T23:59:59'))`
     )
 
     const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${formula}&fields[]=Appointment ID&fields[]=Requested Date & Time&fields[]=Estimated Duration&fields[]=Status&fields[]=Client Name&fields[]=Property Address&fields[]=Notes&fields[]=Online Platform Source&sort[0][field]=Requested Date & Time&sort[0][direction]=asc`
@@ -101,7 +101,7 @@ async function handleGetWeekSummary(req, res) {
 
     // Fetch appointments for the week (>= start AND <= end)
     const formula = encodeURIComponent(
-      `AND({Requested Date & Time}>='${startStr}', {Requested Date & Time}<='${endStr}T23:59:59')`
+      `AND(IS_SAME_OR_AFTER({Requested Date & Time}, '${startStr}'), IS_SAME_OR_BEFORE({Requested Date & Time}, '${endStr}T23:59:59'))`
     )
 
     const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${formula}&sort[0][field]=Requested Date & Time&sort[0][direction]=asc`
