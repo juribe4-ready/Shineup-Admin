@@ -48,9 +48,15 @@ async function handleListAppointments(req, res) {
 
     const startStr = start.toISOString().split('T')[0]
     const endStr = end.toISOString().split('T')[0]
+    
+    // Para incluir el primer día, usamos el día anterior a las 23:59
+    const dayBefore = new Date(start)
+    dayBefore.setDate(dayBefore.getDate() - 1)
+    const dayBeforeStr = dayBefore.toISOString().split('T')[0]
 
+    // Filter: IS_AFTER día anterior (incluye el primer día) AND IS_BEFORE fin+1
     const formula = encodeURIComponent(
-      `AND(IS_SAME_OR_AFTER({Requested Date & Time}, '${startStr}'), IS_SAME_OR_BEFORE({Requested Date & Time}, '${endStr}T23:59:59'))`
+      `AND(IS_AFTER({Requested Date & Time},'${dayBeforeStr}T23:59:59'),IS_BEFORE({Requested Date & Time},'${endStr}T23:59:59'))`
     )
 
     const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${formula}&fields[]=Appointment ID&fields[]=Requested Date & Time&fields[]=Estimated Duration&fields[]=Status&fields[]=Client Name&fields[]=Property Address&fields[]=Notes&fields[]=Online Platform Source&sort[0][field]=Requested Date & Time&sort[0][direction]=asc`
@@ -99,12 +105,10 @@ async function handleGetWeekSummary(req, res) {
     const startStr = start.toISOString().split('T')[0]
     const endStr = end.toISOString().split('T')[0]
 
-    // Fetch appointments for the week (>= start AND <= end)
-    const formula = encodeURIComponent(
-      `AND(IS_SAME_OR_AFTER({Requested Date & Time}, '${startStr}'), IS_SAME_OR_BEFORE({Requested Date & Time}, '${endStr}T23:59:59'))`
-    )
+    // DEBUG: Fetch ALL appointments first to see what's in the table
+    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?sort[0][field]=Requested Date & Time&sort[0][direction]=asc`
 
-    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${formula}&sort[0][field]=Requested Date & Time&sort[0][direction]=asc`
+    console.log('[getAppointments] Fetching all appointments to debug...')
 
     const airtableRes = await fetch(url, {
       headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
@@ -125,7 +129,7 @@ async function handleGetWeekSummary(req, res) {
       }
     }
 
-    const appointments = (data.records || []).map(r => {
+    const allAppointments = (data.records || []).map(r => {
       const dt = r.fields?.['Requested Date & Time'] || null
       const date = dt ? dt.split('T')[0] : null
       const time = dt ? dt.split('T')[1]?.substring(0, 5) : null
@@ -152,6 +156,19 @@ async function handleGetWeekSummary(req, res) {
         relatedCleaning: r.fields?.['Related Cleaning Job'] || null,
       }
     })
+
+    // DEBUG: Log all appointments found
+    console.log('[getAppointments] Total appointments in table:', allAppointments.length)
+    console.log('[getAppointments] All dates:', allAppointments.map(a => a.date))
+    console.log('[getAppointments] Looking for week:', startStr, 'to', endStr)
+
+    // Filter appointments by date range in JavaScript
+    const appointments = allAppointments.filter(a => {
+      if (!a.date) return false
+      return a.date >= startStr && a.date <= endStr
+    })
+
+    console.log('[getAppointments] Filtered appointments:', appointments.length)
 
     // Group by date for summary
     const byDate = {}
