@@ -78,6 +78,7 @@ interface StaffMember {
   name: string
   initials: string
   role: string
+  defaultAssignment: boolean
 }
 
 function getMonday(date: Date): Date {
@@ -185,16 +186,16 @@ export default function PlanningPage() {
 
   useEffect(() => { loadWeekSummary() }, [loadWeekSummary])
 
-  // Load staff for selector
+  // Load staff for selector - use Default Assignment field
   useEffect(() => {
-    fetch('/api/getStaff')
+    fetch('/api/getAppointments?action=defaultStaff')
       .then(r => r.ok ? r.json() : { staff: [] })
       .then(data => {
         const staff = data.staff || []
         setStaffList(staff)
-        // Pre-select managers/admins by default
+        // Pre-select staff with Default Assignment checked
         const defaultIds = staff
-          .filter((s: StaffMember) => s.role?.toLowerCase().includes('manager') || s.role?.toLowerCase().includes('admin'))
+          .filter((s: StaffMember) => s.defaultAssignment)
           .map((s: StaffMember) => s.id)
         setSelectedStaffIds(defaultIds)
       })
@@ -424,8 +425,8 @@ export default function PlanningPage() {
                 <p className="text-[10px] font-bold uppercase" style={{ color: C.muted }}>Casas</p>
               </div>
               <div className="p-4 text-center" style={{ background: C.white }}>
-                <p className="text-[24px] font-black" style={{ color: weekSummary.summary.projected > 0 ? C.green : C.muted }}>
-                  {weekSummary.summary.projected}
+                <p className="text-[24px] font-black" style={{ color: weekSummary.summary.confirmed > 0 ? C.green : C.muted }}>
+                  {weekSummary.summary.confirmed}
                 </p>
                 <p className="text-[10px] font-bold uppercase" style={{ color: C.muted }}>Por Lanzar</p>
               </div>
@@ -481,19 +482,19 @@ export default function PlanningPage() {
 
             {/* Launch button */}
             <div className="p-4" style={{ background: C.bg, borderTop: `1px solid ${C.border}` }}>
-              {weekSummary.summary.projected > 0 ? (
+              {weekSummary.summary.confirmed > 0 ? (
                 <button 
                   onClick={() => setShowLaunchConfirm(true)}
                   className="w-full py-4 rounded-2xl font-black text-[14px] text-white flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
                   style={{ background: `linear-gradient(135deg, ${C.teal}, ${C.green})` }}>
                   <Rocket className="w-5 h-5" />
-                  LANZAR SEMANA ({weekSummary.summary.projected} limpiezas)
+                  LANZAR SEMANA ({weekSummary.summary.confirmed} limpiezas)
                 </button>
-              ) : weekSummary.summary.converted > 0 ? (
+              ) : weekSummary.summary.scheduled > 0 ? (
                 <div className="flex items-center justify-center gap-2 py-3">
                   <CheckCircle2 className="w-5 h-5" style={{ color: C.green }} />
                   <p className="font-bold text-[13px]" style={{ color: C.green }}>
-                    Semana ya lanzada ({weekSummary.summary.converted} limpiezas creadas)
+                    Semana ya lanzada ({weekSummary.summary.scheduled} limpiezas creadas)
                   </p>
                 </div>
               ) : (
@@ -825,20 +826,20 @@ export default function PlanningPage() {
                 <div className="flex flex-wrap gap-2">
                   {staffList.map(staff => {
                     const isSelected = selectedStaffIds.includes(staff.id)
-                    const isManager = staff.role?.toLowerCase().includes('manager') || staff.role?.toLowerCase().includes('admin')
+                    const isDefault = staff.defaultAssignment
                     return (
                       <button
                         key={staff.id}
                         onClick={() => toggleStaff(staff.id)}
                         className="px-3 py-1.5 rounded-full text-[11px] font-bold transition-all"
                         style={{
-                          background: isSelected ? (isManager ? C.teal : C.primary) : C.bg,
+                          background: isSelected ? (isDefault ? C.teal : C.primary) : C.bg,
                           color: isSelected ? 'white' : C.slate,
                           border: `1.5px solid ${isSelected ? 'transparent' : C.border}`
                         }}
                       >
                         {staff.initials || staff.name?.substring(0, 2).toUpperCase()}
-                        {isManager && ' ★'}
+                        {isDefault && ' ★'}
                       </button>
                     )
                   })}
