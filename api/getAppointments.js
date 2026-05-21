@@ -105,7 +105,7 @@ async function handleGetWeekSummary(req, res) {
     const startStr = start.toISOString().split('T')[0]
     const endStr = end.toISOString().split('T')[0]
 
-    // DEBUG: Fetch ALL appointments without any filter
+    // Fetch ALL appointments without any filter
     const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}`
 
     const airtableRes = await fetch(url, {
@@ -123,11 +123,6 @@ async function handleGetWeekSummary(req, res) {
         allFields: data.records?.[0]?.fields ? Object.keys(data.records[0].fields) : [],
       })
     }
-
-    const airtableRes = await fetch(url, {
-      headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
-    })
-    const data = await airtableRes.json()
 
     // Fetch properties to get Labor
     const propsRes = await fetch(
@@ -171,18 +166,11 @@ async function handleGetWeekSummary(req, res) {
       }
     })
 
-    // DEBUG: Log all appointments found
-    console.log('[getAppointments] Total appointments in table:', allAppointments.length)
-    console.log('[getAppointments] All dates:', allAppointments.map(a => a.date))
-    console.log('[getAppointments] Looking for week:', startStr, 'to', endStr)
-
     // Filter appointments by date range in JavaScript
     const appointments = allAppointments.filter(a => {
       if (!a.date) return false
       return a.date >= startStr && a.date <= endStr
     })
-
-    console.log('[getAppointments] Filtered appointments:', appointments.length)
 
     // Group by date for summary
     const byDate = {}
