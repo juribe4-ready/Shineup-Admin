@@ -330,7 +330,6 @@ async function handleLaunchWeek(req, res) {
         'Status': 'Scheduled',  // Scheduled = sin squad completo aún
         'Rating': defaultRating === 3 ? 'Bueno' : defaultRating === 1 ? 'Malo' : 'Normal',
         'Assigned Staff': assignedStaffIds.length > 0 ? assignedStaffIds : [],
-        'Notes': f['Notes'] || '',
       }
 
       // Add Cleaning Type if exists
