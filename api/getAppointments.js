@@ -95,7 +95,7 @@ async function handleListAppointments(req, res) {
 // Week summary for launcher UI
 async function handleGetWeekSummary(req, res) {
   try {
-    const { weekStart } = req.query
+    const { weekStart, debug } = req.query
     if (!weekStart) return res.status(400).json({ error: 'weekStart requerido' })
 
     const start = new Date(weekStart)
@@ -105,10 +105,24 @@ async function handleGetWeekSummary(req, res) {
     const startStr = start.toISOString().split('T')[0]
     const endStr = end.toISOString().split('T')[0]
 
-    // DEBUG: Fetch ALL appointments first to see what's in the table
-    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?sort[0][field]=Requested Date & Time&sort[0][direction]=asc`
+    // DEBUG: Fetch ALL appointments without any filter
+    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}`
 
-    console.log('[getAppointments] Fetching all appointments to debug...')
+    const airtableRes = await fetch(url, {
+      headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
+    })
+    const data = await airtableRes.json()
+
+    // If debug mode, return raw Airtable response
+    if (debug === '1') {
+      return res.status(200).json({
+        debug: true,
+        airtableRecordsCount: data.records?.length || 0,
+        airtableError: data.error || null,
+        firstRecord: data.records?.[0] || null,
+        allFields: data.records?.[0]?.fields ? Object.keys(data.records[0].fields) : [],
+      })
+    }
 
     const airtableRes = await fetch(url, {
       headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
