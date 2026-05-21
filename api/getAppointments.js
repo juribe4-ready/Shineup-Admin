@@ -319,12 +319,11 @@ async function handleLaunchWeek(req, res) {
       const propId = Array.isArray(propIds) ? propIds[0] : propIds
       const propInfo = propsMap[propId] || {}
 
-      // Generate Cleaning ID
+      // Generate Cleaning ID for reference (not saved to Airtable if computed)
       const cleaningId = `CLN-${Date.now().toString(36).toUpperCase()}`
 
       // Create Cleaning record with status SCHEDULED
       const cleaningFields = {
-        'Cleaning ID': cleaningId,
         'Date': date,
         'Scheduled Time': dt,
         'Property': propId ? [propId] : [],
