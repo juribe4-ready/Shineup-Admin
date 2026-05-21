@@ -322,10 +322,11 @@ async function handleLaunchWeek(req, res) {
       // Generate Cleaning ID for reference (not saved to Airtable if computed)
       const cleaningId = `CLN-${Date.now().toString(36).toUpperCase()}`
 
-      // Adjust timezone: Airtable stores in UTC, but we want local time (Columbus = UTC-4 in summer)
-      // The dt from Appointments is already in the correct local time representation
-      // We need to keep it as-is without the Z suffix so Airtable interprets it as local
-      const localDt = dt.replace('Z', '')
+      // Adjust timezone: Server is UTC, Columbus is UTC-4 (EDT in summer)
+      // Add 4 hours to compensate
+      const dtDate = new Date(dt)
+      dtDate.setHours(dtDate.getHours() + 4)
+      const localDt = dtDate.toISOString().replace('Z', '')
       
       // Create Cleaning record with status SCHEDULED
       const cleaningFields = {
