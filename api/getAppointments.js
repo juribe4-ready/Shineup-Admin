@@ -2,17 +2,7 @@ const AIRTABLE_BASE = 'appBwnoxgyIXILe6M'
 const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN
 const APPOINTMENTS_TABLE = 'tblXlpg7MuYWA8Ocn'
 const CLEANINGS_TABLE = 'tblabOdNknnjrYUU1'
-
-// ============================================
-// CONFIGURACIÓN - Managers por defecto
-// Estos staff members se asignan a TODAS las limpiezas creadas
-// Para cambiar, actualiza los record IDs de Airtable aquí:
-// ============================================
-const DEFAULT_MANAGER_IDS = [
-  'rec6CVsLgwP3bZuih',  // Juan (Admin)
-  'recCsZiQWPBdiLAEp',  // Damaris (Manager)
-]
-// ============================================
+const STAFF_TABLE = 'tblgHwN1wX6u3ZtNY'
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -30,6 +20,11 @@ export default async function handler(req, res) {
   // GET with action=summary: Week summary for launcher
   if (action === 'summary') {
     return handleGetWeekSummary(req, res)
+  }
+  
+  // GET with action=defaultStaff: Get staff with Default Assignment checked
+  if (action === 'defaultStaff') {
+    return handleGetDefaultStaff(req, res)
   }
 
   // GET default: List appointments (original behavior)
@@ -191,9 +186,8 @@ async function handleGetWeekSummary(req, res) {
       }
     }
 
-    let totalProjected = 0
+    let totalScheduled = 0
     let totalConfirmed = 0
-    let totalConverted = 0
     let totalHH = 0
     const uniqueProperties = new Set()
 
@@ -206,9 +200,8 @@ async function handleGetWeekSummary(req, res) {
         if (a.propertyId) uniqueProperties.add(a.propertyId)
         totalHH += (a.labor || 0) / 60
         
-        if (a.status === 'Projected') totalProjected++
+        if (a.status === 'Scheduled') totalScheduled++
         else if (a.status === 'Confirmed') totalConfirmed++
-        else if (a.status === 'Converted') totalConverted++
       }
     })
 
@@ -251,9 +244,8 @@ async function handleGetWeekSummary(req, res) {
       weekEnd: endStr,
       summary: {
         total: appointments.length,
-        projected: totalProjected,
+        scheduled: totalScheduled,
         confirmed: totalConfirmed,
-        converted: totalConverted,
         totalHH: Math.round(totalHH * 10) / 10,
         uniqueProperties: uniqueProperties.size,
       },
@@ -277,12 +269,7 @@ async function handleLaunchWeek(req, res) {
       return res.status(400).json({ error: 'appointmentIds requerido (array)' })
     }
 
-    // Use provided staff IDs or fall back to configured defaults
-    const staffToAssign = assignedStaffIds.length > 0 
-      ? assignedStaffIds 
-      : DEFAULT_MANAGER_IDS
-
-    // Fetch the appointments to convert
+    // Fetch the appointments to launch
     const formula = encodeURIComponent(
       `OR(${appointmentIds.map(id => `RECORD_ID()='${id}'`).join(',')})`
     )
@@ -315,9 +302,9 @@ async function handleLaunchWeek(req, res) {
     for (const appt of appointments) {
       const f = appt.fields
       
-      // Skip if already converted
-      if (f['Status'] === 'Converted' || f['Related Cleaning Job']) {
-        errors.push({ id: appt.id, error: 'Ya convertido' })
+      // Skip if already scheduled (has Related Cleaning Job)
+      if (f['Status'] === 'Scheduled' || f['Related Cleaning Job']) {
+        errors.push({ id: appt.id, error: 'Ya está scheduled' })
         continue
       }
 
@@ -335,15 +322,15 @@ async function handleLaunchWeek(req, res) {
       // Generate Cleaning ID
       const cleaningId = `CLN-${Date.now().toString(36).toUpperCase()}`
 
-      // Create Cleaning record
+      // Create Cleaning record with status SCHEDULED
       const cleaningFields = {
         'Cleaning ID': cleaningId,
         'Date': date,
         'Scheduled Time': dt,
         'Property': propId ? [propId] : [],
-        'Status': 'Programmed',
+        'Status': 'Scheduled',  // Scheduled = sin squad completo aún
         'Rating': defaultRating === 3 ? 'Bueno' : defaultRating === 1 ? 'Malo' : 'Normal',
-        'Assigned Staff': staffToAssign.length > 0 ? staffToAssign : [],
+        'Assigned Staff': assignedStaffIds.length > 0 ? assignedStaffIds : [],
         'Notes': f['Notes'] || '',
       }
 
@@ -373,7 +360,7 @@ async function handleLaunchWeek(req, res) {
 
         const newCleaning = await createRes.json()
 
-        // Update Appointment: Status = Converted, link to Cleaning
+        // Update Appointment: Status = Scheduled, link to Cleaning
         await fetch(
           `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}/${appt.id}`,
           {
@@ -384,7 +371,7 @@ async function handleLaunchWeek(req, res) {
             },
             body: JSON.stringify({
               fields: {
-                'Status': 'Converted',
+                'Status': 'Scheduled',
                 'Related Cleaning Job': [newCleaning.id]
               }
             })
@@ -413,6 +400,31 @@ async function handleLaunchWeek(req, res) {
 
   } catch (err) {
     console.error('[getAppointments launch] Error:', err)
+    return res.status(500).json({ error: err.message })
+  }
+}
+
+// Get staff with Default Assignment checked
+async function handleGetDefaultStaff(req, res) {
+  try {
+    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${STAFF_TABLE}?fields[]=Name&fields[]=Initials&fields[]=Role&fields[]=Default Assignment`
+    
+    const airtableRes = await fetch(url, {
+      headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
+    })
+    const data = await airtableRes.json()
+    
+    const staff = (data.records || []).map(r => ({
+      id: r.id,
+      name: r.fields?.Name || '',
+      initials: r.fields?.Initials || '',
+      role: r.fields?.Role || '',
+      defaultAssignment: r.fields?.['Default Assignment'] || false,
+    }))
+    
+    return res.status(200).json({ staff })
+  } catch (err) {
+    console.error('[getAppointments defaultStaff] Error:', err)
     return res.status(500).json({ error: err.message })
   }
 }
