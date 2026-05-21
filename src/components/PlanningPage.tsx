@@ -5,7 +5,7 @@ const C = {
   primary: '#6366F1', primaryDark: '#4F46E5', primaryLight: '#EEF2FF',
   headerBg: '#1E293B', ink: '#0F172A', slate: '#475569', muted: '#94A3B8',
   border: '#E2E8F0', bg: '#F8FAFC', white: '#FFFFFF',
-  green: '#10B981', red: '#EF4444', amber: '#F59E0B', teal: '#14B8A6',
+  green: '#10B981', greenLight: '#D1FAE5', red: '#EF4444', amber: '#F59E0B', teal: '#14B8A6',
 }
 
 const DAY_NAMES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
@@ -382,29 +382,61 @@ export default function PlanningPage() {
 
       {/* ==================== WEEK LAUNCHER ==================== */}
       <div className="rounded-3xl overflow-hidden" style={{ background: `linear-gradient(135deg, ${C.teal}08, ${C.primary}08)`, border: `2px solid ${C.teal}40` }}>
-        {/* Header with tabs */}
-        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: `1px solid ${C.border}` }}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: C.teal, color: 'white' }}>
-              <Rocket className="w-5 h-5" />
+        {/* Header with tabs and actions */}
+        <div className="px-5 py-4 flex flex-col gap-4" style={{ borderBottom: `1px solid ${C.border}` }}>
+          {/* Top row: Title + Tabs + Refresh */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: C.teal, color: 'white' }}>
+                <Rocket className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-black text-[16px]" style={{ color: C.ink }}>Lanzador de Semana</h3>
+                <p className="text-[11px]" style={{ color: C.muted }}>Convierte appointments en limpiezas</p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-black text-[16px]" style={{ color: C.ink }}>Lanzador de Semana</h3>
-              <p className="text-[11px]" style={{ color: C.muted }}>Convierte appointments en limpiezas</p>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={loadWeekSummary} 
+                className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:bg-slate-100" 
+                style={{ border: `1.5px solid ${C.border}` }}
+                title="Actualizar"
+              >
+                <RefreshCw className="w-4 h-4" style={{ color: C.muted }} />
+              </button>
+              <div className="flex rounded-xl overflow-hidden" style={{ border: `1.5px solid ${C.border}` }}>
+                <button onClick={() => setSelectedWeekTab('this')}
+                  className="px-3 py-1.5 text-[11px] font-bold transition-all"
+                  style={{ background: selectedWeekTab === 'this' ? C.teal : C.white, color: selectedWeekTab === 'this' ? 'white' : C.slate }}>
+                  Esta Semana
+                </button>
+                <button onClick={() => setSelectedWeekTab('next')}
+                  className="px-3 py-1.5 text-[11px] font-bold transition-all"
+                  style={{ background: selectedWeekTab === 'next' ? C.teal : C.white, color: selectedWeekTab === 'next' ? 'white' : C.slate }}>
+                  Próxima Semana
+                </button>
+              </div>
             </div>
           </div>
-          <div className="flex rounded-xl overflow-hidden" style={{ border: `1.5px solid ${C.border}` }}>
-            <button onClick={() => setSelectedWeekTab('this')}
-              className="px-3 py-1.5 text-[11px] font-bold transition-all"
-              style={{ background: selectedWeekTab === 'this' ? C.teal : C.white, color: selectedWeekTab === 'this' ? 'white' : C.slate }}>
-              Esta Semana
+          
+          {/* Launch button row */}
+          {weekSummary && weekSummary.summary.confirmed > 0 && (
+            <button 
+              onClick={() => setShowLaunchConfirm(true)}
+              className="w-full py-3 rounded-2xl font-black text-[13px] text-white flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-lg"
+              style={{ background: `linear-gradient(135deg, ${C.teal}, ${C.green})` }}>
+              <Rocket className="w-4 h-4" />
+              LANZAR SEMANA ({weekSummary.summary.confirmed} limpiezas)
             </button>
-            <button onClick={() => setSelectedWeekTab('next')}
-              className="px-3 py-1.5 text-[11px] font-bold transition-all"
-              style={{ background: selectedWeekTab === 'next' ? C.teal : C.white, color: selectedWeekTab === 'next' ? 'white' : C.slate }}>
-              Próxima Semana
-            </button>
-          </div>
+          )}
+          {weekSummary && weekSummary.summary.confirmed === 0 && weekSummary.summary.scheduled > 0 && (
+            <div className="flex items-center justify-center gap-2 py-2 px-4 rounded-2xl" style={{ background: C.greenLight }}>
+              <CheckCircle2 className="w-4 h-4" style={{ color: C.green }} />
+              <p className="font-bold text-[12px]" style={{ color: C.green }}>
+                Semana lanzada ({weekSummary.summary.scheduled} limpiezas)
+              </p>
+            </div>
+          )}
         </div>
 
         {weekSummary ? (
@@ -478,30 +510,6 @@ export default function PlanningPage() {
                 </div>
               </div>
             )}
-
-            {/* Launch button */}
-            <div className="p-4" style={{ background: C.bg, borderTop: `1px solid ${C.border}` }}>
-              {weekSummary.summary.confirmed > 0 ? (
-                <button 
-                  onClick={() => setShowLaunchConfirm(true)}
-                  className="w-full py-4 rounded-2xl font-black text-[14px] text-white flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                  style={{ background: `linear-gradient(135deg, ${C.teal}, ${C.green})` }}>
-                  <Rocket className="w-5 h-5" />
-                  LANZAR SEMANA ({weekSummary.summary.confirmed} limpiezas)
-                </button>
-              ) : weekSummary.summary.scheduled > 0 ? (
-                <div className="flex items-center justify-center gap-2 py-3">
-                  <CheckCircle2 className="w-5 h-5" style={{ color: C.green }} />
-                  <p className="font-bold text-[13px]" style={{ color: C.green }}>
-                    Semana ya lanzada ({weekSummary.summary.scheduled} limpiezas creadas)
-                  </p>
-                </div>
-              ) : (
-                <p className="text-center text-[12px] py-2" style={{ color: C.muted }}>
-                  No hay appointments para esta semana
-                </p>
-              )}
-            </div>
           </>
         ) : (
           <div className="p-8 text-center" style={{ background: C.white }}>
