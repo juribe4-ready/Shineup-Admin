@@ -327,8 +327,7 @@ async function handleLaunchWeek(req, res) {
         'Date': date,
         'Scheduled Time': dt,
         'Property': propId ? [propId] : [],
-        'Status': 'Scheduled',  // Scheduled = sin squad completo aún
-        'Rating': defaultRating === 3 ? 'Bueno' : defaultRating === 1 ? 'Malo' : 'Normal',
+        'Status': 'Scheduled',
         'Assigned Staff': assignedStaffIds.length > 0 ? assignedStaffIds : [],
       }
 
