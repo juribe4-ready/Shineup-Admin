@@ -803,7 +803,7 @@ export default function PlanningPage() {
               {/* Summary */}
               <div className="p-4 rounded-2xl" style={{ background: C.bg }}>
                 <p className="text-[12px] font-medium mb-3" style={{ color: C.slate }}>
-                  Se crearán <b>{weekSummary.summary.projected}</b> limpiezas para la semana del <b>{weekSummary.weekStart}</b> al <b>{weekSummary.weekEnd}</b>
+                  Se crearán <b>{weekSummary.summary.confirmed}</b> limpiezas para la semana del <b>{weekSummary.weekStart}</b> al <b>{weekSummary.weekEnd}</b>
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 rounded-xl" style={{ background: C.white }}>
