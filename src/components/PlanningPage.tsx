@@ -39,9 +39,8 @@ interface WeekSummary {
   weekEnd: string
   summary: {
     total: number
-    projected: number
+    scheduled: number
     confirmed: number
-    converted: number
     totalHH: number
     uniqueProperties: number
   }
