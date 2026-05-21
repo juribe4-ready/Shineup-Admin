@@ -889,7 +889,7 @@ export default function PlanningPage() {
               {/* Info box */}
               <div className="p-3 rounded-2xl" style={{ background: C.primaryLight }}>
                 <p className="text-[10px] font-medium" style={{ color: C.primary }}>
-                  ℹ️ Cada Cleaning se creará con Status: <b>Programmed</b>
+                  ℹ️ Cada Cleaning se creará con Status: <b>Scheduled</b>
                 </p>
               </div>
 
