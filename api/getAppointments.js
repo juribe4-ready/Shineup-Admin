@@ -358,7 +358,8 @@ async function handleLaunchWeek(req, res) {
 
         const newCleaning = await createRes.json()
 
-        // Update Appointment: Status = Scheduled, link to Cleaning
+        // Update Appointment: Status = Scheduled, link to Cleaning, mark as Launched
+        const today = new Date().toISOString().split('T')[0]
         await fetch(
           `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}/${appt.id}`,
           {
@@ -370,7 +371,9 @@ async function handleLaunchWeek(req, res) {
             body: JSON.stringify({
               fields: {
                 'Status': 'Scheduled',
-                'Related Cleaning Job': [newCleaning.id]
+                'Related Cleaning Job': [newCleaning.id],
+                'ProjectedDate': today,
+                'Launched': true
               }
             })
           }
