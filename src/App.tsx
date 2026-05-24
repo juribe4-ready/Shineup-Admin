@@ -47,6 +47,23 @@ export default function App() {
 
   if (!profile) return <LoginPage />
 
+  if (!profile.active) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'Poppins, sans-serif', background: '#F8FAFC', padding: 24 }}>
+        <div style={{ background: 'white', borderRadius: 24, padding: 32, maxWidth: 400, textAlign: 'center', boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
+          <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+            <span style={{ fontSize: 28 }}>🚫</span>
+          </div>
+          <h2 style={{ color: '#0F172A', fontSize: 20, fontWeight: 800, marginBottom: 8 }}>Cuenta Desactivada</h2>
+          <p style={{ color: '#64748B', fontSize: 14, marginBottom: 24 }}>Tu acceso ha sido desactivado. Contacta al administrador si crees que es un error.</p>
+          <button onClick={handleSignOut} style={{ background: '#6366F1', color: 'white', border: 'none', borderRadius: 12, padding: '12px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+            Cerrar Sesión
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <Layout profile={profile} page={page} onNavigate={setPage} onSignOut={handleSignOut}>
       {page === 'dashboard'  && <DashboardPage profile={profile} />}
