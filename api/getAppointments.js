@@ -333,13 +333,14 @@ async function handleLaunchWeek(req, res) {
       let scheduledTime
       if (propInfo.defaultStartTime) {
         // Use property's default start time (format: "HH:MM")
-        scheduledTime = `${date}T${propInfo.defaultStartTime}:00`
+        // Add timezone offset so Airtable displays correct local time
+        scheduledTime = `${date}T${propInfo.defaultStartTime}:00.000-04:00`
         console.log(`[Launch] Using property default time: ${scheduledTime}`)
       } else {
         // Adjust timezone: Server is UTC, Columbus is UTC-4 (EDT in summer)
         const dtDate = new Date(dt)
         dtDate.setHours(dtDate.getHours() + 4)
-        scheduledTime = dtDate.toISOString().replace('Z', '')
+        scheduledTime = dtDate.toISOString().replace('Z', '-04:00')
         console.log(`[Launch] Using appointment time adjusted: ${scheduledTime}`)
       }
       
