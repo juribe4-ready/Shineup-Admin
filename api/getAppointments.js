@@ -285,15 +285,20 @@ async function handleLaunchWeek(req, res) {
       return res.status(404).json({ error: 'No se encontraron appointments' })
     }
 
-    // Fetch properties for Labor
+    // Fetch properties for Labor and Default Start Time
     const propsRes = await fetch(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE}/tbl1iETmcFP460oWN?fields[]=Name&fields[]=Labor`,
+      `https://api.airtable.com/v0/${AIRTABLE_BASE}/tbl1iETmcFP460oWN?fields[]=Name&fields[]=Labor&fields[]=Default Start Time&fields[]=Default End Time`,
       { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
     )
     const propsData = await propsRes.json()
     const propsMap = {}
     for (const p of (propsData.records || [])) {
-      propsMap[p.id] = { name: p.fields?.Name || '', labor: p.fields?.Labor || 120 }
+      propsMap[p.id] = { 
+        name: p.fields?.Name || '', 
+        labor: p.fields?.Labor || 120,
+        defaultStartTime: p.fields?.['Default Start Time'] || null,
+        defaultEndTime: p.fields?.['Default End Time'] || null
+      }
     }
 
     const created = []
@@ -322,16 +327,26 @@ async function handleLaunchWeek(req, res) {
       // Generate Cleaning ID for reference (not saved to Airtable if computed)
       const cleaningId = `CLN-${Date.now().toString(36).toUpperCase()}`
 
-      // Adjust timezone: Server is UTC, Columbus is UTC-4 (EDT in summer)
-      // Add 4 hours to compensate
-      const dtDate = new Date(dt)
-      dtDate.setHours(dtDate.getHours() + 4)
-      const localDt = dtDate.toISOString().replace('Z', '')
+      // Determine Scheduled Time:
+      // 1. If Property has Default Start Time, use it
+      // 2. Otherwise, use Appointment time adjusted for timezone
+      let scheduledTime
+      if (propInfo.defaultStartTime) {
+        // Use property's default start time (format: "HH:MM")
+        scheduledTime = `${date}T${propInfo.defaultStartTime}:00`
+        console.log(`[Launch] Using property default time: ${scheduledTime}`)
+      } else {
+        // Adjust timezone: Server is UTC, Columbus is UTC-4 (EDT in summer)
+        const dtDate = new Date(dt)
+        dtDate.setHours(dtDate.getHours() + 4)
+        scheduledTime = dtDate.toISOString().replace('Z', '')
+        console.log(`[Launch] Using appointment time adjusted: ${scheduledTime}`)
+      }
       
       // Create Cleaning record with status SCHEDULED
       const cleaningFields = {
         'Date': date,
-        'Scheduled Time': localDt,
+        'Scheduled Time': scheduledTime,
         'Property': propId ? [propId] : [],
         'Status': 'Scheduled',
         'Rating': defaultRating === 3 ? '⭐⭐⭐ Bueno' : defaultRating === 1 ? '⭐ Malo' : '⭐⭐ Normal',
