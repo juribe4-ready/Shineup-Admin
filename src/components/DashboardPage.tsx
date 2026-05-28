@@ -3,8 +3,9 @@ import { Profile } from '../supabase'
 import {
   MapPin, Users, RefreshCw,
   Calendar, X, ExternalLink,
-  Clock, Filter, Zap
+  Clock, Filter, Zap, BarChart3, Activity
 } from 'lucide-react'
+import DashboardExecutive from './DashboardExecutive'
 
 // Leaflet types
 declare global {
@@ -269,6 +270,7 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
 }
 
 export default function DashboardPage({ profile: _profile }: Props) {
+  const [activeTab, setActiveTab] = useState<'executive' | 'live'>('executive')
   const [data, setData]           = useState<DashboardData | null>(null)
   const [loading, setLoading]     = useState(true)
   const [date, setDate]           = useState(today())
@@ -424,46 +426,78 @@ export default function DashboardPage({ profile: _profile }: Props) {
 
   return (
     <div className="space-y-6">
-
-      {/* Stats + Date selector + LIVE */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h2 className="font-black text-[22px]" style={{ color: C.ink }}>Dashboard</h2>
-            {date === today() && (
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded-full" style={{ background: '#DCFCE7' }}>
-                <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: C.green }} />
-                <span className="text-[10px] font-black uppercase" style={{ color: C.green }}>Live</span>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-2 mt-0.5">
-            <p className="text-[13px] font-medium" style={{ color: C.muted }}>
-              {stats.total} limpiezas · {pct}% completado
-            </p>
-            {lastUpdated && (
-              <span className="text-[11px]" style={{ color: C.muted }}>
-                · {lastUpdated.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <input type="date" value={date} onChange={e => handleDateChange(e.target.value)}
-            className="px-3 py-2 rounded-2xl text-[13px] font-medium outline-none"
-            style={{ border: `1.5px solid ${C.border}`, fontFamily: 'Poppins, sans-serif', color: C.ink }} />
-          <button onClick={() => handleDateChange(today())}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-[12px] font-bold transition-all"
-            style={{ background: date === today() ? C.primaryLight : C.bg, color: date === today() ? C.primary : C.muted, border: `1.5px solid ${C.border}` }}>
-            <Calendar className="w-3.5 h-3.5" /> Hoy
-          </button>
-          <button onClick={() => loadData(date)} disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-[12px] font-bold transition-all"
-            style={{ background: C.bg, color: C.slate, border: `1.5px solid ${C.border}` }}>
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
+      
+      {/* TABS: Ejecutivo | En Vivo */}
+      <div className="flex items-center gap-2 p-1 rounded-2xl" style={{ background: C.bg, border: `1px solid ${C.border}`, width: 'fit-content' }}>
+        <button
+          onClick={() => setActiveTab('executive')}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all"
+          style={{
+            background: activeTab === 'executive' ? C.primary : 'transparent',
+            color: activeTab === 'executive' ? 'white' : C.muted,
+          }}
+        >
+          <BarChart3 className="w-4 h-4" />
+          Ejecutivo
+        </button>
+        <button
+          onClick={() => setActiveTab('live')}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all"
+          style={{
+            background: activeTab === 'live' ? C.primary : 'transparent',
+            color: activeTab === 'live' ? 'white' : C.muted,
+          }}
+        >
+          <Activity className="w-4 h-4" />
+          En Vivo
+        </button>
       </div>
+
+      {/* TAB: Ejecutivo */}
+      {activeTab === 'executive' && <DashboardExecutive />}
+
+      {/* TAB: En Vivo (contenido original) */}
+      {activeTab === 'live' && (
+        <>
+          {/* Stats + Date selector + LIVE */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-3">
+                <h2 className="font-black text-[22px]" style={{ color: C.ink }}>Dashboard</h2>
+                {date === today() && (
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-full" style={{ background: '#DCFCE7' }}>
+                    <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: C.green }} />
+                    <span className="text-[10px] font-black uppercase" style={{ color: C.green }}>Live</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-[13px] font-medium" style={{ color: C.muted }}>
+                  {stats.total} limpiezas · {pct}% completado
+                </p>
+                {lastUpdated && (
+                  <span className="text-[11px]" style={{ color: C.muted }}>
+                    · {lastUpdated.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <input type="date" value={date} onChange={e => handleDateChange(e.target.value)}
+                className="px-3 py-2 rounded-2xl text-[13px] font-medium outline-none"
+                style={{ border: `1.5px solid ${C.border}`, fontFamily: 'Poppins, sans-serif', color: C.ink }} />
+              <button onClick={() => handleDateChange(today())}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-[12px] font-bold transition-all"
+                style={{ background: date === today() ? C.primaryLight : C.bg, color: date === today() ? C.primary : C.muted, border: `1.5px solid ${C.border}` }}>
+                <Calendar className="w-3.5 h-3.5" /> Hoy
+              </button>
+              <button onClick={() => loadData(date)} disabled={loading}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-[12px] font-bold transition-all"
+                style={{ background: C.bg, color: C.slate, border: `1.5px solid ${C.border}` }}>
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
 
       {/* Stats cards */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -804,6 +838,8 @@ export default function DashboardPage({ profile: _profile }: Props) {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   )
