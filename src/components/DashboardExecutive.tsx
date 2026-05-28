@@ -142,10 +142,6 @@ export default function DashboardExecutive() {
     return `Sem ${parseInt(weekPart)} (${year})`
   }
 
-  // Calcular escala proporcional para las barras
-  const maxHH = Math.max(data.current.hhDisponibles, data.current.hhProgramadas, data.current.hhReales)
-  const getBarWidth = (value: number) => Math.max((value / maxHH) * 100, 10)
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -171,7 +167,7 @@ export default function DashboardExecutive() {
         </p>
       </div>
 
-      {/* CASCADA PRINCIPAL */}
+      {/* CASCADA WATERFALL */}
       <div className="rounded-3xl overflow-hidden" style={{ background: C.white, border: `1px solid ${C.border}` }}>
         <div className="px-6 py-4" style={{ background: C.ink }}>
           <h3 className="text-white font-black text-sm">CASCADA: PLAN VS REAL</h3>
@@ -181,106 +177,66 @@ export default function DashboardExecutive() {
         </div>
         
         <div className="p-6">
-          {/* Barras proporcionales */}
-          <div className="space-y-6">
-            {/* HH Disponibles */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-bold" style={{ color: C.slate }}>HH Disponibles</span>
-                <span className="text-sm font-black" style={{ color: C.ink }}>{data.current.hhDisponibles} HH</span>
-              </div>
-              <div className="h-10 rounded-xl" style={{ background: C.bg, width: `${getBarWidth(data.current.hhDisponibles)}%`, border: `2px solid ${C.border}` }}>
-                <div className="h-full rounded-lg flex items-center justify-center" style={{ background: C.bg }}>
-                  <span className="text-xs font-bold" style={{ color: C.muted }}>Capacidad</span>
-                </div>
-              </div>
-            </div>
+          {/* Tabla estilo Excel */}
+          <div className="overflow-x-auto">
+            <table className="w-full" style={{ borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th className="text-left px-4 py-2 text-xs font-bold" style={{ color: C.muted, borderBottom: `2px solid ${C.border}` }}></th>
+                  <th className="text-right px-4 py-2 text-xs font-bold" style={{ color: C.muted, borderBottom: `2px solid ${C.border}` }}>HH Disp.</th>
+                  <th className="text-right px-4 py-2 text-xs font-bold" style={{ color: C.muted, borderBottom: `2px solid ${C.border}` }}>HH Prog.</th>
+                  <th className="text-right px-4 py-2 text-xs font-bold" style={{ color: C.muted, borderBottom: `2px solid ${C.border}` }}>Ef. Rapidez</th>
+                  <th className="text-right px-4 py-2 text-xs font-bold" style={{ color: C.muted, borderBottom: `2px solid ${C.border}` }}>Ef. #Casas</th>
+                  <th className="text-right px-4 py-2 text-xs font-bold" style={{ color: C.muted, borderBottom: `2px solid ${C.border}` }}>Ef. Recurr.</th>
+                  <th className="text-right px-4 py-2 text-xs font-bold" style={{ color: C.primary, borderBottom: `2px solid ${C.border}` }}>HH Reales</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* Fila de valores absolutos */}
+                <tr>
+                  <td className="px-4 py-3 text-sm font-semibold" style={{ color: C.slate }}>Valor</td>
+                  <td className="px-4 py-3 text-right text-lg font-black" style={{ color: C.ink }}>{data.current.hhDisponibles}</td>
+                  <td className="px-4 py-3 text-right text-lg font-black" style={{ color: C.primary }}>{data.cascada.hhProgramadas}</td>
+                  <td className="px-4 py-3 text-right text-lg font-black" style={{ color: data.cascada.efRapidez > 0 ? C.red : C.green }}>
+                    {data.cascada.efRapidez > 0 ? '+' : ''}{data.cascada.efRapidez}
+                  </td>
+                  <td className="px-4 py-3 text-right text-lg font-black" style={{ color: data.cascada.efCasas < 0 ? C.red : C.green }}>
+                    {data.cascada.efCasas > 0 ? '+' : ''}{data.cascada.efCasas}
+                  </td>
+                  <td className="px-4 py-3 text-right text-lg font-black" style={{ color: data.cascada.efRecurrencia < 0 ? C.red : C.green }}>
+                    {data.cascada.efRecurrencia > 0 ? '+' : ''}{data.cascada.efRecurrencia}
+                  </td>
+                  <td className="px-4 py-3 text-right text-lg font-black" style={{ color: C.green, background: C.greenLight }}>{data.cascada.hhReales}</td>
+                </tr>
+                {/* Fila de porcentajes */}
+                <tr style={{ borderTop: `1px solid ${C.border}` }}>
+                  <td className="px-4 py-2 text-xs font-semibold" style={{ color: C.muted }}>%</td>
+                  <td className="px-4 py-2 text-right text-xs font-bold" style={{ color: C.muted }}>100%</td>
+                  <td className="px-4 py-2 text-right text-xs font-bold" style={{ color: C.muted }}>
+                    {Math.round((data.cascada.hhProgramadas / data.current.hhDisponibles) * 100)}%
+                  </td>
+                  <td className="px-4 py-2 text-right text-xs font-bold" style={{ color: data.cascada.efRapidezPct > 0 ? C.red : C.green }}>
+                    {data.cascada.efRapidezPct > 0 ? '+' : ''}{data.cascada.efRapidezPct}%
+                  </td>
+                  <td className="px-4 py-2 text-right text-xs font-bold" style={{ color: data.cascada.efCasasPct < 0 ? C.red : C.green }}>
+                    {data.cascada.efCasasPct > 0 ? '+' : ''}{data.cascada.efCasasPct}%
+                  </td>
+                  <td className="px-4 py-2 text-right text-xs font-bold" style={{ color: data.cascada.efRecurrenciaPct < 0 ? C.red : C.green }}>
+                    {data.cascada.efRecurrenciaPct > 0 ? '+' : ''}{data.cascada.efRecurrenciaPct}%
+                  </td>
+                  <td className="px-4 py-2 text-right text-xs font-bold" style={{ color: (data.cascada.variacionTotalPct ?? 0) < 0 ? C.green : C.red, background: C.greenLight }}>
+                    {(data.cascada.variacionTotalPct ?? 0) > 0 ? '+' : ''}{data.cascada.variacionTotalPct}%
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
-            {/* HH Programadas */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-bold" style={{ color: C.slate }}>HH Programadas</span>
-                <span className="text-sm font-black" style={{ color: C.primary }}>{data.current.hhProgramadas} HH</span>
-              </div>
-              <div className="h-10 rounded-xl" style={{ background: C.primaryLight, width: `${getBarWidth(data.current.hhProgramadas)}%`, border: `2px solid ${C.primary}` }}>
-                <div className="h-full rounded-lg flex items-center justify-center">
-                  <span className="text-xs font-bold" style={{ color: C.primary }}>{data.current.limpiezasTotal} limpiezas × {data.current.hhPromCasa}h/casa</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Análisis de variación - CASCADA */}
-            <div className="rounded-2xl p-4 ml-8" style={{ background: C.bg, borderLeft: `4px solid ${C.primary}` }}>
-              <p className="text-xs font-black uppercase tracking-wider mb-4" style={{ color: C.muted }}>VARIACIÓN</p>
-              
-              <div className="space-y-3">
-                {/* Ef. Rapidez */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-sm ${data.cascada.efRapidez > 0 ? '' : ''}`} style={{ color: C.slate }}>
-                      {data.cascada.efRapidez > 0 ? '❌' : '✅'} Ef. Rapidez
-                    </span>
-                    <span className="text-xs px-2 py-0.5 rounded" style={{ background: data.cascada.efRapidezPct > 0 ? C.redLight : C.greenLight, color: data.cascada.efRapidezPct > 0 ? C.red : C.green }}>
-                      {data.cascada.efRapidezPct > 0 ? '+' : ''}{data.cascada.efRapidezPct}%
-                    </span>
-                  </div>
-                  <span className="text-sm font-bold" style={{ color: data.cascada.efRapidez > 0 ? C.red : C.green }}>
-                    {data.cascada.efRapidez > 0 ? '+' : ''}{data.cascada.efRapidez} HH
-                  </span>
-                </div>
-
-                {/* Ef. #Casas */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm" style={{ color: C.slate }}>
-                      {data.cascada.efCasas < 0 ? '❌' : '✅'} Ef. #Casas
-                    </span>
-                    <span className="text-xs px-2 py-0.5 rounded" style={{ background: data.cascada.efCasasPct < 0 ? C.redLight : C.greenLight, color: data.cascada.efCasasPct < 0 ? C.red : C.green }}>
-                      {data.cascada.efCasasPct > 0 ? '+' : ''}{data.cascada.efCasasPct}%
-                    </span>
-                  </div>
-                  <span className="text-sm font-bold" style={{ color: data.cascada.efCasas < 0 ? C.red : C.green }}>
-                    {data.cascada.efCasas > 0 ? '+' : ''}{data.cascada.efCasas} HH
-                  </span>
-                </div>
-
-                {/* Ef. Recurrencia */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm" style={{ color: C.slate }}>
-                      {data.cascada.efRecurrencia < 0 ? '❌' : '✅'} Ef. Recurrencia
-                    </span>
-                    <span className="text-xs px-2 py-0.5 rounded" style={{ background: data.cascada.efRecurrenciaPct < 0 ? C.redLight : C.greenLight, color: data.cascada.efRecurrenciaPct < 0 ? C.red : C.green }}>
-                      {data.cascada.efRecurrenciaPct > 0 ? '+' : ''}{data.cascada.efRecurrenciaPct}%
-                    </span>
-                  </div>
-                  <span className="text-sm font-bold" style={{ color: data.cascada.efRecurrencia < 0 ? C.red : C.green }}>
-                    {data.cascada.efRecurrencia > 0 ? '+' : ''}{data.cascada.efRecurrencia} HH
-                  </span>
-                </div>
-
-                {/* Total variación */}
-                <div className="flex items-center justify-between pt-3 border-t" style={{ borderColor: C.border }}>
-                  <span className="text-sm font-bold" style={{ color: C.ink }}>= Variación Total</span>
-                  <span className="text-sm font-black" style={{ color: data.cascada.variacionTotal < 0 ? C.green : C.red }}>
-                    {data.cascada.variacionTotal > 0 ? '+' : ''}{data.cascada.variacionTotal} HH ({data.cascada.variacionTotalPct !== null ? `${data.cascada.variacionTotalPct > 0 ? '+' : ''}${data.cascada.variacionTotalPct}%` : '--'})
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* HH Reales */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-bold" style={{ color: C.slate }}>HH Reales</span>
-                <span className="text-sm font-black" style={{ color: C.green }}>{data.current.hhReales} HH</span>
-              </div>
-              <div className="h-10 rounded-xl" style={{ background: C.greenLight, width: `${getBarWidth(data.current.hhReales)}%`, border: `2px solid ${C.green}` }}>
-                <div className="h-full rounded-lg flex items-center justify-center">
-                  <span className="text-xs font-bold" style={{ color: C.green }}>{data.current.limpiezasDone} completadas</span>
-                </div>
-              </div>
-            </div>
+          {/* Verificación de suma */}
+          <div className="mt-4 p-3 rounded-xl text-center" style={{ background: C.bg }}>
+            <p className="text-xs font-semibold" style={{ color: C.slate }}>
+              Verificación: {data.cascada.hhProgramadas} + ({data.cascada.efRapidez}) + ({data.cascada.efCasas}) + ({data.cascada.efRecurrencia}) = <span style={{ color: C.green, fontWeight: 800 }}>{data.cascada.hhReales} HH</span>
+            </p>
           </div>
         </div>
       </div>
@@ -314,7 +270,6 @@ export default function DashboardExecutive() {
           
           {/* Selectores de semana */}
           <div className="flex items-center gap-3">
-            {/* Selector semana comparación (izquierda) */}
             <div className="relative">
               <button 
                 onClick={() => setShowCompareDropdown(!showCompareDropdown)}
@@ -342,7 +297,6 @@ export default function DashboardExecutive() {
             
             <span className="text-sm font-medium" style={{ color: C.muted }}>vs</span>
             
-            {/* Selector semana actual (derecha) */}
             <div className="relative">
               <button 
                 onClick={() => setShowWeekDropdown(!showWeekDropdown)}
@@ -413,7 +367,7 @@ export default function DashboardExecutive() {
         </div>
       </div>
 
-      {/* RATIOS / ALERTAS */}
+      {/* RATIOS CLAVE */}
       <div className="rounded-3xl overflow-hidden" style={{ background: C.white, border: `1px solid ${C.border}` }}>
         <div className="px-6 py-4" style={{ borderBottom: `1px solid ${C.border}` }}>
           <h3 className="font-black text-sm" style={{ color: C.ink }}>RATIOS CLAVE</h3>
