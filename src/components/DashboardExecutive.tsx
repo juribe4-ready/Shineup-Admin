@@ -38,8 +38,12 @@ interface WeekMetrics {
 
 interface Cascada {
   hhProgramadas: number
-  efVelocidad: number
-  efVelocidadPct: number
+  efRapidez: number
+  efRapidezPct: number
+  efCasas: number
+  efCasasPct: number
+  efRecurrencia: number
+  efRecurrenciaPct: number
   hhReales: number
   variacionTotal: number
   variacionTotalPct: number | null
@@ -138,77 +142,25 @@ export default function DashboardExecutive() {
     return `Sem ${parseInt(weekPart)} (${year})`
   }
 
+  // Calcular escala proporcional para las barras
+  const maxHH = Math.max(data.current.hhDisponibles, data.current.hhProgramadas, data.current.hhReales)
+  const getBarWidth = (value: number) => Math.max((value / maxHH) * 100, 10)
+
   return (
     <div className="space-y-6">
-      {/* Header con selectores */}
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-xl font-black" style={{ color: C.ink }}>Dashboard Ejecutivo</h2>
           <p className="text-sm" style={{ color: C.muted }}>Cascada de costos y métricas semanales</p>
         </div>
-        <div className="flex items-center gap-3">
-          {/* Selector semana actual */}
-          <div className="relative">
-            <button 
-              onClick={() => setShowWeekDropdown(!showWeekDropdown)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold"
-              style={{ background: C.primary, color: 'white' }}
-            >
-              {formatWeek(selectedWeek)}
-              <ChevronDown className="w-4 h-4" />
-            </button>
-            {showWeekDropdown && (
-              <div className="absolute top-full mt-1 right-0 bg-white rounded-xl shadow-lg border z-50 max-h-64 overflow-auto" style={{ borderColor: C.border }}>
-                {data.availableWeeks.map(w => (
-                  <button 
-                    key={w} 
-                    onClick={() => handleWeekChange(w)}
-                    className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50 first:rounded-t-xl last:rounded-b-xl"
-                    style={{ color: w === selectedWeek ? C.primary : C.ink, fontWeight: w === selectedWeek ? 700 : 500 }}
-                  >
-                    {formatWeek(w)}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          
-          <span className="text-sm font-medium" style={{ color: C.muted }}>vs</span>
-          
-          {/* Selector semana comparación */}
-          <div className="relative">
-            <button 
-              onClick={() => setShowCompareDropdown(!showCompareDropdown)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold"
-              style={{ background: C.bg, color: C.slate, border: `1px solid ${C.border}` }}
-            >
-              {formatWeek(compareWeek)}
-              <ChevronDown className="w-4 h-4" />
-            </button>
-            {showCompareDropdown && (
-              <div className="absolute top-full mt-1 right-0 bg-white rounded-xl shadow-lg border z-50 max-h-64 overflow-auto" style={{ borderColor: C.border }}>
-                {data.availableWeeks.map(w => (
-                  <button 
-                    key={w} 
-                    onClick={() => handleCompareChange(w)}
-                    className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50 first:rounded-t-xl last:rounded-b-xl"
-                    style={{ color: w === compareWeek ? C.primary : C.ink, fontWeight: w === compareWeek ? 700 : 500 }}
-                  >
-                    {formatWeek(w)}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <button 
-            onClick={() => loadData(selectedWeek, compareWeek)} 
-            className="p-2 rounded-xl hover:bg-gray-100"
-            style={{ color: C.muted }}
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
+        <button 
+          onClick={() => loadData(selectedWeek, compareWeek)} 
+          className="p-2 rounded-xl hover:bg-gray-100"
+          style={{ color: C.muted }}
+        >
+          <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+        </button>
       </div>
 
       {/* Alerta HH Disponibles hardcodeado */}
@@ -229,81 +181,104 @@ export default function DashboardExecutive() {
         </div>
         
         <div className="p-6">
-          {/* Flujo visual */}
-          <div className="flex items-center justify-between gap-4 mb-8">
+          {/* Barras proporcionales */}
+          <div className="space-y-6">
             {/* HH Disponibles */}
-            <div className="text-center flex-1">
-              <div className="w-24 h-24 mx-auto rounded-2xl flex flex-col items-center justify-center" style={{ background: C.bg, border: `2px solid ${C.border}` }}>
-                <p className="text-2xl font-black" style={{ color: C.ink }}>{data.current.hhDisponibles}</p>
-                <p className="text-xs font-semibold" style={{ color: C.muted }}>HH</p>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-bold" style={{ color: C.slate }}>HH Disponibles</span>
+                <span className="text-sm font-black" style={{ color: C.ink }}>{data.current.hhDisponibles} HH</span>
               </div>
-              <p className="text-xs font-bold mt-2" style={{ color: C.slate }}>DISPONIBLES</p>
-              <p className="text-xs" style={{ color: C.muted }}>Capacidad</p>
-            </div>
-
-            {/* Flecha con % utilización */}
-            <div className="flex flex-col items-center">
-              <div className="text-xs font-bold px-2 py-1 rounded" style={{ background: C.amberLight, color: C.amber }}>
-                {Math.round((data.current.hhProgramadas / data.current.hhDisponibles) * 100)}%
+              <div className="h-10 rounded-xl" style={{ background: C.bg, width: `${getBarWidth(data.current.hhDisponibles)}%`, border: `2px solid ${C.border}` }}>
+                <div className="h-full rounded-lg flex items-center justify-center" style={{ background: C.bg }}>
+                  <span className="text-xs font-bold" style={{ color: C.muted }}>Capacidad</span>
+                </div>
               </div>
-              <div className="w-12 h-0.5 my-1" style={{ background: C.border }} />
-              <p className="text-[10px]" style={{ color: C.muted }}>Utilización</p>
             </div>
 
             {/* HH Programadas */}
-            <div className="text-center flex-1">
-              <div className="w-24 h-24 mx-auto rounded-2xl flex flex-col items-center justify-center" style={{ background: C.primaryLight, border: `2px solid ${C.primary}` }}>
-                <p className="text-2xl font-black" style={{ color: C.primary }}>{data.current.hhProgramadas}</p>
-                <p className="text-xs font-semibold" style={{ color: C.primary }}>HH</p>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-bold" style={{ color: C.slate }}>HH Programadas</span>
+                <span className="text-sm font-black" style={{ color: C.primary }}>{data.current.hhProgramadas} HH</span>
               </div>
-              <p className="text-xs font-bold mt-2" style={{ color: C.slate }}>PROGRAMADAS</p>
-              <p className="text-xs" style={{ color: C.muted }}>{data.current.limpiezasTotal} limpiezas</p>
+              <div className="h-10 rounded-xl" style={{ background: C.primaryLight, width: `${getBarWidth(data.current.hhProgramadas)}%`, border: `2px solid ${C.primary}` }}>
+                <div className="h-full rounded-lg flex items-center justify-center">
+                  <span className="text-xs font-bold" style={{ color: C.primary }}>{data.current.limpiezasTotal} limpiezas × {data.current.hhPromCasa}h/casa</span>
+                </div>
+              </div>
             </div>
 
-            {/* Flecha con % cumplimiento */}
-            <div className="flex flex-col items-center">
-              <div className="text-xs font-bold px-2 py-1 rounded" style={{ 
-                background: data.cascada.variacionTotalPct && data.cascada.variacionTotalPct < -10 ? C.redLight : 
-                           data.cascada.variacionTotalPct && data.cascada.variacionTotalPct > 10 ? C.amberLight : C.greenLight,
-                color: data.cascada.variacionTotalPct && data.cascada.variacionTotalPct < -10 ? C.red : 
-                       data.cascada.variacionTotalPct && data.cascada.variacionTotalPct > 10 ? C.amber : C.green
-              }}>
-                {data.cascada.variacionTotalPct !== null ? `${data.cascada.variacionTotalPct > 0 ? '+' : ''}${data.cascada.variacionTotalPct}%` : '--'}
+            {/* Análisis de variación - CASCADA */}
+            <div className="rounded-2xl p-4 ml-8" style={{ background: C.bg, borderLeft: `4px solid ${C.primary}` }}>
+              <p className="text-xs font-black uppercase tracking-wider mb-4" style={{ color: C.muted }}>VARIACIÓN</p>
+              
+              <div className="space-y-3">
+                {/* Ef. Rapidez */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm ${data.cascada.efRapidez > 0 ? '' : ''}`} style={{ color: C.slate }}>
+                      {data.cascada.efRapidez > 0 ? '❌' : '✅'} Ef. Rapidez
+                    </span>
+                    <span className="text-xs px-2 py-0.5 rounded" style={{ background: data.cascada.efRapidezPct > 0 ? C.redLight : C.greenLight, color: data.cascada.efRapidezPct > 0 ? C.red : C.green }}>
+                      {data.cascada.efRapidezPct > 0 ? '+' : ''}{data.cascada.efRapidezPct}%
+                    </span>
+                  </div>
+                  <span className="text-sm font-bold" style={{ color: data.cascada.efRapidez > 0 ? C.red : C.green }}>
+                    {data.cascada.efRapidez > 0 ? '+' : ''}{data.cascada.efRapidez} HH
+                  </span>
+                </div>
+
+                {/* Ef. #Casas */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm" style={{ color: C.slate }}>
+                      {data.cascada.efCasas < 0 ? '❌' : '✅'} Ef. #Casas
+                    </span>
+                    <span className="text-xs px-2 py-0.5 rounded" style={{ background: data.cascada.efCasasPct < 0 ? C.redLight : C.greenLight, color: data.cascada.efCasasPct < 0 ? C.red : C.green }}>
+                      {data.cascada.efCasasPct > 0 ? '+' : ''}{data.cascada.efCasasPct}%
+                    </span>
+                  </div>
+                  <span className="text-sm font-bold" style={{ color: data.cascada.efCasas < 0 ? C.red : C.green }}>
+                    {data.cascada.efCasas > 0 ? '+' : ''}{data.cascada.efCasas} HH
+                  </span>
+                </div>
+
+                {/* Ef. Recurrencia */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm" style={{ color: C.slate }}>
+                      {data.cascada.efRecurrencia < 0 ? '❌' : '✅'} Ef. Recurrencia
+                    </span>
+                    <span className="text-xs px-2 py-0.5 rounded" style={{ background: data.cascada.efRecurrenciaPct < 0 ? C.redLight : C.greenLight, color: data.cascada.efRecurrenciaPct < 0 ? C.red : C.green }}>
+                      {data.cascada.efRecurrenciaPct > 0 ? '+' : ''}{data.cascada.efRecurrenciaPct}%
+                    </span>
+                  </div>
+                  <span className="text-sm font-bold" style={{ color: data.cascada.efRecurrencia < 0 ? C.red : C.green }}>
+                    {data.cascada.efRecurrencia > 0 ? '+' : ''}{data.cascada.efRecurrencia} HH
+                  </span>
+                </div>
+
+                {/* Total variación */}
+                <div className="flex items-center justify-between pt-3 border-t" style={{ borderColor: C.border }}>
+                  <span className="text-sm font-bold" style={{ color: C.ink }}>= Variación Total</span>
+                  <span className="text-sm font-black" style={{ color: data.cascada.variacionTotal < 0 ? C.green : C.red }}>
+                    {data.cascada.variacionTotal > 0 ? '+' : ''}{data.cascada.variacionTotal} HH ({data.cascada.variacionTotalPct !== null ? `${data.cascada.variacionTotalPct > 0 ? '+' : ''}${data.cascada.variacionTotalPct}%` : '--'})
+                  </span>
+                </div>
               </div>
-              <div className="w-12 h-0.5 my-1" style={{ background: C.border }} />
-              <p className="text-[10px]" style={{ color: C.muted }}>Variación</p>
             </div>
 
             {/* HH Reales */}
-            <div className="text-center flex-1">
-              <div className="w-24 h-24 mx-auto rounded-2xl flex flex-col items-center justify-center" style={{ background: C.greenLight, border: `2px solid ${C.green}` }}>
-                <p className="text-2xl font-black" style={{ color: C.green }}>{data.current.hhReales}</p>
-                <p className="text-xs font-semibold" style={{ color: C.green }}>HH</p>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-bold" style={{ color: C.slate }}>HH Reales</span>
+                <span className="text-sm font-black" style={{ color: C.green }}>{data.current.hhReales} HH</span>
               </div>
-              <p className="text-xs font-bold mt-2" style={{ color: C.slate }}>REALES</p>
-              <p className="text-xs" style={{ color: C.muted }}>{data.current.limpiezasDone} completadas</p>
-            </div>
-          </div>
-
-          {/* Análisis de variación */}
-          <div className="rounded-2xl p-4" style={{ background: C.bg }}>
-            <p className="text-xs font-black uppercase tracking-wider mb-3" style={{ color: C.muted }}>ANÁLISIS DE VARIACIÓN</p>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between py-2 border-b" style={{ borderColor: C.border }}>
-                <span className="text-sm" style={{ color: C.slate }}>HH Programadas</span>
-                <span className="text-sm font-bold" style={{ color: C.ink }}>{data.cascada.hhProgramadas} HH</span>
-              </div>
-              <div className="flex items-center justify-between py-2 border-b" style={{ borderColor: C.border }}>
-                <span className="text-sm" style={{ color: C.slate }}>
-                  {data.cascada.efVelocidad > 0 ? '❌' : '✅'} Velocidad ({data.cascada.efVelocidadPct > 0 ? 'más lento' : 'más rápido'})
-                </span>
-                <span className="text-sm font-bold" style={{ color: data.cascada.efVelocidad > 0 ? C.red : C.green }}>
-                  {data.cascada.efVelocidad > 0 ? '+' : ''}{data.cascada.efVelocidad} HH ({data.cascada.efVelocidadPct > 0 ? '+' : ''}{data.cascada.efVelocidadPct}%)
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-2 pt-3">
-                <span className="text-sm font-bold" style={{ color: C.ink }}>= HH Reales</span>
-                <span className="text-sm font-black" style={{ color: C.primary }}>{data.current.hhReales} HH ({data.cascada.variacionTotalPct !== null ? `${data.cascada.variacionTotalPct > 0 ? '+' : ''}${data.cascada.variacionTotalPct}%` : '--'})</span>
+              <div className="h-10 rounded-xl" style={{ background: C.greenLight, width: `${getBarWidth(data.current.hhReales)}%`, border: `2px solid ${C.green}` }}>
+                <div className="h-full rounded-lg flex items-center justify-center">
+                  <span className="text-xs font-bold" style={{ color: C.green }}>{data.current.limpiezasDone} completadas</span>
+                </div>
               </div>
             </div>
           </div>
@@ -332,9 +307,67 @@ export default function DashboardExecutive() {
 
       {/* COMPARACIÓN SEMANA VS SEMANA */}
       <div className="rounded-3xl overflow-hidden" style={{ background: C.white, border: `1px solid ${C.border}` }}>
-        <div className="px-6 py-4" style={{ borderBottom: `1px solid ${C.border}` }}>
-          <h3 className="font-black text-sm" style={{ color: C.ink }}>COMPARACIÓN SEMANA VS SEMANA</h3>
-          <p className="text-xs mt-0.5" style={{ color: C.muted }}>{formatWeek(compareWeek)} → {formatWeek(selectedWeek)}</p>
+        <div className="px-6 py-4 flex items-center justify-between flex-wrap gap-4" style={{ borderBottom: `1px solid ${C.border}` }}>
+          <div>
+            <h3 className="font-black text-sm" style={{ color: C.ink }}>COMPARACIÓN SEMANA VS SEMANA</h3>
+          </div>
+          
+          {/* Selectores de semana */}
+          <div className="flex items-center gap-3">
+            {/* Selector semana comparación (izquierda) */}
+            <div className="relative">
+              <button 
+                onClick={() => setShowCompareDropdown(!showCompareDropdown)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold"
+                style={{ background: C.bg, color: C.slate, border: `1px solid ${C.border}` }}
+              >
+                {formatWeek(compareWeek)}
+                <ChevronDown className="w-4 h-4" />
+              </button>
+              {showCompareDropdown && (
+                <div className="absolute top-full mt-1 right-0 bg-white rounded-xl shadow-lg border z-50 max-h-64 overflow-auto" style={{ borderColor: C.border }}>
+                  {data.availableWeeks.map(w => (
+                    <button 
+                      key={w} 
+                      onClick={() => handleCompareChange(w)}
+                      className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50 first:rounded-t-xl last:rounded-b-xl"
+                      style={{ color: w === compareWeek ? C.primary : C.ink, fontWeight: w === compareWeek ? 700 : 500 }}
+                    >
+                      {formatWeek(w)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <span className="text-sm font-medium" style={{ color: C.muted }}>vs</span>
+            
+            {/* Selector semana actual (derecha) */}
+            <div className="relative">
+              <button 
+                onClick={() => setShowWeekDropdown(!showWeekDropdown)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold"
+                style={{ background: C.primary, color: 'white' }}
+              >
+                {formatWeek(selectedWeek)}
+                <ChevronDown className="w-4 h-4" />
+              </button>
+              {showWeekDropdown && (
+                <div className="absolute top-full mt-1 right-0 bg-white rounded-xl shadow-lg border z-50 max-h-64 overflow-auto" style={{ borderColor: C.border }}>
+                  {data.availableWeeks.map(w => (
+                    <button 
+                      key={w} 
+                      onClick={() => handleWeekChange(w)}
+                      className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50 first:rounded-t-xl last:rounded-b-xl"
+                      style={{ color: w === selectedWeek ? C.primary : C.ink, fontWeight: w === selectedWeek ? 700 : 500 }}
+                    >
+                      {formatWeek(w)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
         
         <div className="overflow-x-auto">
@@ -356,7 +389,6 @@ export default function DashboardExecutive() {
                 { label: 'HH/Casa', key: 'hhPromCasa', unit: 'h', inverted: true },
                 { label: 'Limp/Casa', key: 'limpiezasPorCasa', unit: '' },
                 { label: 'Cleaners', key: 'cleaners', unit: '' },
-                { label: 'Velocidad', key: 'velocidad', unit: 'x', inverted: true },
               ].map((row, i) => {
                 const d = data.comparacion[row.key as keyof Comparacion]
                 const currentVal = d.current ?? 0
