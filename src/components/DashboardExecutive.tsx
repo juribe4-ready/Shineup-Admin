@@ -359,12 +359,14 @@ export default function DashboardExecutive() {
                 { label: 'Velocidad', key: 'velocidad', unit: 'x', inverted: true },
               ].map((row, i) => {
                 const d = data.comparacion[row.key as keyof Comparacion]
-                const deltaAbs = d.current - d.compare
+                const currentVal = d.current ?? 0
+                const compareVal = d.compare ?? 0
+                const deltaAbs = currentVal - compareVal
                 return (
                   <tr key={i} className="border-t" style={{ borderColor: C.border }}>
                     <td className="px-6 py-3 text-sm font-semibold" style={{ color: C.slate }}>{row.label}</td>
-                    <td className="px-6 py-3 text-sm text-right" style={{ color: C.muted }}>{d.compare}{row.unit}</td>
-                    <td className="px-6 py-3 text-sm text-right font-bold" style={{ color: C.ink }}>{d.current}{row.unit}</td>
+                    <td className="px-6 py-3 text-sm text-right" style={{ color: C.muted }}>{compareVal}{row.unit}</td>
+                    <td className="px-6 py-3 text-sm text-right font-bold" style={{ color: C.ink }}>{currentVal}{row.unit}</td>
                     <td className="px-6 py-3 text-sm text-right font-semibold" style={{ color: deltaAbs > 0 ? (row.inverted ? C.red : C.green) : deltaAbs < 0 ? (row.inverted ? C.green : C.red) : C.muted }}>
                       {deltaAbs > 0 ? '+' : ''}{Math.round(deltaAbs * 10) / 10}
                     </td>
