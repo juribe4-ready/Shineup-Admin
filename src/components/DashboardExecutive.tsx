@@ -189,12 +189,15 @@ export default function DashboardExecutive() {
                   <th className="text-right px-4 py-2 text-xs font-bold" style={{ color: C.muted, borderBottom: `2px solid ${C.border}` }}>Ef. #Casas</th>
                   <th className="text-right px-4 py-2 text-xs font-bold" style={{ color: C.muted, borderBottom: `2px solid ${C.border}` }}>Ef. Recurr.</th>
                   <th className="text-right px-4 py-2 text-xs font-bold" style={{ color: C.primary, borderBottom: `2px solid ${C.border}` }}>HH Reales</th>
+                  <th className="text-right px-4 py-2 text-xs font-bold" style={{ color: C.muted, borderBottom: `2px solid ${C.border}` }}>Δ</th>
+                  <th className="text-right px-4 py-2 text-xs font-bold" style={{ color: C.muted, borderBottom: `2px solid ${C.border}` }}>%</th>
+                  <th className="text-left px-4 py-2 text-xs font-bold" style={{ color: C.muted, borderBottom: `2px solid ${C.border}` }}></th>
                 </tr>
               </thead>
               <tbody>
-                {/* Fila de valores absolutos */}
+                {/* Fila principal de valores */}
                 <tr>
-                  <td className="px-4 py-3 text-sm font-semibold" style={{ color: C.slate }}>Valor</td>
+                  <td className="px-4 py-3 text-sm font-semibold" style={{ color: C.slate }}></td>
                   <td className="px-4 py-3 text-right text-lg font-black" style={{ color: C.ink }}>{data.current.hhDisponibles}</td>
                   <td className="px-4 py-3 text-right text-lg font-black" style={{ color: C.primary }}>{data.cascada.hhProgramadas}</td>
                   <td className="px-4 py-3 text-right text-lg font-black" style={{ color: data.cascada.efRapidez > 0 ? C.red : C.green }}>
@@ -207,14 +210,17 @@ export default function DashboardExecutive() {
                     {data.cascada.efRecurrencia > 0 ? '+' : ''}{data.cascada.efRecurrencia}
                   </td>
                   <td className="px-4 py-3 text-right text-lg font-black" style={{ color: C.green, background: C.greenLight }}>{data.cascada.hhReales}</td>
-                </tr>
-                {/* Fila de porcentajes */}
-                <tr style={{ borderTop: `1px solid ${C.border}` }}>
-                  <td className="px-4 py-2 text-xs font-semibold" style={{ color: C.muted }}>%</td>
-                  <td className="px-4 py-2 text-right text-xs font-bold" style={{ color: C.muted }}>100%</td>
-                  <td className="px-4 py-2 text-right text-xs font-bold" style={{ color: C.muted }}>
-                    {Math.round((data.cascada.hhProgramadas / data.current.hhDisponibles) * 100)}%
+                  <td className="px-4 py-3 text-right text-sm font-bold" style={{ color: C.muted }}></td>
+                  <td className="px-4 py-3 text-right text-sm font-bold" style={{ color: (data.cascada.variacionTotalPct ?? 0) < 0 ? C.green : C.red }}>
+                    {(data.cascada.variacionTotalPct ?? 0) > 0 ? '+' : ''}{data.cascada.variacionTotalPct}%
                   </td>
+                  <td className="px-4 py-3 text-sm" style={{ color: C.muted }}></td>
+                </tr>
+                {/* Fila de porcentajes de efectos */}
+                <tr style={{ borderTop: `1px solid ${C.border}` }}>
+                  <td className="px-4 py-2 text-xs font-semibold" style={{ color: C.muted }}></td>
+                  <td className="px-4 py-2 text-right text-xs font-bold" style={{ color: C.muted }}></td>
+                  <td className="px-4 py-2 text-right text-xs font-bold" style={{ color: C.muted }}></td>
                   <td className="px-4 py-2 text-right text-xs font-bold" style={{ color: data.cascada.efRapidezPct > 0 ? C.red : C.green }}>
                     {data.cascada.efRapidezPct > 0 ? '+' : ''}{data.cascada.efRapidezPct}%
                   </td>
@@ -224,19 +230,60 @@ export default function DashboardExecutive() {
                   <td className="px-4 py-2 text-right text-xs font-bold" style={{ color: data.cascada.efRecurrenciaPct < 0 ? C.red : C.green }}>
                     {data.cascada.efRecurrenciaPct > 0 ? '+' : ''}{data.cascada.efRecurrenciaPct}%
                   </td>
-                  <td className="px-4 py-2 text-right text-xs font-bold" style={{ color: (data.cascada.variacionTotalPct ?? 0) < 0 ? C.green : C.red, background: C.greenLight }}>
-                    {(data.cascada.variacionTotalPct ?? 0) > 0 ? '+' : ''}{data.cascada.variacionTotalPct}%
+                  <td className="px-4 py-2 text-right text-xs font-bold" style={{ color: C.muted, background: C.greenLight }}></td>
+                  <td className="px-4 py-2"></td>
+                  <td className="px-4 py-2"></td>
+                  <td className="px-4 py-2"></td>
+                </tr>
+                {/* Espacio */}
+                <tr><td colSpan={10} className="py-2"></td></tr>
+                {/* HHs prom x casa */}
+                <tr style={{ borderTop: `1px solid ${C.border}` }}>
+                  <td className="px-4 py-2 text-sm font-semibold" style={{ color: C.slate }}>HHs prom x casa</td>
+                  <td className="px-4 py-2 text-right text-sm" style={{ color: C.muted }}></td>
+                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink }}>{data.compare.hhPromCasa}</td>
+                  <td className="px-4 py-2" colSpan={3}></td>
+                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink, background: C.greenLight }}>{data.current.hhPromCasa}</td>
+                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: (data.current.hhPromCasa - data.compare.hhPromCasa) > 0 ? C.red : C.green }}>
+                    {(data.current.hhPromCasa - data.compare.hhPromCasa) > 0 ? '+' : ''}{Math.round((data.current.hhPromCasa - data.compare.hhPromCasa) * 10) / 10}
                   </td>
+                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: (data.comparacion.hhPromCasa.delta ?? 0) > 0 ? C.red : C.green }}>
+                    {(data.comparacion.hhPromCasa.delta ?? 0) > 0 ? '+' : ''}{data.comparacion.hhPromCasa.delta}%
+                  </td>
+                  <td className="px-4 py-2 text-sm" style={{ color: C.muted }}>Eficiencia</td>
+                </tr>
+                {/* Nro de casas distintas */}
+                <tr>
+                  <td className="px-4 py-2 text-sm font-semibold" style={{ color: C.slate }}>Nro de casas distintas</td>
+                  <td className="px-4 py-2 text-right text-sm" style={{ color: C.muted }}></td>
+                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink }}>{data.compare.casasDistintas}</td>
+                  <td className="px-4 py-2" colSpan={3}></td>
+                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink, background: C.greenLight }}>{data.current.casasDistintas}</td>
+                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: (data.current.casasDistintas - data.compare.casasDistintas) < 0 ? C.red : C.green }}>
+                    {(data.current.casasDistintas - data.compare.casasDistintas) > 0 ? '+' : ''}{data.current.casasDistintas - data.compare.casasDistintas}
+                  </td>
+                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: (data.comparacion.casas.delta ?? 0) < 0 ? C.red : C.green }}>
+                    {(data.comparacion.casas.delta ?? 0) > 0 ? '+' : ''}{data.comparacion.casas.delta}%
+                  </td>
+                  <td className="px-4 py-2 text-sm" style={{ color: C.muted }}>Churn</td>
+                </tr>
+                {/* Limpiezas x casa prom */}
+                <tr>
+                  <td className="px-4 py-2 text-sm font-semibold" style={{ color: C.slate }}>Limpiezas x casa prom</td>
+                  <td className="px-4 py-2 text-right text-sm" style={{ color: C.muted }}></td>
+                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink }}>{data.compare.limpiezasPorCasa}</td>
+                  <td className="px-4 py-2" colSpan={3}></td>
+                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink, background: C.greenLight }}>{data.current.limpiezasPorCasa}</td>
+                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: (data.current.limpiezasPorCasa - data.compare.limpiezasPorCasa) < 0 ? C.red : C.green }}>
+                    {(data.current.limpiezasPorCasa - data.compare.limpiezasPorCasa) > 0 ? '+' : ''}{Math.round((data.current.limpiezasPorCasa - data.compare.limpiezasPorCasa) * 10) / 10}
+                  </td>
+                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: (data.comparacion.limpiezasPorCasa.delta ?? 0) < 0 ? C.red : C.green }}>
+                    {(data.comparacion.limpiezasPorCasa.delta ?? 0) > 0 ? '+' : ''}{data.comparacion.limpiezasPorCasa.delta}%
+                  </td>
+                  <td className="px-4 py-2 text-sm" style={{ color: C.muted }}>Recurrencia</td>
                 </tr>
               </tbody>
             </table>
-          </div>
-
-          {/* Verificación de suma */}
-          <div className="mt-4 p-3 rounded-xl text-center" style={{ background: C.bg }}>
-            <p className="text-xs font-semibold" style={{ color: C.slate }}>
-              Verificación: {data.cascada.hhProgramadas} + ({data.cascada.efRapidez}) + ({data.cascada.efCasas}) + ({data.cascada.efRecurrencia}) = <span style={{ color: C.green, fontWeight: 800 }}>{data.cascada.hhReales} HH</span>
-            </p>
           </div>
         </div>
       </div>
