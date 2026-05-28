@@ -17,16 +17,17 @@ function getWeekRange(weekStr) {
   const [year, weekPart] = weekStr.split('-W');
   const weekNum = parseInt(weekPart);
   
-  // Encontrar el primer día del año
-  const jan1 = new Date(parseInt(year), 0, 1);
-  // Encontrar el primer lunes del año
-  const dayOfWeek = jan1.getDay() || 7; // 1=Mon, 7=Sun
-  const firstMonday = new Date(jan1);
-  firstMonday.setDate(jan1.getDate() + (dayOfWeek <= 4 ? 1 - dayOfWeek : 8 - dayOfWeek));
+  // Método más simple y confiable:
+  // Encontrar el 4 de enero (siempre está en la semana 1 ISO)
+  const jan4 = new Date(parseInt(year), 0, 4);
+  // Retroceder al lunes de esa semana
+  const dayOfWeek = jan4.getDay() || 7; // 1=Mon, 7=Sun
+  const week1Monday = new Date(jan4);
+  week1Monday.setDate(jan4.getDate() - (dayOfWeek - 1));
   
   // Calcular el lunes de la semana deseada
-  const monday = new Date(firstMonday);
-  monday.setDate(firstMonday.getDate() + (weekNum - 1) * 7);
+  const monday = new Date(week1Monday);
+  monday.setDate(week1Monday.getDate() + (weekNum - 1) * 7);
   
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
@@ -82,10 +83,14 @@ async function handleExecutive(req, res) {
     // Calcular métricas para una semana
     const calculateWeekMetrics = (records, weekStr) => {
       const range = getWeekRange(weekStr);
+      console.log(`[Executive] Week ${weekStr}: ${range.start} to ${range.end}`);
+      
       const weekCleanings = records.filter(r => {
         const date = r.fields['Date'];
         return date && date >= range.start && date <= range.end;
       });
+      
+      console.log(`[Executive] Week ${weekStr}: ${weekCleanings.length} cleanings found`);
       
       // HH Programadas (Labor en minutos → horas)
       const hhProgramadas = weekCleanings.reduce((sum, r) => {
