@@ -348,6 +348,7 @@ export default function DashboardPage({ profile: _profile }: Props) {
 
   // Initialize Leaflet map (FREE)
   useEffect(() => {
+    if (activeTab !== 'live') return
     if (!mapReady || !mapRef.current || !data || !window.L) return
     
     // Initialize map if not exists
@@ -397,7 +398,12 @@ export default function DashboardPage({ profile: _profile }: Props) {
     if (bounds.length > 0) {
       mapObj.current.fitBounds(bounds, { padding: [20, 20] })
     }
-  }, [mapReady, data])
+    
+    // Invalidate size after tab switch
+    setTimeout(() => {
+      if (mapObj.current) mapObj.current.invalidateSize()
+    }, 100)
+  }, [mapReady, data, activeTab])
 
   const handleDateChange = (d: string) => {
     setDate(d)
