@@ -94,7 +94,7 @@ async function handleExecutive(req, res) {
         return sum + (Number(laborVal) || 0);
       }, 0) / 60;
       
-      // HH Reales (duración de Done)
+      // HH Reales (duración de Done, dividida por cleaners para obtener HH individuales)
       const doneCleanings = weekCleanings.filter(r => r.fields['Status'] === 'Done');
       let hhReales = 0;
       for (const r of doneCleanings) {
@@ -102,7 +102,14 @@ async function handleExecutive(req, res) {
         const end = r.fields['End Time'];
         if (start && end) {
           const duration = (new Date(end) - new Date(start)) / 3600000; // horas
-          hhReales += duration;
+          // Multiplicar por número de cleaners asignados (HH = horas × personas)
+          const staffIds = r.fields['Assigned Staff'] || [];
+          const cleanerCount = staffIds.filter(id => {
+            const staff = staffMap[id];
+            return staff && staff.role?.toLowerCase().includes('cleaner');
+          }).length;
+          const effectiveCleaners = Math.max(cleanerCount, 1);
+          hhReales += duration * effectiveCleaners;
         }
       }
       
@@ -194,15 +201,34 @@ async function handleExecutive(req, res) {
       return Math.round(((current - compare) / Math.abs(compare)) * 1000) / 10;
     };
     
-    // Cascada de variación (Plan vs Real)
-    const efVelocidad = currentMetrics.hhProgramadas > 0 
-      ? currentMetrics.hhReales - (currentMetrics.hhProgramadas * currentMetrics.velocidad / currentMetrics.velocidad)
-      : 0;
+    // Cascada de variación (Plan vs Real) - Modelo de Juan
+    // HH Programadas = Casas × Limp/Casa × HH/Casa (promedio)
+    // Variación = Ef.Rapidez + Ef.Casas + Ef.Recurrencia
+    
+    const baseHHPorCasa = compareMetrics.hhPromCasa || currentMetrics.hhPromCasa || 4;
+    const baseCasas = compareMetrics.casasDistintas || currentMetrics.casasDistintas;
+    const baseLimpPorCasa = compareMetrics.limpiezasPorCasa || currentMetrics.limpiezasPorCasa || 1.5;
+    
+    // Efecto Rapidez: diferencia en HH/Casa × limpiezas actuales
+    const efRapidez = (currentMetrics.hhPromCasa - baseHHPorCasa) * currentMetrics.limpiezasDone;
+    const efRapidezPct = baseHHPorCasa > 0 ? ((currentMetrics.hhPromCasa - baseHHPorCasa) / baseHHPorCasa) * 100 : 0;
+    
+    // Efecto Casas: diferencia en casas × limp/casa base × HH/casa base
+    const efCasas = (currentMetrics.casasDistintas - baseCasas) * baseLimpPorCasa * baseHHPorCasa;
+    const efCasasPct = baseCasas > 0 ? ((currentMetrics.casasDistintas - baseCasas) / baseCasas) * 100 : 0;
+    
+    // Efecto Recurrencia: diferencia en limp/casa × casas actuales × HH/casa base
+    const efRecurrencia = (currentMetrics.limpiezasPorCasa - baseLimpPorCasa) * currentMetrics.casasDistintas * baseHHPorCasa;
+    const efRecurrenciaPct = baseLimpPorCasa > 0 ? ((currentMetrics.limpiezasPorCasa - baseLimpPorCasa) / baseLimpPorCasa) * 100 : 0;
     
     const cascada = {
       hhProgramadas: currentMetrics.hhProgramadas,
-      efVelocidad: Math.round((currentMetrics.hhReales - currentMetrics.hhProgramadas * (2 - currentMetrics.velocidad)) * 10) / 10,
-      efVelocidadPct: Math.round((currentMetrics.velocidad - 1) * 100 * 10) / 10,
+      efRapidez: Math.round(efRapidez * 10) / 10,
+      efRapidezPct: Math.round(efRapidezPct * 10) / 10,
+      efCasas: Math.round(efCasas * 10) / 10,
+      efCasasPct: Math.round(efCasasPct * 10) / 10,
+      efRecurrencia: Math.round(efRecurrencia * 10) / 10,
+      efRecurrenciaPct: Math.round(efRecurrenciaPct * 10) / 10,
       hhReales: currentMetrics.hhReales,
       variacionTotal: Math.round((currentMetrics.hhReales - currentMetrics.hhProgramadas) * 10) / 10,
       variacionTotalPct: calcDelta(currentMetrics.hhReales, currentMetrics.hhProgramadas),
