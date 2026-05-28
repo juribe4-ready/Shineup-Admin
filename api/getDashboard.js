@@ -201,37 +201,41 @@ async function handleExecutive(req, res) {
       return Math.round(((current - compare) / Math.abs(compare)) * 1000) / 10;
     };
     
-    // Cascada de variación (Plan vs Real) - Modelo de Juan
-    // HH Programadas = Casas × Limp/Casa × HH/Casa (promedio)
-    // Variación = Ef.Rapidez + Ef.Casas + Ef.Recurrencia
+    // CASCADA WATERFALL: HH Programadas + Ef.Rapidez + Ef.Casas + Ef.Recurrencia = HH Reales
+    // Los efectos DEBEN sumar exactamente la variación total
     
-    const baseHHPorCasa = compareMetrics.hhPromCasa || currentMetrics.hhPromCasa || 4;
+    const hhProg = currentMetrics.hhProgramadas;
+    const hhReal = currentMetrics.hhReales;
+    const variacionTotal = hhReal - hhProg;
+    
+    // Bases de comparación (semana anterior)
+    const baseHHPorCasa = compareMetrics.hhPromCasa || 4;
     const baseCasas = compareMetrics.casasDistintas || currentMetrics.casasDistintas;
-    const baseLimpPorCasa = compareMetrics.limpiezasPorCasa || currentMetrics.limpiezasPorCasa || 1.5;
+    const baseLimpPorCasa = compareMetrics.limpiezasPorCasa || 1.5;
     
-    // Efecto Rapidez: diferencia en HH/Casa × limpiezas actuales
+    // Efecto Rapidez: cambio en eficiencia (HH/casa)
     const efRapidez = (currentMetrics.hhPromCasa - baseHHPorCasa) * currentMetrics.limpiezasDone;
     const efRapidezPct = baseHHPorCasa > 0 ? ((currentMetrics.hhPromCasa - baseHHPorCasa) / baseHHPorCasa) * 100 : 0;
     
-    // Efecto Casas: diferencia en casas × limp/casa base × HH/casa base
+    // Efecto Casas: cambio en número de casas
     const efCasas = (currentMetrics.casasDistintas - baseCasas) * baseLimpPorCasa * baseHHPorCasa;
     const efCasasPct = baseCasas > 0 ? ((currentMetrics.casasDistintas - baseCasas) / baseCasas) * 100 : 0;
     
-    // Efecto Recurrencia: diferencia en limp/casa × casas actuales × HH/casa base
-    const efRecurrencia = (currentMetrics.limpiezasPorCasa - baseLimpPorCasa) * currentMetrics.casasDistintas * baseHHPorCasa;
+    // Efecto Recurrencia: el resto para que cuadre exactamente
+    const efRecurrencia = variacionTotal - efRapidez - efCasas;
     const efRecurrenciaPct = baseLimpPorCasa > 0 ? ((currentMetrics.limpiezasPorCasa - baseLimpPorCasa) / baseLimpPorCasa) * 100 : 0;
     
     const cascada = {
-      hhProgramadas: currentMetrics.hhProgramadas,
+      hhProgramadas: Math.round(hhProg * 10) / 10,
       efRapidez: Math.round(efRapidez * 10) / 10,
       efRapidezPct: Math.round(efRapidezPct * 10) / 10,
       efCasas: Math.round(efCasas * 10) / 10,
       efCasasPct: Math.round(efCasasPct * 10) / 10,
       efRecurrencia: Math.round(efRecurrencia * 10) / 10,
       efRecurrenciaPct: Math.round(efRecurrenciaPct * 10) / 10,
-      hhReales: currentMetrics.hhReales,
-      variacionTotal: Math.round((currentMetrics.hhReales - currentMetrics.hhProgramadas) * 10) / 10,
-      variacionTotalPct: calcDelta(currentMetrics.hhReales, currentMetrics.hhProgramadas),
+      hhReales: Math.round(hhReal * 10) / 10,
+      variacionTotal: Math.round(variacionTotal * 10) / 10,
+      variacionTotalPct: calcDelta(hhReal, hhProg),
     };
     
     // Comparación semana vs semana
