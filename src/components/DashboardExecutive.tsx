@@ -241,14 +241,14 @@ export default function DashboardExecutive() {
                 <tr style={{ borderTop: `1px solid ${C.border}` }}>
                   <td className="px-4 py-2 text-sm font-semibold" style={{ color: C.slate }}>HHs prom x casa</td>
                   <td className="px-4 py-2 text-right text-sm" style={{ color: C.muted }}></td>
-                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink }}>{data.compare.hhPromCasa}</td>
+                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink }}>{data.cascada.programado?.hhPromCasa ?? '-'}</td>
                   <td className="px-4 py-2" colSpan={3}></td>
-                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink, background: C.greenLight }}>{data.current.hhPromCasa}</td>
-                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: (data.current.hhPromCasa - data.compare.hhPromCasa) > 0 ? C.red : C.green }}>
-                    {(data.current.hhPromCasa - data.compare.hhPromCasa) > 0 ? '+' : ''}{Math.round((data.current.hhPromCasa - data.compare.hhPromCasa) * 10) / 10}
+                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink, background: C.greenLight }}>{data.cascada.real?.hhPromCasa ?? '-'}</td>
+                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: ((data.cascada.real?.hhPromCasa ?? 0) - (data.cascada.programado?.hhPromCasa ?? 0)) > 0 ? C.red : C.green }}>
+                    {((data.cascada.real?.hhPromCasa ?? 0) - (data.cascada.programado?.hhPromCasa ?? 0)) > 0 ? '+' : ''}{Math.round(((data.cascada.real?.hhPromCasa ?? 0) - (data.cascada.programado?.hhPromCasa ?? 0)) * 10) / 10}
                   </td>
-                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: (data.comparacion.hhPromCasa.delta ?? 0) > 0 ? C.red : C.green }}>
-                    {(data.comparacion.hhPromCasa.delta ?? 0) > 0 ? '+' : ''}{data.comparacion.hhPromCasa.delta}%
+                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: data.cascada.efRapidezPct > 0 ? C.red : C.green }}>
+                    {data.cascada.efRapidezPct > 0 ? '+' : ''}{data.cascada.efRapidezPct}%
                   </td>
                   <td className="px-4 py-2 text-sm" style={{ color: C.muted }}>Eficiencia</td>
                 </tr>
@@ -256,14 +256,14 @@ export default function DashboardExecutive() {
                 <tr>
                   <td className="px-4 py-2 text-sm font-semibold" style={{ color: C.slate }}>Nro de casas distintas</td>
                   <td className="px-4 py-2 text-right text-sm" style={{ color: C.muted }}></td>
-                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink }}>{data.compare.casasDistintas}</td>
+                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink }}>{data.cascada.programado?.casas ?? '-'}</td>
                   <td className="px-4 py-2" colSpan={3}></td>
-                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink, background: C.greenLight }}>{data.current.casasDistintas}</td>
-                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: (data.current.casasDistintas - data.compare.casasDistintas) < 0 ? C.red : C.green }}>
-                    {(data.current.casasDistintas - data.compare.casasDistintas) > 0 ? '+' : ''}{data.current.casasDistintas - data.compare.casasDistintas}
+                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink, background: C.greenLight }}>{data.cascada.real?.casas ?? '-'}</td>
+                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: ((data.cascada.real?.casas ?? 0) - (data.cascada.programado?.casas ?? 0)) < 0 ? C.red : C.green }}>
+                    {((data.cascada.real?.casas ?? 0) - (data.cascada.programado?.casas ?? 0)) > 0 ? '+' : ''}{(data.cascada.real?.casas ?? 0) - (data.cascada.programado?.casas ?? 0)}
                   </td>
-                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: (data.comparacion.casas.delta ?? 0) < 0 ? C.red : C.green }}>
-                    {(data.comparacion.casas.delta ?? 0) > 0 ? '+' : ''}{data.comparacion.casas.delta}%
+                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: data.cascada.efCasasPct < 0 ? C.red : C.green }}>
+                    {data.cascada.efCasasPct > 0 ? '+' : ''}{data.cascada.efCasasPct}%
                   </td>
                   <td className="px-4 py-2 text-sm" style={{ color: C.muted }}>Churn</td>
                 </tr>
@@ -271,14 +271,14 @@ export default function DashboardExecutive() {
                 <tr>
                   <td className="px-4 py-2 text-sm font-semibold" style={{ color: C.slate }}>Limpiezas x casa prom</td>
                   <td className="px-4 py-2 text-right text-sm" style={{ color: C.muted }}></td>
-                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink }}>{data.compare.limpiezasPorCasa}</td>
+                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink }}>{data.cascada.programado?.limpPorCasa ?? '-'}</td>
                   <td className="px-4 py-2" colSpan={3}></td>
-                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink, background: C.greenLight }}>{data.current.limpiezasPorCasa}</td>
-                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: (data.current.limpiezasPorCasa - data.compare.limpiezasPorCasa) < 0 ? C.red : C.green }}>
-                    {(data.current.limpiezasPorCasa - data.compare.limpiezasPorCasa) > 0 ? '+' : ''}{Math.round((data.current.limpiezasPorCasa - data.compare.limpiezasPorCasa) * 10) / 10}
+                  <td className="px-4 py-2 text-right text-sm font-bold" style={{ color: C.ink, background: C.greenLight }}>{data.cascada.real?.limpPorCasa ?? '-'}</td>
+                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: ((data.cascada.real?.limpPorCasa ?? 0) - (data.cascada.programado?.limpPorCasa ?? 0)) < 0 ? C.red : C.green }}>
+                    {((data.cascada.real?.limpPorCasa ?? 0) - (data.cascada.programado?.limpPorCasa ?? 0)) > 0 ? '+' : ''}{Math.round(((data.cascada.real?.limpPorCasa ?? 0) - (data.cascada.programado?.limpPorCasa ?? 0)) * 10) / 10}
                   </td>
-                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: (data.comparacion.limpiezasPorCasa.delta ?? 0) < 0 ? C.red : C.green }}>
-                    {(data.comparacion.limpiezasPorCasa.delta ?? 0) > 0 ? '+' : ''}{data.comparacion.limpiezasPorCasa.delta}%
+                  <td className="px-4 py-2 text-right text-sm font-semibold" style={{ color: data.cascada.efRecurrenciaPct < 0 ? C.red : C.green }}>
+                    {data.cascada.efRecurrenciaPct > 0 ? '+' : ''}{data.cascada.efRecurrenciaPct}%
                   </td>
                   <td className="px-4 py-2 text-sm" style={{ color: C.muted }}>Recurrencia</td>
                 </tr>
