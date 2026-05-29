@@ -206,29 +206,47 @@ async function handleExecutive(req, res) {
       return Math.round(((current - compare) / Math.abs(compare)) * 1000) / 10;
     };
     
-    // CASCADA WATERFALL: HH Programadas + Ef.Rapidez + Ef.Casas + Ef.Recurrencia = HH Reales
-    // Los efectos DEBEN sumar exactamente la variación total
+    // CASCADA WATERFALL: Programado vs Real de la MISMA semana
+    // HH Programadas + Efectos = HH Reales
     
     const hhProg = currentMetrics.hhProgramadas;
     const hhReal = currentMetrics.hhReales;
     const variacionTotal = hhReal - hhProg;
     
-    // Bases de comparación (semana anterior)
-    const baseHHPorCasa = compareMetrics.hhPromCasa || 4;
-    const baseCasas = compareMetrics.casasDistintas || currentMetrics.casasDistintas;
-    const baseLimpPorCasa = compareMetrics.limpiezasPorCasa || 1.5;
+    // Métricas programadas (basadas en Labor estimado)
+    // HH prom x casa programada = HH Programadas / limpiezas totales
+    const hhPromCasaProg = currentMetrics.limpiezasTotal > 0 
+      ? Math.round((hhProg / currentMetrics.limpiezasTotal) * 10) / 10 
+      : 0;
     
-    // Efecto Rapidez: cambio en eficiencia (HH/casa)
-    const efRapidez = (currentMetrics.hhPromCasa - baseHHPorCasa) * currentMetrics.limpiezasDone;
-    const efRapidezPct = baseHHPorCasa > 0 ? ((currentMetrics.hhPromCasa - baseHHPorCasa) / baseHHPorCasa) * 100 : 0;
+    // Casas y limpiezas programadas = las mismas que hay en la semana (todas programadas)
+    const casasProg = currentMetrics.casasDistintas;
+    const limpiezasProg = currentMetrics.limpiezasTotal;
+    const limpPorCasaProg = casasProg > 0 
+      ? Math.round((limpiezasProg / casasProg) * 10) / 10 
+      : 0;
     
-    // Efecto Casas: cambio en número de casas
-    const efCasas = (currentMetrics.casasDistintas - baseCasas) * baseLimpPorCasa * baseHHPorCasa;
-    const efCasasPct = baseCasas > 0 ? ((currentMetrics.casasDistintas - baseCasas) / baseCasas) * 100 : 0;
+    // Métricas reales (basadas en Done)
+    const hhPromCasaReal = currentMetrics.hhPromCasa; // ya calculado en calculateWeekMetrics
+    const casasReal = currentMetrics.casasDistintas; // mismas casas
+    const limpiezasReal = currentMetrics.limpiezasDone;
+    const limpPorCasaReal = casasReal > 0 
+      ? Math.round((limpiezasReal / casasReal) * 10) / 10 
+      : 0;
     
-    // Efecto Recurrencia: el resto para que cuadre exactamente
+    // Efectos de variación
+    // Ef. Rapidez = diferencia en eficiencia (HH/casa real vs programada) × limpiezas reales
+    const efRapidez = (hhPromCasaReal - hhPromCasaProg) * limpiezasReal;
+    const efRapidezPct = hhPromCasaProg > 0 ? ((hhPromCasaReal - hhPromCasaProg) / hhPromCasaProg) * 100 : 0;
+    
+    // Ef. Casas = diferencia en casas × limp/casa prog × HH/casa prog
+    // (en este caso casas prog = casas real, así que sería 0)
+    const efCasas = (casasReal - casasProg) * limpPorCasaProg * hhPromCasaProg;
+    const efCasasPct = casasProg > 0 ? ((casasReal - casasProg) / casasProg) * 100 : 0;
+    
+    // Ef. Recurrencia = ajuste para que cuadre (diferencia en limpiezas ejecutadas vs programadas)
     const efRecurrencia = variacionTotal - efRapidez - efCasas;
-    const efRecurrenciaPct = baseLimpPorCasa > 0 ? ((currentMetrics.limpiezasPorCasa - baseLimpPorCasa) / baseLimpPorCasa) * 100 : 0;
+    const efRecurrenciaPct = limpPorCasaProg > 0 ? ((limpPorCasaReal - limpPorCasaProg) / limpPorCasaProg) * 100 : 0;
     
     const cascada = {
       hhProgramadas: Math.round(hhProg * 10) / 10,
@@ -241,9 +259,22 @@ async function handleExecutive(req, res) {
       hhReales: Math.round(hhReal * 10) / 10,
       variacionTotal: Math.round(variacionTotal * 10) / 10,
       variacionTotalPct: calcDelta(hhReal, hhProg),
+      // Métricas programadas vs reales de esta semana
+      programado: {
+        hhPromCasa: hhPromCasaProg,
+        casas: casasProg,
+        limpiezas: limpiezasProg,
+        limpPorCasa: limpPorCasaProg,
+      },
+      real: {
+        hhPromCasa: hhPromCasaReal,
+        casas: casasReal,
+        limpiezas: limpiezasReal,
+        limpPorCasa: limpPorCasaReal,
+      }
     };
     
-    // Comparación semana vs semana
+    // Comparación semana vs semana (para la sección de abajo)
     const comparacion = {
       hhReales: { current: currentMetrics.hhReales, compare: compareMetrics.hhReales, delta: calcDelta(currentMetrics.hhReales, compareMetrics.hhReales) },
       casas: { current: currentMetrics.casasDistintas, compare: compareMetrics.casasDistintas, delta: calcDelta(currentMetrics.casasDistintas, compareMetrics.casasDistintas) },
