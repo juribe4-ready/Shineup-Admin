@@ -47,6 +47,18 @@ interface Cascada {
   hhReales: number
   variacionTotal: number
   variacionTotalPct: number | null
+  programado: {
+    hhPromCasa: number
+    casas: number
+    limpiezas: number
+    limpPorCasa: number
+  }
+  real: {
+    hhPromCasa: number
+    casas: number
+    limpiezas: number
+    limpPorCasa: number
+  }
 }
 
 interface Comparacion {
