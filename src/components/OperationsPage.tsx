@@ -25,7 +25,7 @@ export default function OperationsPage({ profile }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('live')
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [isToday, setIsToday] = useState(true)
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  // lastUpdated removed
 
   // Fetch stats for the tab badge
   useEffect(() => {
@@ -35,7 +35,7 @@ export default function OperationsPage({ profile }: Props) {
         if (r.ok) {
           const d = await r.json()
           setStats(d.stats)
-          setLastUpdated(new Date())
+          // setLastUpdated(new Date())
           setIsToday(true)
         }
       } catch {}
