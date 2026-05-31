@@ -158,8 +158,6 @@ export default function OperationsPage({ profile }: Props) {
           <Package style={{ width: 15, height: 15 }} />
           Rupturas
         </button>
-      </div>
-
       </div>{/* end tabs pill */}
 
       {/* Date controls — derecha */}
