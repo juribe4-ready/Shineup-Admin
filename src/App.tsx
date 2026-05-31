@@ -6,14 +6,17 @@ import DashboardPage from './components/DashboardPage'
 import StatsPage from './components/StatsPage'
 import PlanningPage from './components/PlanningPage'
 import UsersPage from './components/UsersPage'
-import BackupPage from './components/BackupPage'
 import IncidentsPage from './components/IncidentsPage'
 import InventoryPage from './components/InventoryPage'
+import OperationsPage from './components/OperationsPage'
+import AnalysisPage from './components/AnalysisPage'
+import CommandCenterPage from './components/CommandCenterPage'
+import SettingsPage from './components/SettingsPage'
 
 export default function App() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
-  const [page, setPage]       = useState<PageKey>('dashboard')
+  const [page, setPage] = useState<PageKey>('operations')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -39,7 +42,7 @@ export default function App() {
   }
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'Poppins, sans-serif' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: "'Inter', sans-serif" }}>
       <div style={{ width: 32, height: 32, border: '3px solid #E2E8F0', borderTopColor: '#6366F1', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
@@ -49,7 +52,7 @@ export default function App() {
 
   if (!profile.active) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'Poppins, sans-serif', background: '#F8FAFC', padding: 24 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: "'Inter', sans-serif", background: '#F8FAFC', padding: 24 }}>
         <div style={{ background: 'white', borderRadius: 24, padding: 32, maxWidth: 400, textAlign: 'center', boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
           <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
             <span style={{ fontSize: 28 }}>🚫</span>
@@ -66,13 +69,12 @@ export default function App() {
 
   return (
     <Layout profile={profile} page={page} onNavigate={setPage} onSignOut={handleSignOut}>
-      {page === 'dashboard'  && <DashboardPage profile={profile} />}
-      {page === 'stats'      && <StatsPage />}
+      {page === 'operations' && <OperationsPage profile={profile} />}
       {page === 'planning'   && <PlanningPage />}
+      {page === 'analysis'   && <AnalysisPage />}
+      {page === 'command'    && <CommandCenterPage />}
       {page === 'users'      && <UsersPage profile={profile} onSignOut={handleSignOut} />}
-      {page === 'backup'     && <BackupPage />}
-      {page === 'incidents'  && <IncidentsPage />}
-      {page === 'inventory'  && <InventoryPage />}
+      {page === 'settings'   && <SettingsPage />}
     </Layout>
   )
 }
