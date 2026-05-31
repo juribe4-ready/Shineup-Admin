@@ -1,4 +1,4 @@
-import { Settings, Database, Bell, Palette, Shield } from 'lucide-react'
+import { Database, Bell, Palette, Shield } from 'lucide-react'
 
 const C = {
   primary: '#6366F1',

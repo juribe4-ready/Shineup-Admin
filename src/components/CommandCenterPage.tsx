@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { 
-  TrendingUp, TrendingDown, Minus, AlertTriangle, 
-  DollarSign, Clock, Home, Users, Star, RefreshCw 
+  TrendingUp, AlertTriangle, 
+  DollarSign, Clock, Home, Users, RefreshCw 
 } from 'lucide-react'
 
 const C = {
@@ -18,7 +18,6 @@ const C = {
   redLight: '#FEE2E2',
   amber: '#F59E0B',
   amberLight: '#FEF3C7',
-  pink: '#EC4899',
 }
 
 export default function CommandCenterPage() {
@@ -54,11 +53,10 @@ export default function CommandCenterPage() {
   }
 
   // Calcular North Star: Revenue / HH (placeholder - necesita datos de revenue)
-  // Por ahora usamos un mock
-  const mockRevenue = 3200 // Revenue de la semana
+  const mockRevenue = 3200
   const hhReales = data?.current?.hhReales || 125
   const revenuePerHH = hhReales > 0 ? (mockRevenue / hhReales).toFixed(2) : 0
-  const revenuePerHHDelta = 8.2 // Mock delta
+  const revenuePerHHDelta = 8.2
 
   const utilizacion = data?.current?.hhDisponibles 
     ? Math.round((data.current.hhProgramadas / data.current.hhDisponibles) * 100) 
@@ -97,7 +95,7 @@ export default function CommandCenterPage() {
             fontSize: 13
           }}
         >
-          <RefreshCw style={{ width: 16, height: 16 }} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw style={{ width: 16, height: 16 }} />
           Actualizar
         </button>
       </div>
@@ -112,7 +110,6 @@ export default function CommandCenterPage() {
         position: 'relative',
         overflow: 'hidden'
       }}>
-        {/* Decorative circles */}
         <div style={{ position: 'absolute', top: -50, right: -50, width: 200, height: 200, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
         <div style={{ position: 'absolute', bottom: -30, left: -30, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.05)' }} />
         
