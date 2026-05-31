@@ -100,24 +100,38 @@ async function handleGetWeekSummary(req, res) {
     const startStr = start.toISOString().split('T')[0]
     const endStr = end.toISOString().split('T')[0]
 
-    // Fetch ALL appointments without any filter
-    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}`
+    // Fetch ALL appointments with pagination
+    let allRecords = []
+    let offset = null
+    
+    do {
+      let url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?pageSize=100`
+      if (offset) url += `&offset=${offset}`
+      
+      const airtableRes = await fetch(url, {
+        headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
+      })
+      const data = await airtableRes.json()
+      
+      if (data.records) {
+        allRecords = allRecords.concat(data.records)
+      }
+      offset = data.offset || null
+    } while (offset)
 
-    const airtableRes = await fetch(url, {
-      headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
-    })
-    const data = await airtableRes.json()
+    console.log(`[getAppointments] Fetched ${allRecords.length} total appointments`)
 
     // If debug mode, return raw Airtable response
     if (debug === '1') {
       return res.status(200).json({
         debug: true,
-        airtableRecordsCount: data.records?.length || 0,
-        airtableError: data.error || null,
-        firstRecord: data.records?.[0] || null,
-        allFields: data.records?.[0]?.fields ? Object.keys(data.records[0].fields) : [],
+        airtableRecordsCount: allRecords.length,
+        firstRecord: allRecords[0] || null,
+        allFields: allRecords[0]?.fields ? Object.keys(allRecords[0].fields) : [],
       })
     }
+
+    const data = { records: allRecords }
 
     // Fetch properties to get Labor
     const propsRes = await fetch(
