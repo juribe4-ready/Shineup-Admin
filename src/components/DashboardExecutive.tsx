@@ -159,7 +159,7 @@ export default function DashboardExecutive() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h2 className="text-xl font-black" style={{ color: C.ink }}>Dashboard Ejecutivo</h2>
+          <h2 className="text-xl font-black" style={{ color: C.ink }}>Cascada Semanal</h2>
           <p className="text-sm" style={{ color: C.muted }}>Cascada de costos y métricas semanales</p>
         </div>
         <button 

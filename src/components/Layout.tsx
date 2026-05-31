@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Profile } from '../supabase'
 import {
   CalendarDays, Users, LogOut, ChevronLeft, 
-  TrendingUp, Settings, Home, ChevronRight, Radio, LayoutDashboard
+  TrendingUp, Settings, Home, ChevronRight, Radio, LayoutDashboard, Menu, X as XIcon
 } from 'lucide-react'
 
 const C = {
@@ -44,8 +44,8 @@ const NAV_ITEMS: NavItem[] = [
   // NIVEL OPERATIVO → ESTRATÉGICO
   { 
     key: 'operations', 
-    label: 'Operaciones',
-    sublabel: 'Día a día',
+    label: 'CCO',
+    sublabel: 'Control de Operaciones',
     Icon: Radio,        
     section: 'main',
     gradient: 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
@@ -80,7 +80,7 @@ const NAV_ITEMS: NavItem[] = [
 ]
 
 const PAGE_TITLES: Record<PageKey, string> = {
-  operations: 'Operaciones',
+  operations: 'CCO',
   planning:   'Planificación',
   analysis:   'Análisis',
   command:    'Command Center',
@@ -89,7 +89,7 @@ const PAGE_TITLES: Record<PageKey, string> = {
 }
 
 const PAGE_SUBTITLES: Record<PageKey, string> = {
-  operations: 'Monitoreo en vivo del día',
+  operations: 'Centro de Control de Operaciones',
   planning:   'Lanzador y calendario semanal',
   analysis:   'Cascadas, productividad y tendencias',
   command:    'North Star y KPIs ejecutivos',
@@ -108,12 +108,26 @@ interface Props {
 
 export default function Layout({ profile, page, onNavigate, onSignOut, children, badges = {} }: Props) {
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const [hoveredItem, setHoveredItem] = useState<PageKey | null>(null)
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+
+  // Close mobile drawer on navigate
+  const handleNavigate = (p: PageKey) => {
+    onNavigate(p)
+    setMobileOpen(false)
+  }
 
   const mainItems   = NAV_ITEMS.filter(i => i.section === 'main')
   const configItems = NAV_ITEMS.filter(i => i.section === 'config')
 
-  const sideW = collapsed ? '72px' : '240px'
+  const sideW = isMobile ? '0' : collapsed ? '72px' : '240px'
 
   return (
     <div style={{ 
@@ -121,19 +135,33 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
       height: '100vh', 
       background: C.bg, 
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif", 
-      overflow: 'hidden' 
+      overflow: 'hidden',
+      position: 'relative'
     }}>
+    
+      {/* MOBILE OVERLAY */}
+      {isMobile && mobileOpen && (
+        <div 
+          onClick={() => setMobileOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50 }} 
+        />
+      )}
 
       {/* SIDEBAR */}
       <div style={{ 
-        width: sideW, 
-        minWidth: sideW, 
+        width: isMobile ? (mobileOpen ? '240px' : '0') : sideW, 
+        minWidth: isMobile ? (mobileOpen ? '240px' : '0') : sideW,
         background: C.sidebarBg, 
         display: 'flex', 
         flexDirection: 'column', 
         transition: 'width 0.25s cubic-bezier(0.4, 0, 0.2, 1)', 
         overflow: 'hidden',
-        borderRight: '1px solid rgba(255,255,255,0.05)'
+        borderRight: '1px solid rgba(255,255,255,0.05)',
+        position: isMobile ? 'fixed' : 'relative',
+        top: isMobile ? 0 : undefined,
+        left: isMobile ? 0 : undefined,
+        height: isMobile ? '100vh' : undefined,
+        zIndex: isMobile ? 60 : undefined,
       }}>
 
         {/* Header */}
@@ -176,7 +204,7 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
             </div>
           )}
           <button 
-            onClick={() => setCollapsed(c => !c)}
+            onClick={() => isMobile ? setMobileOpen(false) : setCollapsed(c => !c)}
             style={{ 
               width: 32, 
               height: 32, 
@@ -193,9 +221,11 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
             onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
           >
-            {collapsed 
-              ? <ChevronRight className="w-4 h-4 text-white/60" strokeWidth={2} />
-              : <ChevronLeft className="w-4 h-4 text-white/60" strokeWidth={2} />}
+            {isMobile 
+              ? <XIcon className="w-4 h-4 text-white/60" strokeWidth={2} />
+              : collapsed 
+                ? <ChevronRight className="w-4 h-4 text-white/60" strokeWidth={2} />
+                : <ChevronLeft className="w-4 h-4 text-white/60" strokeWidth={2} />}
           </button>
         </div>
 
@@ -342,59 +372,79 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
 
         {/* Topbar */}
         <div style={{ 
-          height: 72, 
+          height: 64, 
           background: C.white, 
           borderBottom: `1px solid ${C.border}`, 
           display: 'flex', 
           alignItems: 'center', 
-          padding: '0 24px', 
-          gap: 16, 
+          padding: isMobile ? '0 16px' : '0 24px', 
+          gap: isMobile ? 10 : 16, 
           flexShrink: 0 
         }}>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontSize: 18, fontWeight: 700, color: C.ink, letterSpacing: '-0.02em' }}>
+          {/* Mobile hamburger */}
+          {isMobile && (
+            <button
+              onClick={() => setMobileOpen(true)}
+              style={{
+                width: 36, height: 36, borderRadius: 10,
+                background: C.bg, border: `1px solid ${C.border}`,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0
+              }}
+            >
+              <Menu className="w-5 h-5" style={{ color: C.slate }} />
+            </button>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: isMobile ? 15 : 18, fontWeight: 700, color: C.ink, letterSpacing: '-0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {PAGE_TITLES[page]}
             </p>
-            <p style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-              {PAGE_SUBTITLES[page]}
-            </p>
+            {!isMobile && (
+              <p style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                {PAGE_SUBTITLES[page]}
+              </p>
+            )}
           </div>
           
-          <div style={{ 
-            fontSize: 13, 
-            color: C.ink, 
-            background: C.bg, 
-            padding: '8px 14px', 
-            borderRadius: 10,
-            fontWeight: 500,
-            border: `1px solid ${C.border}`
-          }}>
-            {new Date().toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
-          </div>
+          {!isMobile && (
+            <div style={{ 
+              fontSize: 13, 
+              color: C.ink, 
+              background: C.bg, 
+              padding: '8px 14px', 
+              borderRadius: 10,
+              fontWeight: 500,
+              border: `1px solid ${C.border}`,
+              whiteSpace: 'nowrap'
+            }}>
+              {new Date().toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+            </div>
+          )}
           
           <div style={{ 
             display: 'flex', 
             alignItems: 'center', 
-            gap: 8, 
+            gap: 6, 
             background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)', 
-            padding: '8px 14px', 
+            padding: isMobile ? '6px 10px' : '8px 14px', 
             borderRadius: 10,
-            border: '1px solid #A7F3D0'
+            border: '1px solid #A7F3D0',
+            flexShrink: 0
           }}>
             <div style={{ 
-              width: 8, 
-              height: 8, 
+              width: 7, 
+              height: 7, 
               borderRadius: '50%', 
               background: C.green,
               boxShadow: '0 0 8px rgba(16, 185, 129, 0.6)',
               animation: 'pulse 2s infinite'
             }} />
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#059669' }}>En vivo</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#059669' }}>En vivo</span>
           </div>
         </div>
 
         {/* Content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '16px' : '24px' }}>
           {children}
         </div>
       </div>

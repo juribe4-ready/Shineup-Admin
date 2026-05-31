@@ -3,7 +3,7 @@ import { Profile } from '../supabase'
 import {
   MapPin, Users, RefreshCw,
   Calendar, X, ExternalLink,
-  Clock, Filter, Zap, BarChart3, Activity
+  Clock, Filter, Zap
 } from 'lucide-react'
 import DashboardExecutive from './DashboardExecutive'
 
@@ -270,7 +270,6 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
 }
 
 export default function DashboardPage({ profile: _profile }: Props) {
-  const [activeTab, setActiveTab] = useState<'executive' | 'live'>('executive')
   const [data, setData]           = useState<DashboardData | null>(null)
   const [loading, setLoading]     = useState(true)
   const [date, setDate]           = useState(today())
@@ -348,7 +347,7 @@ export default function DashboardPage({ profile: _profile }: Props) {
 
   // Initialize Leaflet map (FREE)
   useEffect(() => {
-    if (activeTab !== 'live') return
+    if (false) return // map always active
     if (!mapReady || !mapRef.current || !data || !window.L) return
     
     // Initialize map if not exists
@@ -403,7 +402,7 @@ export default function DashboardPage({ profile: _profile }: Props) {
     setTimeout(() => {
       if (mapObj.current) mapObj.current.invalidateSize()
     }, 100)
-  }, [mapReady, data, activeTab])
+  }, [mapReady, data])
 
   const handleDateChange = (d: string) => {
     setDate(d)
@@ -433,38 +432,14 @@ export default function DashboardPage({ profile: _profile }: Props) {
   return (
     <div className="space-y-6">
       
-      {/* TABS: Ejecutivo | En Vivo */}
-      <div className="flex items-center gap-2 p-1 rounded-2xl" style={{ background: C.bg, border: `1px solid ${C.border}`, width: 'fit-content' }}>
-        <button
-          onClick={() => setActiveTab('executive')}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all"
-          style={{
-            background: activeTab === 'executive' ? C.primary : 'transparent',
-            color: activeTab === 'executive' ? 'white' : C.muted,
-          }}
-        >
-          <BarChart3 className="w-4 h-4" />
-          Ejecutivo
-        </button>
-        <button
-          onClick={() => setActiveTab('live')}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all"
-          style={{
-            background: activeTab === 'live' ? C.primary : 'transparent',
-            color: activeTab === 'live' ? 'white' : C.muted,
-          }}
-        >
-          <Activity className="w-4 h-4" />
-          En Vivo
-        </button>
-      </div>
+      {/* Cascada Semanal */}
+      <DashboardExecutive />
 
-      {/* TAB: Ejecutivo */}
-      {activeTab === 'executive' && <DashboardExecutive />}
+      {/* Divisor */}
+      <div style={{ height: 1, background: C.border, margin: '8px 0' }} />
 
-      {/* TAB: En Vivo (contenido original) */}
-      {activeTab === 'live' && (
-        <>
+      {/* En Campo — mapa, timeline, métricas */}
+      <>
           {/* Stats + Date selector + LIVE */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
@@ -845,8 +820,7 @@ export default function DashboardPage({ profile: _profile }: Props) {
           </div>
         </div>
       )}
-        </>
-      )}
+      </>
     </div>
   )
 }
