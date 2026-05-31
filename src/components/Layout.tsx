@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import { Profile } from '../supabase'
 import {
-  CalendarDays, Users, AlertCircle,
-  Package, Download, LogOut, ChevronLeft, Menu, BarChart3, Activity
+  CalendarDays, Users, LogOut, ChevronLeft, 
+  TrendingUp, Settings, Home, ChevronRight, Radio, LayoutDashboard
 } from 'lucide-react'
 
 const C = {
-  sidebarBg:  '#1E293B',
-  sidebarMid: '#334155',
+  sidebarBg:  '#0F172A',
+  sidebarHover: '#1E293B',
   primary:    '#6366F1',
+  primaryGlow: 'rgba(99, 102, 241, 0.15)',
   ink:        '#0F172A',
   muted:      '#94A3B8',
   border:     '#E2E8F0',
@@ -17,36 +18,83 @@ const C = {
   green:      '#10B981',
   red:        '#EF4444',
   amber:      '#F59E0B',
+  teal:       '#14B8A6',
 }
 
-export type PageKey = 'dashboard' | 'stats' | 'planning' | 'users' | 'incidents' | 'inventory' | 'backup'
+// Nueva estructura de páginas - De operativo a estratégico
+export type PageKey = 
+  | 'operations'    // Monitoreo en vivo (día actual) + Incidentes + Rupturas
+  | 'planning'      // Lanzador de semana + Calendario
+  | 'analysis'      // Cascadas + Productividad + Tendencias  
+  | 'command'       // North Star + KPIs ejecutivos
+  | 'users'         // Usuarios
+  | 'settings'      // Configuración
 
 interface NavItem {
   key: PageKey
   label: string
+  sublabel?: string
   Icon: any
-  section: 'ops' | 'admin'
+  section: 'main' | 'config'
   badge?: number
+  gradient?: string
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { key: 'dashboard', label: 'Monitoreo',     Icon: Activity,        section: 'ops' },
-  { key: 'stats',     label: 'Estadísticas',  Icon: BarChart3,       section: 'ops' },
-  { key: 'planning',  label: 'Planificación', Icon: CalendarDays,    section: 'ops' },
-  { key: 'incidents', label: 'Incidentes',    Icon: AlertCircle,     section: 'ops' },
-  { key: 'inventory', label: 'Rupturas',      Icon: Package,         section: 'ops' },
-  { key: 'users',     label: 'Usuarios',      Icon: Users,           section: 'admin' },
-  { key: 'backup',    label: 'Media Backup',  Icon: Download,        section: 'admin' },
+  // NIVEL OPERATIVO → ESTRATÉGICO
+  { 
+    key: 'operations', 
+    label: 'Operaciones',
+    sublabel: 'Día a día',
+    Icon: Radio,        
+    section: 'main',
+    gradient: 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
+  },
+  { 
+    key: 'planning',   
+    label: 'Planificación', 
+    sublabel: 'Semana',
+    Icon: CalendarDays,    
+    section: 'main',
+    gradient: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)'
+  },
+  { 
+    key: 'analysis',     
+    label: 'Análisis',  
+    sublabel: 'Productividad',
+    Icon: TrendingUp,       
+    section: 'main',
+    gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)'
+  },
+  { 
+    key: 'command',
+    label: 'Command Center',
+    sublabel: 'North Star',
+    Icon: LayoutDashboard,
+    section: 'main',
+    gradient: 'linear-gradient(135deg, #EC4899 0%, #DB2777 100%)'
+  },
+  // CONFIG
+  { key: 'users',      label: 'Usuarios',      Icon: Users,     section: 'config' },
+  { key: 'settings',   label: 'Configuración', Icon: Settings,  section: 'config' },
 ]
 
 const PAGE_TITLES: Record<PageKey, string> = {
-  dashboard: 'Monitoreo',
-  stats:     'Estadísticas',
-  planning:  'Planificación',
-  incidents: 'Incidentes',
-  inventory: 'Rupturas de Inventario',
-  users:     'Gestión de Usuarios',
-  backup:    'Media Backup',
+  operations: 'Operaciones',
+  planning:   'Planificación',
+  analysis:   'Análisis',
+  command:    'Command Center',
+  users:      'Gestión de Usuarios',
+  settings:   'Configuración',
+}
+
+const PAGE_SUBTITLES: Record<PageKey, string> = {
+  operations: 'Monitoreo en vivo del día',
+  planning:   'Lanzador y calendario semanal',
+  analysis:   'Cascadas, productividad y tendencias',
+  command:    'North Star y KPIs ejecutivos',
+  users:      'Administración de usuarios',
+  settings:   'Configuración del sistema',
 }
 
 interface Props {
@@ -60,104 +108,406 @@ interface Props {
 
 export default function Layout({ profile, page, onNavigate, onSignOut, children, badges = {} }: Props) {
   const [collapsed, setCollapsed] = useState(false)
+  const [hoveredItem, setHoveredItem] = useState<PageKey | null>(null)
 
-  const opsItems  = NAV_ITEMS.filter(i => i.section === 'ops')
-  const adminItems = NAV_ITEMS.filter(i => i.section === 'admin')
+  const mainItems   = NAV_ITEMS.filter(i => i.section === 'main')
+  const configItems = NAV_ITEMS.filter(i => i.section === 'config')
 
-  const sideW = collapsed ? '56px' : '220px'
+  const sideW = collapsed ? '72px' : '240px'
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: C.bg, fontFamily: 'Poppins, sans-serif', overflow: 'hidden' }}>
+    <div style={{ 
+      display: 'flex', 
+      height: '100vh', 
+      background: C.bg, 
+      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif", 
+      overflow: 'hidden' 
+    }}>
 
       {/* SIDEBAR */}
-      <div style={{ width: sideW, minWidth: sideW, background: C.sidebarBg, display: 'flex', flexDirection: 'column', transition: 'width 0.2s', overflow: 'hidden' }}>
+      <div style={{ 
+        width: sideW, 
+        minWidth: sideW, 
+        background: C.sidebarBg, 
+        display: 'flex', 
+        flexDirection: 'column', 
+        transition: 'width 0.25s cubic-bezier(0.4, 0, 0.2, 1)', 
+        overflow: 'hidden',
+        borderRight: '1px solid rgba(255,255,255,0.05)'
+      }}>
 
         {/* Header */}
-        <div style={{ padding: '16px 12px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '0.5px solid rgba(255,255,255,0.08)' }}>
-          <button onClick={() => setCollapsed(c => !c)}
-            style={{ width: 28, height: 28, borderRadius: 6, background: 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            {collapsed
-              ? <Menu className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
-              : <ChevronLeft className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />}
-          </button>
+        <div style={{ 
+          padding: collapsed ? '20px 16px' : '20px 20px', 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '12px', 
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          minHeight: 72
+        }}>
           {!collapsed && (
-            <span style={{ color: 'white', fontSize: 18, fontWeight: 900, whiteSpace: 'nowrap' }}>
-              Shine<span style={{ color: '#FFD700' }}>UP</span>
-            </span>
+            <div style={{ 
+              width: 36, 
+              height: 36, 
+              borderRadius: 10, 
+              background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+            }}>
+              <Home className="w-5 h-5 text-white" strokeWidth={2.5} />
+            </div>
           )}
+          {!collapsed && (
+            <div style={{ flex: 1 }}>
+              <span style={{ 
+                color: 'white', 
+                fontSize: 20, 
+                fontWeight: 800, 
+                letterSpacing: '-0.02em',
+                display: 'block'
+              }}>
+                Shine<span style={{ color: '#FBBF24' }}>UP</span>
+              </span>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>
+                Admin Dashboard
+              </span>
+            </div>
+          )}
+          <button 
+            onClick={() => setCollapsed(c => !c)}
+            style={{ 
+              width: 32, 
+              height: 32, 
+              borderRadius: 8, 
+              background: 'rgba(255,255,255,0.06)', 
+              border: '1px solid rgba(255,255,255,0.08)',
+              cursor: 'pointer', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              flexShrink: 0,
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+          >
+            {collapsed 
+              ? <ChevronRight className="w-4 h-4 text-white/60" strokeWidth={2} />
+              : <ChevronLeft className="w-4 h-4 text-white/60" strokeWidth={2} />}
+          </button>
         </div>
 
         {/* Nav */}
-        <div style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
-          {/* Ops section */}
-          {!collapsed && <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', padding: '0 8px', marginBottom: 6 }}>Operaciones</p>}
-          {opsItems.map(item => <NavBtn key={item.key} item={item} active={page === item.key} collapsed={collapsed} badge={badges[item.key]} onClick={() => onNavigate(item.key)} />)}
+        <div style={{ flex: 1, padding: '16px 12px', overflowY: 'auto' }}>
+          
+          {/* Main Navigation */}
+          {!collapsed && (
+            <p style={{ 
+              fontSize: 10, 
+              fontWeight: 600, 
+              letterSpacing: '0.08em', 
+              color: 'rgba(255,255,255,0.3)', 
+              textTransform: 'uppercase', 
+              padding: '0 8px', 
+              marginBottom: 12 
+            }}>
+              Navegación
+            </p>
+          )}
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {mainItems.map(item => (
+              <NavBtn 
+                key={item.key} 
+                item={item} 
+                active={page === item.key} 
+                collapsed={collapsed} 
+                badge={badges[item.key]}
+                hovered={hoveredItem === item.key}
+                onHover={setHoveredItem}
+                onClick={() => onNavigate(item.key)} 
+              />
+            ))}
+          </div>
 
-          {/* Admin section */}
-          <div style={{ height: 16 }} />
-          {!collapsed && <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', padding: '0 8px', marginBottom: 6 }}>Administración</p>}
-          {adminItems.map(item => <NavBtn key={item.key} item={item} active={page === item.key} collapsed={collapsed} badge={badges[item.key]} onClick={() => onNavigate(item.key)} />)}
+          {/* Divider */}
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '20px 8px' }} />
+
+          {/* Config */}
+          {!collapsed && (
+            <p style={{ 
+              fontSize: 10, 
+              fontWeight: 600, 
+              letterSpacing: '0.08em', 
+              color: 'rgba(255,255,255,0.3)', 
+              textTransform: 'uppercase', 
+              padding: '0 8px', 
+              marginBottom: 12 
+            }}>
+              Configuración
+            </p>
+          )}
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {configItems.map(item => (
+              <NavBtn 
+                key={item.key} 
+                item={item} 
+                active={page === item.key} 
+                collapsed={collapsed} 
+                badge={badges[item.key]}
+                hovered={hoveredItem === item.key}
+                onHover={setHoveredItem}
+                onClick={() => onNavigate(item.key)} 
+              />
+            ))}
+          </div>
         </div>
 
-        {/* Footer */}
-        <div style={{ padding: '10px 8px', borderTop: '0.5px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8 }}>
-            <div style={{ width: 28, height: 28, borderRadius: 8, background: C.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'white', flexShrink: 0 }}>
+        {/* Footer - User Profile */}
+        <div style={{ 
+          padding: '16px 12px', 
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+          background: 'rgba(0,0,0,0.2)'
+        }}>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 10, 
+            padding: collapsed ? '8px 4px' : '10px 12px', 
+            borderRadius: 12,
+            background: 'rgba(255,255,255,0.04)',
+            justifyContent: collapsed ? 'center' : 'flex-start'
+          }}>
+            <div style={{ 
+              width: 36, 
+              height: 36, 
+              borderRadius: 10, 
+              background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              fontSize: 13, 
+              fontWeight: 700, 
+              color: 'white', 
+              flexShrink: 0,
+              boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)'
+            }}>
               {profile.initials || 'AD'}
             </div>
             {!collapsed && (
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 12, fontWeight: 600, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{profile.full_name?.split(' ')[0] || 'Admin'}</p>
-                <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{profile.role}</p>
-              </div>
-            )}
-            {!collapsed && (
-              <button onClick={onSignOut} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, display: 'flex', alignItems: 'center' }}>
-                <LogOut className="w-3.5 h-3.5" style={{ color: 'rgba(255,255,255,0.4)' }} />
-              </button>
+              <>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ 
+                    fontSize: 13, 
+                    fontWeight: 600, 
+                    color: 'white', 
+                    whiteSpace: 'nowrap', 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis' 
+                  }}>
+                    {profile.full_name?.split(' ')[0] || 'Admin'}
+                  </p>
+                  <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>
+                    {profile.role}
+                  </p>
+                </div>
+                <button 
+                  onClick={onSignOut} 
+                  style={{ 
+                    background: 'rgba(255,255,255,0.06)', 
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    cursor: 'pointer', 
+                    padding: 8, 
+                    borderRadius: 8, 
+                    display: 'flex', 
+                    alignItems: 'center',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+                >
+                  <LogOut className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.5)' }} />
+                </button>
+              </>
             )}
           </div>
         </div>
       </div>
 
-      {/* MAIN */}
+      {/* MAIN CONTENT */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
 
         {/* Topbar */}
-        <div style={{ height: 52, background: C.white, borderBottom: `0.5px solid ${C.border}`, display: 'flex', alignItems: 'center', padding: '0 20px', gap: 12, flexShrink: 0 }}>
-          <p style={{ fontSize: 15, fontWeight: 700, color: C.ink, flex: 1 }}>{PAGE_TITLES[page]}</p>
-          <div style={{ fontSize: 12, color: C.muted, background: C.bg, padding: '4px 10px', borderRadius: 6 }}>
+        <div style={{ 
+          height: 72, 
+          background: C.white, 
+          borderBottom: `1px solid ${C.border}`, 
+          display: 'flex', 
+          alignItems: 'center', 
+          padding: '0 24px', 
+          gap: 16, 
+          flexShrink: 0 
+        }}>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 18, fontWeight: 700, color: C.ink, letterSpacing: '-0.02em' }}>
+              {PAGE_TITLES[page]}
+            </p>
+            <p style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+              {PAGE_SUBTITLES[page]}
+            </p>
+          </div>
+          
+          <div style={{ 
+            fontSize: 13, 
+            color: C.ink, 
+            background: C.bg, 
+            padding: '8px 14px', 
+            borderRadius: 10,
+            fontWeight: 500,
+            border: `1px solid ${C.border}`
+          }}>
             {new Date().toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#ECFDF5', padding: '3px 10px', borderRadius: 6 }}>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.green }} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#059669' }}>En vivo</span>
+          
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 8, 
+            background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)', 
+            padding: '8px 14px', 
+            borderRadius: 10,
+            border: '1px solid #A7F3D0'
+          }}>
+            <div style={{ 
+              width: 8, 
+              height: 8, 
+              borderRadius: '50%', 
+              background: C.green,
+              boxShadow: '0 0 8px rgba(16, 185, 129, 0.6)',
+              animation: 'pulse 2s infinite'
+            }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#059669' }}>En vivo</span>
           </div>
         </div>
 
         {/* Content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
           {children}
         </div>
       </div>
+
+      {/* Pulse animation */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.7; transform: scale(1.1); }
+        }
+      `}</style>
     </div>
   )
 }
 
-function NavBtn({ item, active, collapsed, badge, onClick }: { item: NavItem; active: boolean; collapsed: boolean; badge?: number; onClick: () => void }) {
+interface NavBtnProps {
+  item: NavItem
+  active: boolean
+  collapsed: boolean
+  badge?: number
+  hovered: boolean
+  onHover: (key: PageKey | null) => void
+  onClick: () => void
+}
+
+function NavBtn({ item, active, collapsed, badge, hovered, onHover, onClick }: NavBtnProps) {
+  const showGradient = active && item.gradient
+  
   return (
-    <button onClick={onClick}
+    <button 
+      onClick={onClick}
+      onMouseEnter={() => onHover(item.key)}
+      onMouseLeave={() => onHover(null)}
       style={{
-        width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
-        borderRadius: 8, cursor: 'pointer', marginBottom: 2, border: 'none', textAlign: 'left',
-        background: active ? '#6366F1' : 'transparent', transition: 'background 0.15s',
+        width: '100%', 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: 12, 
+        padding: collapsed ? '12px 8px' : '12px 14px',
+        borderRadius: 12, 
+        cursor: 'pointer', 
+        border: 'none', 
+        textAlign: 'left',
+        background: showGradient 
+          ? item.gradient 
+          : active 
+            ? C.primary 
+            : hovered 
+              ? 'rgba(255,255,255,0.06)' 
+              : 'transparent',
+        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
         justifyContent: collapsed ? 'center' : 'flex-start',
+        boxShadow: active ? '0 4px 12px rgba(99, 102, 241, 0.25)' : 'none',
+        position: 'relative',
+        overflow: 'hidden'
       }}
-      onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.08)' }}
-      onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}>
-      <item.Icon style={{ width: 16, height: 16, color: active ? 'white' : 'rgba(255,255,255,0.6)', flexShrink: 0 }} />
-      {!collapsed && <span style={{ fontSize: 13, fontWeight: 500, color: active ? 'white' : 'rgba(255,255,255,0.7)', flex: 1, whiteSpace: 'nowrap' }}>{item.label}</span>}
-      {!collapsed && badge ? <span style={{ background: '#EF4444', color: 'white', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{badge}</span> : null}
+    >
+      {/* Icon container */}
+      <div style={{
+        width: 32,
+        height: 32,
+        borderRadius: 8,
+        background: active ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        transition: 'all 0.2s'
+      }}>
+        <item.Icon style={{ 
+          width: 18, 
+          height: 18, 
+          color: active ? 'white' : 'rgba(255,255,255,0.6)', 
+        }} />
+      </div>
+      
+      {!collapsed && (
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ 
+            fontSize: 13, 
+            fontWeight: 600, 
+            color: active ? 'white' : 'rgba(255,255,255,0.8)', 
+            display: 'block',
+            whiteSpace: 'nowrap' 
+          }}>
+            {item.label}
+          </span>
+          {item.sublabel && (
+            <span style={{ 
+              fontSize: 10, 
+              color: active ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.4)', 
+              display: 'block',
+              marginTop: 1
+            }}>
+              {item.sublabel}
+            </span>
+          )}
+        </div>
+      )}
+      
+      {!collapsed && badge ? (
+        <span style={{ 
+          background: '#EF4444', 
+          color: 'white', 
+          fontSize: 10, 
+          fontWeight: 700, 
+          padding: '2px 8px', 
+          borderRadius: 10,
+          boxShadow: '0 2px 6px rgba(239, 68, 68, 0.4)'
+        }}>
+          {badge}
+        </span>
+      ) : null}
     </button>
   )
 }
