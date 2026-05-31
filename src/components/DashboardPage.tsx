@@ -82,7 +82,6 @@ interface Props {
   profile: Profile
   externalDate?: string
   onDateChange?: (d: string) => void
-  onRefresh?: () => void
 }
 
 const fmt = (v?: string | null) => {
@@ -271,7 +270,7 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
   )
 }
 
-export default function DashboardPage({ profile: _profile, externalDate, onDateChange, onRefresh }: Props) {
+export default function DashboardPage({ profile: _profile, externalDate, onDateChange }: Props) {
   const [data, setData]           = useState<DashboardData | null>(null)
   const [loading, setLoading]     = useState(true)
   const [date, setDate]           = useState(externalDate || today())
@@ -283,7 +282,6 @@ export default function DashboardPage({ profile: _profile, externalDate, onDateC
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [mapReady, setMapReady]   = useState(false)
   const [autoRefresh] = useState(true)
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [ganttFilter, setGanttFilter] = useState<'all' | 'inProgress' | 'done'>('all')
   const mapRef    = useRef<HTMLDivElement>(null)
   const mapObj    = useRef<any>(null)
@@ -312,7 +310,6 @@ export default function DashboardPage({ profile: _profile, externalDate, onDateC
       if (!res.ok) throw new Error('Error al cargar')
       const json = await res.json()
       setData(json)
-      setLastUpdated(new Date())
     } catch (err) {
       console.error(err)
     } finally {
@@ -408,11 +405,7 @@ export default function DashboardPage({ profile: _profile, externalDate, onDateC
     }, 100)
   }, [mapReady, data])
 
-  const handleDateChange = (d: string) => {
-    setDate(d)
-    loadData(d)
-    if (onDateChange) onDateChange(d)
-  }
+
 
   if (loading && !data) return (
     <div className="flex items-center justify-center h-64">
