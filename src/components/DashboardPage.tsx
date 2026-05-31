@@ -81,7 +81,6 @@ interface DashboardData {
 interface Props {
   profile: Profile
   externalDate?: string
-  onDateChange?: (d: string) => void
 }
 
 const fmt = (v?: string | null) => {
@@ -270,7 +269,7 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
   )
 }
 
-export default function DashboardPage({ profile: _profile, externalDate, onDateChange }: Props) {
+export default function DashboardPage({ profile: _profile, externalDate }: Props) {
   const [data, setData]           = useState<DashboardData | null>(null)
   const [loading, setLoading]     = useState(true)
   const [date, setDate]           = useState(externalDate || today())

@@ -193,7 +193,7 @@ export default function OperationsPage({ profile }: Props) {
         }
       `}</style>
 
-      {activeTab === 'live'      && <DashboardPage profile={profile} externalDate={date} onDateChange={setDate} onRefresh={() => setDateChanged(d => !d)} />}
+      {activeTab === 'live'      && <DashboardPage profile={profile} externalDate={date} />}
       {activeTab === 'incidents' && <IncidentsPage />}
       {activeTab === 'inventory' && <InventoryPage />}
     </div>
