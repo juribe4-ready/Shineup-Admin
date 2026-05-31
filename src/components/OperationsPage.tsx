@@ -27,7 +27,7 @@ export default function OperationsPage({ profile }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('live')
 
   const tabs: { key: Tab; label: string; Icon: any; color: string }[] = [
-    { key: 'live',      label: 'En Campo',  Icon: Radio,         color: C.green },
+    { key: 'live',      label: 'CCO',  Icon: Radio,         color: C.green },
     { key: 'incidents', label: 'Incidentes', Icon: AlertTriangle, color: C.amber },
     { key: 'inventory', label: 'Rupturas',   Icon: Package,       color: C.red   },
   ]

@@ -5,7 +5,6 @@ import {
   Calendar, X, ExternalLink,
   Clock, Filter, Zap
 } from 'lucide-react'
-import DashboardExecutive from './DashboardExecutive'
 
 // Leaflet types
 declare global {
@@ -432,19 +431,13 @@ export default function DashboardPage({ profile: _profile }: Props) {
   return (
     <div className="space-y-6">
       
-      {/* Cascada Semanal */}
-      <DashboardExecutive />
-
-      {/* Divisor */}
-      <div style={{ height: 1, background: C.border, margin: '8px 0' }} />
-
-      {/* En Campo — mapa, timeline, métricas */}
+      {/* Monitoreo en campo */}
       <>
           {/* Stats + Date selector + LIVE */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-3">
-                <h2 className="font-black text-[22px]" style={{ color: C.ink }}>Dashboard</h2>
+                <h2 className="font-black text-[22px]" style={{ color: C.ink }}>Monitoreo</h2>
                 {date === today() && (
                   <div className="flex items-center gap-1.5 px-2 py-1 rounded-full" style={{ background: '#DCFCE7' }}>
                     <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: C.green }} />
