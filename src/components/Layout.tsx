@@ -257,7 +257,7 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
                 badge={badges[item.key]}
                 hovered={hoveredItem === item.key}
                 onHover={setHoveredItem}
-                onClick={() => onNavigate(item.key)} 
+                onClick={() => handleNavigate(item.key)} 
               />
             ))}
           </div>
@@ -290,7 +290,7 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
                 badge={badges[item.key]}
                 hovered={hoveredItem === item.key}
                 onHover={setHoveredItem}
-                onClick={() => onNavigate(item.key)} 
+                onClick={() => handleNavigate(item.key)} 
               />
             ))}
           </div>
@@ -392,7 +392,7 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
                 flexShrink: 0
               }}
             >
-              <Menu className="w-5 h-5" style={{ color: C.slate }} />
+              <Menu className="w-5 h-5" style={{ color: C.ink }} />
             </button>
           )}
           <div style={{ flex: 1, minWidth: 0 }}>
