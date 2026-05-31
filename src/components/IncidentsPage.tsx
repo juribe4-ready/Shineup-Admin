@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { AlertCircle, X, RefreshCw, Filter, Check, Loader2 } from 'lucide-react'
+import { AlertCircle, X, RefreshCw, Filter, Check, Loader2, CalendarDays } from 'lucide-react'
 
 const C = {
   primary: '#6366F1', primaryLight: '#EEF2FF',
@@ -38,6 +38,22 @@ export default function IncidentsPage() {
   const [dateTo, setDateTo]             = useState('')
   const [showFilters, setShowFilters]   = useState(false)
   
+  // Today's properties filter
+  const [todayProps, setTodayProps] = useState<string[]>([])
+  const [todayFilter, setTodayFilter] = useState(false)
+
+  useEffect(() => {
+    const todayDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+    fetch(`/api/getDashboard?date=${todayDate}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.cleanings) {
+          const names = [...new Set<string>(d.cleanings.map((cl: any) => cl.propertyText).filter(Boolean))]
+          setTodayProps(names)
+        }
+      }).catch(() => {})
+  }, [])
+
   // For status change
   const [editStatus, setEditStatus] = useState<string>('')
   const [closeComment, setCloseComment] = useState('')
@@ -104,16 +120,17 @@ export default function IncidentsPage() {
     if (propFilter !== 'all' && i.propertyName !== propFilter) return false
     if (dateFrom && i.creationDate && i.creationDate < dateFrom) return false
     if (dateTo && i.creationDate && i.creationDate.slice(0,10) > dateTo) return false
+    if (todayFilter && todayProps.length > 0 && !todayProps.includes(i.propertyName)) return false
     return true
-  }), [incidents, statusFilter, propFilter, dateFrom, dateTo])
+  }), [incidents, statusFilter, propFilter, dateFrom, dateTo, todayFilter, todayProps])
 
   const counts = incidents.reduce((acc, i) => { acc[i.status] = (acc[i.status]||0)+1; return acc }, {} as Record<string,number>)
   const hasFilters = propFilter !== 'all' || dateFrom || dateTo
 
-  const inputStyle = { height: 34, padding: '0 10px', borderRadius: 10, border: `1px solid ${C.border}`, fontSize: 12, fontFamily: 'Poppins, sans-serif', color: C.ink, background: C.white, outline: 'none' }
+  const inputStyle = { height: 34, padding: '0 10px', borderRadius: 10, border: `1px solid ${C.border}`, fontSize: 12, fontFamily: "'Inter', sans-serif", color: C.ink, background: C.white, outline: 'none' }
 
   return (
-    <div style={{ fontFamily: 'Poppins, sans-serif' }}>
+    <div style={{ fontFamily: "'Inter', sans-serif" }}>
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
@@ -138,6 +155,18 @@ export default function IncidentsPage() {
             {statusFilter === 'all' ? 'Todos' : statusFilter} ({filtered.length})
           </p>
 
+          {/* Casas hoy toggle */}
+          {todayProps.length > 0 && (
+            <button onClick={() => setTodayFilter(f => !f)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, height: 34, padding: '0 12px', borderRadius: 10,
+                border: `1px solid ${todayFilter ? C.green : C.border}`,
+                background: todayFilter ? '#DCFCE7' : C.white,
+                cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                color: todayFilter ? '#059669' : C.slate }}>
+              <CalendarDays style={{ width: 13, height: 13 }} />
+              Casas hoy {todayFilter && `(${todayProps.length})`}
+            </button>
+          )}
           <button onClick={() => setShowFilters(f => !f)}
             style={{ display: 'flex', alignItems: 'center', gap: 6, height: 34, padding: '0 12px', borderRadius: 10, border: `1px solid ${hasFilters ? C.primary : C.border}`, background: hasFilters ? C.primaryLight : C.white, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: hasFilters ? C.primary : C.slate }}>
             <Filter style={{ width: 13, height: 13 }} /> Filtros {hasFilters && '•'}
@@ -264,7 +293,7 @@ export default function IncidentsPage() {
                     placeholder="Describe cómo se resolvió..."
                     style={{
                       width: '100%', padding: 12, borderRadius: 12, border: `1px solid ${C.border}`,
-                      fontSize: 13, fontFamily: 'Poppins, sans-serif', resize: 'vertical', minHeight: 80,
+                      fontSize: 13, fontFamily: "'Inter', sans-serif", resize: 'vertical', minHeight: 80,
                       outline: 'none',
                     }}
                   />

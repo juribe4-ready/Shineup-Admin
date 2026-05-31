@@ -433,65 +433,26 @@ export default function DashboardPage({ profile: _profile }: Props) {
       
       {/* Monitoreo en campo */}
       <>
-          {/* Stats + Date selector + LIVE */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-3">
-                <h2 className="font-black text-[22px]" style={{ color: C.ink }}>Monitoreo</h2>
-                {date === today() && (
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-full" style={{ background: '#DCFCE7' }}>
-                    <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: C.green }} />
-                    <span className="text-[10px] font-black uppercase" style={{ color: C.green }}>Live</span>
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-2 mt-0.5">
-                <p className="text-[13px] font-medium" style={{ color: C.muted }}>
-                  {stats.total} limpiezas · {pct}% completado
-                </p>
-                {lastUpdated && (
-                  <span className="text-[11px]" style={{ color: C.muted }}>
-                    · {lastUpdated.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <input type="date" value={date} onChange={e => handleDateChange(e.target.value)}
-                className="px-3 py-2 rounded-2xl text-[13px] font-medium outline-none"
-                style={{ border: `1.5px solid ${C.border}`, fontFamily: 'Poppins, sans-serif', color: C.ink }} />
-              <button onClick={() => handleDateChange(today())}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-[12px] font-bold transition-all"
-                style={{ background: date === today() ? C.primaryLight : C.bg, color: date === today() ? C.primary : C.muted, border: `1.5px solid ${C.border}` }}>
-                <Calendar className="w-3.5 h-3.5" /> Hoy
-              </button>
-              <button onClick={() => loadData(date)} disabled={loading}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-[12px] font-bold transition-all"
-                style={{ background: C.bg, color: C.slate, border: `1.5px solid ${C.border}` }}>
-                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-          </div>
-
-      {/* Stats cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {[
-          { label: 'Total',       value: stats.total,      color: C.ink,     bg: C.white },
-          { label: 'Programadas', value: stats.programmed, color: C.muted,   bg: C.white },
-          { label: 'Abiertas',    value: stats.opened,     color: '#D97706', bg: '#FFFBEB' },
-          { label: 'En Progreso', value: stats.inProgress, color: C.blue,    bg: '#EFF6FF' },
-          { label: 'Terminadas',  value: stats.done,       color: C.green,   bg: '#ECFDF5' },
-        ].map(s => (
-          <div key={s.label} className="rounded-3xl p-4 shadow-sm" style={{ background: s.bg, border: `1px solid ${C.border}` }}>
-            <p className="font-black text-[28px] leading-none" style={{ color: s.color }}>{s.value}</p>
-            <p className="text-[11px] font-semibold mt-1 uppercase tracking-wide" style={{ color: C.muted }}>{s.label}</p>
-            {s.label === 'Terminadas' && stats.total > 0 && (
-              <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: '#D1FAE5' }}>
-                <div className="h-full rounded-full" style={{ width: `${pct}%`, background: C.green }} />
-              </div>
-            )}
-          </div>
-        ))}
+      {/* Fecha + Hoy + Refresh — controles de fecha al tope */}
+      <div className="flex items-center gap-2 flex-wrap mb-1">
+        <input type="date" value={date} onChange={e => handleDateChange(e.target.value)}
+          className="px-3 py-2 rounded-2xl text-[13px] font-medium outline-none"
+          style={{ border: `1.5px solid ${C.border}`, color: C.ink }} />
+        <button onClick={() => handleDateChange(today())}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-[12px] font-bold transition-all"
+          style={{ background: date === today() ? C.primaryLight : C.bg, color: date === today() ? C.primary : C.muted, border: `1.5px solid ${C.border}` }}>
+          <Calendar className="w-3.5 h-3.5" /> Hoy
+        </button>
+        <button onClick={() => loadData(date)} disabled={loading}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-[12px] font-bold transition-all"
+          style={{ background: C.bg, color: C.slate, border: `1.5px solid ${C.border}` }}>
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+        </button>
+        {lastUpdated && (
+          <span className="text-[11px]" style={{ color: C.muted }}>
+            Actualizado {lastUpdated.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
       </div>
 
       {/* Map */}
@@ -518,6 +479,29 @@ export default function DashboardPage({ profile: _profile }: Props) {
           )}
         </div>
       </div>
+
+      {/* Stats cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {[
+          { label: 'Total',       value: stats.total,      color: C.ink,     bg: C.white },
+          { label: 'Programadas', value: stats.programmed, color: C.muted,   bg: C.white },
+          { label: 'Abiertas',    value: stats.opened,     color: '#D97706', bg: '#FFFBEB' },
+          { label: 'En Progreso', value: stats.inProgress, color: C.blue,    bg: '#EFF6FF' },
+          { label: 'Terminadas',  value: stats.done,       color: C.green,   bg: '#ECFDF5' },
+        ].map(s => (
+          <div key={s.label} className="rounded-3xl p-4 shadow-sm" style={{ background: s.bg, border: `1px solid ${C.border}` }}>
+            <p className="font-black text-[28px] leading-none" style={{ color: s.color }}>{s.value}</p>
+            <p className="text-[11px] font-semibold mt-1 uppercase tracking-wide" style={{ color: C.muted }}>{s.label}</p>
+            {s.label === 'Terminadas' && stats.total > 0 && (
+              <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: '#D1FAE5' }}>
+                <div className="h-full rounded-full" style={{ width: `${pct}%`, background: C.green }} />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+
 
       {/* Gantt Timeline con filtros */}
       {data && data.timeline.length > 0 && (
