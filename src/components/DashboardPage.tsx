@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Profile } from '../supabase'
 import {
-  MapPin, Users, RefreshCw,
+  MapPin, Users,
   Calendar, X, ExternalLink,
   Clock, Filter, Zap
 } from 'lucide-react'
@@ -80,6 +80,9 @@ interface DashboardData {
 
 interface Props {
   profile: Profile
+  externalDate?: string
+  onDateChange?: (d: string) => void
+  onRefresh?: () => void
 }
 
 const fmt = (v?: string | null) => {
@@ -268,10 +271,12 @@ function GanttTimeline({ timeline, onSelect }: { timeline: TimelineGroup[]; onSe
   )
 }
 
-export default function DashboardPage({ profile: _profile }: Props) {
+export default function DashboardPage({ profile: _profile, externalDate, onDateChange, onRefresh }: Props) {
   const [data, setData]           = useState<DashboardData | null>(null)
   const [loading, setLoading]     = useState(true)
-  const [date, setDate]           = useState(today())
+  const [date, setDate]           = useState(externalDate || today())
+  // Sync with external date
+  useEffect(() => { if (externalDate) setDate(externalDate) }, [externalDate])
   const [selected, setSelected]     = useState<Cleaning | null>(null)
   const [incidents, setIncidents]   = useState<Incident[]>([])
   const [inventory, setInventory]   = useState<InventoryItem[]>([])
@@ -406,6 +411,7 @@ export default function DashboardPage({ profile: _profile }: Props) {
   const handleDateChange = (d: string) => {
     setDate(d)
     loadData(d)
+    if (onDateChange) onDateChange(d)
   }
 
   if (loading && !data) return (
@@ -433,27 +439,7 @@ export default function DashboardPage({ profile: _profile }: Props) {
       
       {/* Monitoreo en campo */}
       <>
-      {/* Fecha + Hoy + Refresh — controles de fecha al tope */}
-      <div className="flex items-center gap-2 flex-wrap mb-1">
-        <input type="date" value={date} onChange={e => handleDateChange(e.target.value)}
-          className="px-3 py-2 rounded-2xl text-[13px] font-medium outline-none"
-          style={{ border: `1.5px solid ${C.border}`, color: C.ink }} />
-        <button onClick={() => handleDateChange(today())}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-[12px] font-bold transition-all"
-          style={{ background: date === today() ? C.primaryLight : C.bg, color: date === today() ? C.primary : C.muted, border: `1.5px solid ${C.border}` }}>
-          <Calendar className="w-3.5 h-3.5" /> Hoy
-        </button>
-        <button onClick={() => loadData(date)} disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-[12px] font-bold transition-all"
-          style={{ background: C.bg, color: C.slate, border: `1.5px solid ${C.border}` }}>
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-        </button>
-        {lastUpdated && (
-          <span className="text-[11px]" style={{ color: C.muted }}>
-            Actualizado {lastUpdated.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-          </span>
-        )}
-      </div>
+
 
       {/* Map */}
       <div className="rounded-3xl overflow-hidden shadow-sm" style={{ border: `1px solid ${C.border}` }}>

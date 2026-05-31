@@ -19,10 +19,13 @@ interface DashboardStats {
 
 interface Props { profile: Profile }
 
-const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+const todayDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
 
 export default function OperationsPage({ profile }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('live')
+  const [date, setDate] = useState(todayDate())
+  const [dateChanged, setDateChanged] = useState(false)
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [isToday, setIsToday] = useState(true)
   // lastUpdated removed
@@ -31,11 +34,11 @@ export default function OperationsPage({ profile }: Props) {
   useEffect(() => {
     const load = async () => {
       try {
-        const r = await fetch(`/api/getDashboard?date=${today()}`)
+        const r = await fetch(`/api/getDashboard?date=${date}`)
         if (r.ok) {
           const d = await r.json()
           setStats(d.stats)
-          // setLastUpdated(new Date())
+          setLastRefresh(new Date())
           setIsToday(true)
         }
       } catch {}
@@ -43,19 +46,19 @@ export default function OperationsPage({ profile }: Props) {
     load()
     const iv = setInterval(load, 120000)
     return () => clearInterval(iv)
-  }, [])
+  }, [date, dateChanged])
 
   const pct = stats && stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0
 
   return (
     <div>
-      {/* Tab Bar — Monitoreo con stats inline */}
+      {/* Tab Bar row — tabs a la izquierda, fecha a la derecha */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
       <div style={{
-        display: 'flex', gap: 6, marginBottom: 24,
+        display: 'flex', gap: 6,
         background: C.white, padding: 5,
         borderRadius: 16, border: `1px solid ${C.border}`,
-        width: 'fit-content', flexWrap: 'wrap',
-        alignItems: 'center',
+        alignItems: 'center', flex: '0 0 auto',
       }}>
 
         {/* MONITOREO tab — rico con stats */}
@@ -157,6 +160,34 @@ export default function OperationsPage({ profile }: Props) {
         </button>
       </div>
 
+      </div>{/* end tabs pill */}
+
+      {/* Date controls — derecha */}
+      {activeTab === 'live' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+          <input type="date" value={date} onChange={e => { setDate(e.target.value); setDateChanged(true) }}
+            style={{ height: 38, padding: '0 12px', borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 13, fontWeight: 500, color: C.ink, outline: 'none', fontFamily: "'Inter', sans-serif" }} />
+          <button onClick={() => { setDate(todayDate()); setDateChanged(true) }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38, padding: '0 14px', borderRadius: 12,
+              border: `1.5px solid ${date === todayDate() ? C.primary : C.border}`,
+              background: date === todayDate() ? '#EEF2FF' : C.white,
+              color: date === todayDate() ? C.primary : C.muted,
+              cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: "'Inter', sans-serif" }}>
+            📅 Hoy
+          </button>
+          <button onClick={() => setDateChanged(c => !c)}
+            style={{ width: 38, height: 38, borderRadius: 12, border: `1.5px solid ${C.border}`, background: C.white, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            🔄
+          </button>
+          {lastRefresh && (
+            <span style={{ fontSize: 11, color: C.muted }}>
+              Actualizado {lastRefresh.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
+      )}
+      </div>{/* end tab bar row */}
+
       <style>{`
         @keyframes livepulse {
           0%, 100% { transform: scale(1); opacity: 1; }
@@ -164,7 +195,7 @@ export default function OperationsPage({ profile }: Props) {
         }
       `}</style>
 
-      {activeTab === 'live'      && <DashboardPage profile={profile} />}
+      {activeTab === 'live'      && <DashboardPage profile={profile} externalDate={date} onDateChange={setDate} onRefresh={() => setDateChanged(d => !d)} />}
       {activeTab === 'incidents' && <IncidentsPage />}
       {activeTab === 'inventory' && <InventoryPage />}
     </div>
