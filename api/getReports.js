@@ -93,28 +93,30 @@ async function getBilling(headers, query) {
     offset = data.offset || null
   } while (offset)
 
-  // Resolve Client Name and Source: fetch all appointments in date range, match by Related Cleaning Job
+  // Resolve Client Name and Source from Appointments — fetch all with a linked cleaning, match by ID
+  const cleaningIdSet = new Set(allRecords.map(r => r.id))
   const apptMap = {}
   try {
-    const apptFormula = encodeURIComponent(`AND(IS_AFTER({Requested Date & Time}, '${df}'), IS_BEFORE({Requested Date & Time}, DATEADD('${dt}', 1, 'days')), {Related Cleaning Job} != '')`)
+    const apptFormula = encodeURIComponent(`{Related Cleaning Job} != ''`)
     let apptOffset = null
     do {
       const apptUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${apptFormula}&fields[]=Client%20Name&fields[]=Online%20Platform%20Source&fields[]=Related%20Cleaning%20Job${apptOffset ? `&offset=${apptOffset}` : ''}`
       const ar = await fetch(apptUrl, { headers })
-      if (ar.ok) {
-        const ad = await ar.json()
-        for (const appt of (ad.records || [])) {
-          const relIds = appt.fields?.['Related Cleaning Job'] || []
-          const clientName = Array.isArray(appt.fields?.['Client Name'])
-            ? appt.fields['Client Name'][0]
-            : (appt.fields?.['Client Name'] || null)
-          const source = appt.fields?.['Online Platform Source'] || null
-          for (const cid of relIds) {
-            apptMap[cid] = { clientName, source }
-          }
+      if (!ar.ok) break
+      const ad = await ar.json()
+      for (const appt of (ad.records || [])) {
+        const relIds = appt.fields?.['Related Cleaning Job'] || []
+        // Only process if one of these cleaning IDs is in our set
+        if (!relIds.some(id => cleaningIdSet.has(id))) continue
+        const clientName = Array.isArray(appt.fields?.['Client Name'])
+          ? appt.fields['Client Name'][0]
+          : (appt.fields?.['Client Name'] || null)
+        const source = appt.fields?.['Online Platform Source'] || null
+        for (const cid of relIds) {
+          if (cleaningIdSet.has(cid)) apptMap[cid] = { clientName, source }
         }
-        apptOffset = ad.offset || null
-      } else { break }
+      }
+      apptOffset = ad.offset || null
     } while (apptOffset)
   } catch(e) { console.error('[getBilling] appt lookup error:', e.message) }
 
