@@ -97,10 +97,10 @@ async function getBilling(headers, query) {
   const cleaningIdSet = new Set(allRecords.map(r => r.id))
   const apptMap = {}
   try {
-    const apptFormula = encodeURIComponent(`{Related Cleaning Job} != ''`)
+    const apptFormula = encodeURIComponent(`NOT({Related Cleaning Job} = BLANK())`)
     let apptOffset = null
     do {
-      const apptUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${apptFormula}&fields[]=Client%20Name&fields[]=Online%20Platform%20Source&fields[]=Related%20Cleaning%20Job${apptOffset ? `&offset=${apptOffset}` : ''}`
+      const apptUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${apptFormula}${apptOffset ? `&offset=${apptOffset}` : ''}`
       const ar = await fetch(apptUrl, { headers })
       if (!ar.ok) break
       const ad = await ar.json()
@@ -108,10 +108,9 @@ async function getBilling(headers, query) {
         const relIds = appt.fields?.['Related Cleaning Job'] || []
         // Only process if one of these cleaning IDs is in our set
         if (!relIds.some(id => cleaningIdSet.has(id))) continue
-        const clientName = Array.isArray(appt.fields?.['Client Name'])
-          ? appt.fields['Client Name'][0]
-          : (appt.fields?.['Client Name'] || null)
-        const source = appt.fields?.['Online Platform Source'] || null
+        const clientRaw = appt.fields?.['Client Name'] || appt.fields?.['Client'] || appt.fields?.['clientName'] || null
+        const clientName = Array.isArray(clientRaw) ? clientRaw[0] : clientRaw
+        const source = appt.fields?.['Online Platform Source'] || appt.fields?.['Source'] || appt.fields?.['Platform Source'] || null
         for (const cid of relIds) {
           if (cleaningIdSet.has(cid)) apptMap[cid] = { clientName, source }
         }
