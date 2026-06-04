@@ -66,7 +66,7 @@ const sel = (active: boolean) => ({
 } as React.CSSProperties)
 
 // Grid: date | property | client | type | #cleaners | rating | status | price | HH | HH Total | pay status
-const GRID = '75px minmax(120px,1fr) minmax(100px,1fr) minmax(100px,1fr) 75px 70px 90px 85px 50px 75px 90px 90px'
+const GRID = '70px 130px 120px 130px 72px 72px 88px 88px 48px 80px 90px 100px'
 const COLS = ['Fecha','Propiedad','Cliente','Tipo','#Cleaners','Rating','Status','Precio','HH','HH Total','Source','Cobro']
 
 export default function BillingPage() {
@@ -211,7 +211,7 @@ export default function BillingPage() {
         {/* Sticky header */}
         <div style={{ display:'grid', gridTemplateColumns:GRID, padding:'10px 16px', background:C.bg, borderBottom:`1px solid ${C.border}`, position:'sticky', top:0, zIndex:10 }}>
           {COLS.map((h,i)=>(
-            <span key={h} style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'0.05em', textAlign: i >= 4 ? 'center' : 'left' }}>{h}</span>
+            <span key={h} style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'0.05em', textAlign: i < 4 ? 'left' : 'center', display:'block' }}>{h}</span>
           ))}
         </div>
 
@@ -245,32 +245,36 @@ export default function BillingPage() {
                 {/* Tipo */}
                 <span style={{ fontSize:11, color:C.slate, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.cleaningType||'—'}</span>
                 {/* #Cleaners */}
-                <span style={{ fontSize:12, fontWeight:700, color:C.slate, textAlign:'center' }}>{c.staffCount}</span>
+                <span style={{ fontSize:12, fontWeight:700, color:C.slate, textAlign:'center', display:'block' }}>{c.staffCount}</span>
                 {/* Rating */}
                 {(() => {
                   const rs = c.rating ? RATING_STYLE[c.rating] : null
                   const label = c.rating?.replace(/⭐+\s*/,'') || '—'
-                  return rs ? (
-                    <span style={{ fontSize:10, fontWeight:700, background:rs.bg, color:rs.color, padding:'3px 8px', borderRadius:6, textAlign:'center', margin:'0 auto' }}>{label}</span>
-                  ) : <span style={{ fontSize:11, color:C.muted, textAlign:'center', display:'block' }}>—</span>
+                  return (
+                    <div style={{ display:'flex', justifyContent:'center' }}>
+                      {rs ? <span style={{ fontSize:10, fontWeight:700, background:rs.bg, color:rs.color, padding:'3px 8px', borderRadius:6 }}>{label}</span>
+                      : <span style={{ fontSize:11, color:C.muted }}>—</span>}
+                    </div>
+                  )
                 })()}
                 {/* Status */}
-                {sc ? (
-                  <span style={{ fontSize:10, fontWeight:700, background:sc.bg, color:sc.color, padding:'3px 8px', borderRadius:6, width:'fit-content', margin:'0 auto' }}>{c.status}</span>
-                ) : <span style={{ color:C.muted, fontSize:11, textAlign:'center', display:'block' }}>—</span>}
+                <div style={{ display:'flex', justifyContent:'center' }}>
+                  {sc ? <span style={{ fontSize:10, fontWeight:700, background:sc.bg, color:sc.color, padding:'3px 8px', borderRadius:6 }}>{c.status}</span>
+                  : <span style={{ fontSize:11, color:C.muted }}>—</span>}
+                </div>
                 {/* Precio */}
-                <span style={{ fontSize:13, fontWeight:700, color:c.hasPrice?C.ink:C.amber, textAlign:'center' }}>
+                <span style={{ fontSize:13, fontWeight:700, color:c.hasPrice?C.ink:C.amber, textAlign:'center', display:'block' }}>
                   {c.hasPrice?fmt$(c.price):'⚠️ —'}
                 </span>
                 {/* HH */}
-                <span style={{ fontSize:12, color:C.slate, textAlign:'center' }}>{c.hoursWorked?`${c.hoursWorked}h`:'—'}</span>
+                <span style={{ fontSize:12, color:C.slate, textAlign:'center', display:'block' }}>{c.hoursWorked?`${c.hoursWorked}h`:'—'}</span>
                 {/* HH Total */}
-                <span style={{ fontSize:12, color:C.slate, textAlign:'center' }}>
+                <span style={{ fontSize:12, color:C.slate, textAlign:'center', display:'block' }}>
                   {c.hoursTotal?`${c.hoursTotal}h`:'—'}
                   {c.staffCount>1&&<span style={{ fontSize:10, color:C.muted }}> ×{c.staffCount}</span>}
                 </span>
                 {/* Source */}
-                <span style={{ fontSize:10, color:C.muted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textAlign:'center' }}>{c.source||'—'}</span>
+                <span style={{ fontSize:10, color:C.muted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textAlign:'center', display:'block' }}>{c.source||'—'}</span>
                 {/* Cobro */}
                 {pc ? (
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:4, background:pc.bg, padding:'4px 8px', borderRadius:8 }}>
