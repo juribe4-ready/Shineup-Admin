@@ -5,6 +5,7 @@ const STAFF_TABLE    = 'tblgHwN1wX6u3ZtNY'
 const PROPS_TABLE    = 'tbl1iETmcFP460oWN'
 const INV_TABLE      = 'tblppdLDDnyT0eye9'
 const CLEANINGS_TABLE= 'tblabOdNknnjrYUU1'
+const APPOINTMENTS_TABLE = 'tblXlpg7MuYWA8Ocn'
 
 async function buildMaps(headers) {
   const staffMap = {}, propMap = {}
@@ -92,6 +93,34 @@ async function getBilling(headers, query) {
     offset = data.offset || null
   } while (offset)
 
+  // Resolve Client Name and Source from Appointments via Related Cleaning Job
+  const cleaningIds = allRecords.map(r => r.id)
+  const apptMap = {}
+  try {
+    if (cleaningIds.length > 0) {
+      const chunks = []
+      for (let i = 0; i < cleaningIds.length; i += 10) chunks.push(cleaningIds.slice(i, i + 10))
+      for (const chunk of chunks) {
+        const formula2 = encodeURIComponent(`OR(${chunk.map(id => `FIND("${id}", ARRAYJOIN({Related Cleaning Job}))`).join(',')})`)
+        const apptUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${formula2}&fields[]=Client%20Name&fields[]=Online%20Platform%20Source&fields[]=Related%20Cleaning%20Job`
+        const ar = await fetch(apptUrl, { headers })
+        if (ar.ok) {
+          const ad = await ar.json()
+          for (const appt of (ad.records || [])) {
+            const relIds = appt.fields?.['Related Cleaning Job'] || []
+            const clientName = Array.isArray(appt.fields?.['Client Name'])
+              ? appt.fields['Client Name'][0]
+              : (appt.fields?.['Client Name'] || null)
+            const source = appt.fields?.['Online Platform Source'] || null
+            for (const cid of relIds) {
+              apptMap[cid] = { clientName, source }
+            }
+          }
+        }
+      }
+    }
+  } catch(e) { console.error('[getBilling] appt lookup error:', e.message) }
+
   const cleanings = allRecords.map(rec => {
     const f = rec.fields
     let hoursWorked = null
@@ -108,7 +137,8 @@ async function getBilling(headers, query) {
     return {
       id: rec.id, date: f['Date'] || null,
       property: f['Property Text'] || 'Sin propiedad',
-      clientName: Array.isArray(f['Client Name']) ? f['Client Name'][0] : (f['Client Name'] || f['Client'] || null),
+      clientName: apptMap[rec.id]?.clientName || (Array.isArray(f['Client Name']) ? f['Client Name'][0] : (f['Client Name'] || null)),
+      source: apptMap[rec.id]?.source || null,
       cleaningType: f['Cleaning Type Text'] || (Array.isArray(f['Cleaning Type']) ? null : f['Cleaning Type']) || null,
       paymentStatus: payStatus,
       status,
