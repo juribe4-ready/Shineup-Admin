@@ -84,8 +84,8 @@ async function getBilling(headers, query) {
     dateFilter = `IS_AFTER({Date}, DATEADD('${df}', -1, 'days'))`
   }
 
-  const formula = encodeURIComponent(`AND({Status}='Done', ${dateFilter})`)
-  const fields = ['Date','Status','Payment Status','Price','Property Text','Cleaning Type','Start Time','End Time','Rating','Client Name']
+  const formula = encodeURIComponent(`AND(OR({Status}='Done', {Status}='In Progress', {Status}='Opened'), ${dateFilter})`)
+  const fields = ['Date','Status','Payment Status','Price','Property Text','Cleaning Type','Start Time','End Time','Rating','Client Name','Assigned Staff']
     .map(f => `fields[]=${encodeURIComponent(f)}`).join('&')
 
   let allRecords = [], offset = null
