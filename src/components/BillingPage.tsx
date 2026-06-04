@@ -57,6 +57,7 @@ const RATING_STYLE: Record<string, { color: string; bg: string }> = {
   '⭐ Malo':    { color: '#DC2626', bg: '#FEE2E2' },
 }
 
+const sel = (active: boolean) => ({
   height: 38, padding: '0 12px', borderRadius: 10,
   border: `1.5px solid ${active ? C.primary : C.border}`,
   background: active ? C.primaryLight : C.white,
