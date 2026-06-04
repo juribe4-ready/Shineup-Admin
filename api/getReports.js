@@ -93,32 +93,29 @@ async function getBilling(headers, query) {
     offset = data.offset || null
   } while (offset)
 
-  // Resolve Client Name and Source from Appointments via Related Cleaning Job
-  const cleaningIds = allRecords.map(r => r.id)
+  // Resolve Client Name and Source: fetch all appointments in date range, match by Related Cleaning Job
   const apptMap = {}
   try {
-    if (cleaningIds.length > 0) {
-      const chunks = []
-      for (let i = 0; i < cleaningIds.length; i += 10) chunks.push(cleaningIds.slice(i, i + 10))
-      for (const chunk of chunks) {
-        const formula2 = encodeURIComponent(`OR(${chunk.map(id => `FIND("${id}", ARRAYJOIN({Related Cleaning Job}))`).join(',')})`)
-        const apptUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${formula2}&fields[]=Client%20Name&fields[]=Online%20Platform%20Source&fields[]=Related%20Cleaning%20Job`
-        const ar = await fetch(apptUrl, { headers })
-        if (ar.ok) {
-          const ad = await ar.json()
-          for (const appt of (ad.records || [])) {
-            const relIds = appt.fields?.['Related Cleaning Job'] || []
-            const clientName = Array.isArray(appt.fields?.['Client Name'])
-              ? appt.fields['Client Name'][0]
-              : (appt.fields?.['Client Name'] || null)
-            const source = appt.fields?.['Online Platform Source'] || null
-            for (const cid of relIds) {
-              apptMap[cid] = { clientName, source }
-            }
+    const apptFormula = encodeURIComponent(`AND(IS_AFTER({Requested Date & Time}, '${df}'), IS_BEFORE({Requested Date & Time}, DATEADD('${dt}', 1, 'days')), {Related Cleaning Job} != '')`)
+    let apptOffset = null
+    do {
+      const apptUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${apptFormula}&fields[]=Client%20Name&fields[]=Online%20Platform%20Source&fields[]=Related%20Cleaning%20Job${apptOffset ? `&offset=${apptOffset}` : ''}`
+      const ar = await fetch(apptUrl, { headers })
+      if (ar.ok) {
+        const ad = await ar.json()
+        for (const appt of (ad.records || [])) {
+          const relIds = appt.fields?.['Related Cleaning Job'] || []
+          const clientName = Array.isArray(appt.fields?.['Client Name'])
+            ? appt.fields['Client Name'][0]
+            : (appt.fields?.['Client Name'] || null)
+          const source = appt.fields?.['Online Platform Source'] || null
+          for (const cid of relIds) {
+            apptMap[cid] = { clientName, source }
           }
         }
-      }
-    }
+        apptOffset = ad.offset || null
+      } else { break }
+    } while (apptOffset)
   } catch(e) { console.error('[getBilling] appt lookup error:', e.message) }
 
   const cleanings = allRecords.map(rec => {
