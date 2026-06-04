@@ -144,8 +144,11 @@ async function getBilling(headers, query) {
     const hoursTotal = hoursWorked ? Math.round(hoursWorked * staffCount * 10) / 10 : null
     const price      = f['Price'] || null
     const status     = f['Status'] || null
-    // Only default to 'unpaid' when cleaning is Done — in-progress ones have no payment status yet
-    const payStatus  = f['Payment Status'] || (status === 'Done' ? 'unpaid' : null)
+    const rawPayStatus = f['Payment Status'] || null
+    // Normalize to lowercase, handle both 'Unpaid' and 'unpaid' from Airtable
+    const payStatus  = rawPayStatus 
+      ? rawPayStatus.toLowerCase()
+      : (status === 'Done' ? 'unpaid' : null)
     const rawClient = apptMap[rec.id]?.clientName
       || (Array.isArray(f['Client']) ? clientsMap[f['Client'][0]] : null)
       || f['Client Name Text'] || null
