@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { DollarSign, Download, RefreshCw, AlertCircle, TrendingUp, Clock, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
+import { DollarSign, Download, RefreshCw, AlertCircle, TrendingUp, Clock, CheckCircle2, AlertTriangle } from 'lucide-react'
 
 const C = {
   primary: '#6366F1', primaryLight: '#EEF2FF',
@@ -96,6 +96,8 @@ export default function BillingPage() {
   }, [dateFrom, dateTo])
 
   useEffect(() => { load() }, [load])
+  // Auto-refresh when filters change
+  useEffect(() => { load() }, [propFilter, clientFilter, sourceFilter])
 
   const properties = [...new Set(cleanings.map(c => c.property).filter(Boolean))].sort()
   const clients    = [...new Set(cleanings.map(c => c.clientName).filter(Boolean))].sort() as string[]
@@ -146,10 +148,6 @@ export default function BillingPage() {
         <span style={{ color:C.muted, fontSize:13 }}>—</span>
         <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
           style={{ height:38, padding:'0 12px', borderRadius:10, border:`1.5px solid ${C.border}`, fontSize:13, color:C.ink, outline:'none' }} />
-        <button onClick={load} disabled={loading}
-          style={{ width:38, height:38, borderRadius:10, border:`1.5px solid ${C.border}`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <RefreshCw style={{ width:15, height:15, color:C.muted }} className={loading?'animate-spin':''} />
-        </button>
         <select value={propFilter} onChange={e=>setPropFilter(e.target.value)} style={sel(propFilter!=='all')}>
           <option value="all">Todas las propiedades</option>
           {properties.map(p=><option key={p} value={p}>{p}</option>)}
@@ -162,6 +160,10 @@ export default function BillingPage() {
           <option value="all">Todos los sources</option>
           {sources.map(s=><option key={s} value={s}>{s}</option>)}
         </select>
+        <button onClick={load} disabled={loading}
+          style={{ width:38, height:38, borderRadius:10, border:`1.5px solid ${C.border}`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <RefreshCw style={{ width:15, height:15, color:C.muted }} className={loading?'animate-spin':''} />
+        </button>
         {(propFilter!=='all'||clientFilter!=='all'||sourceFilter!=='all') && (
           <button onClick={()=>{setPropFilter('all');setClientFilter('all');setSourceFilter('all')}}
             style={{ height:38, padding:'0 10px', borderRadius:10, border:`1.5px solid ${C.border}`, background:C.white, color:C.muted, fontSize:13, cursor:'pointer' }}>×</button>
@@ -175,12 +177,12 @@ export default function BillingPage() {
       {summary && (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:10, marginBottom:16 }}>
           {[
-            { label:'Total Generado', amount:summary.totalRevenue,   count:summary.total,         bg:C.primaryLight, color:C.primary, Icon:DollarSign },
-            { label:'Sin Cobrar',     amount:summary.unpaidAmount,   count:summary.unpaidCount,   bg:C.amberLight,   color:C.amber,   Icon:Clock },
-            { label:'Facturado',      amount:summary.invoicedAmount, count:summary.invoicedCount, bg:C.tealLight,    color:C.teal,    Icon:TrendingUp },
-            { label:'Cobrado',        amount:summary.paidAmount,     count:summary.paidCount,     bg:C.greenLight,   color:C.green,   Icon:CheckCircle2 },
-            ...(summary.overdueCount>0?[{ label:'Vencido', amount:summary.overdueAmount, count:summary.overdueCount, bg:C.redLight, color:C.red, Icon:AlertTriangle }]:[]),
-            ...(summary.noPrice>0?[{ label:'Sin Precio', amount:null, count:summary.noPrice, bg:'#FEF3C7', color:'#D97706', Icon:AlertCircle }]:[]),
+            { label:'Total Generado', amount:preFiltered.reduce((a,x)=>a+(x.price||0),0), count:preFiltered.length, bg:C.primaryLight, color:C.primary, Icon:DollarSign },
+            { label:'Sin Cobrar',  amount:preFiltered.filter(x=>x.paymentStatus==='unpaid').reduce((a,x)=>a+(x.price||0),0),   count:preFiltered.filter(x=>x.paymentStatus==='unpaid').length,   bg:C.amberLight, color:C.amber,  Icon:Clock },
+            { label:'Facturado',   amount:preFiltered.filter(x=>x.paymentStatus==='invoiced').reduce((a,x)=>a+(x.price||0),0), count:preFiltered.filter(x=>x.paymentStatus==='invoiced').length, bg:C.tealLight,  color:C.teal,   Icon:TrendingUp },
+            { label:'Cobrado',     amount:preFiltered.filter(x=>x.paymentStatus==='paid').reduce((a,x)=>a+(x.price||0),0),     count:preFiltered.filter(x=>x.paymentStatus==='paid').length,     bg:C.greenLight, color:C.green,  Icon:CheckCircle2 },
+            ...(preFiltered.filter(x=>x.paymentStatus==='overdue').length>0?[{ label:'Vencido', amount:preFiltered.filter(x=>x.paymentStatus==='overdue').reduce((a,x)=>a+(x.price||0),0), count:preFiltered.filter(x=>x.paymentStatus==='overdue').length, bg:C.redLight, color:C.red, Icon:AlertTriangle }]:[]),
+            ...(preFiltered.filter(x=>!x.hasPrice&&x.status==='Done').length>0?[{ label:'Sin Precio', amount:null, count:preFiltered.filter(x=>!x.hasPrice&&x.status==='Done').length, bg:'#FEF3C7', color:'#D97706', Icon:AlertCircle }]:[]),
           ].map(s=>(
             <div key={s.label} style={{ background:s.bg, borderRadius:14, padding:'14px 16px', border:`1px solid ${s.color}25` }}>
               <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:6 }}>
@@ -287,10 +289,7 @@ export default function BillingPage() {
                     <span style={{ fontSize:11, fontWeight:700, color:pc.color }}>{pc.label}</span>
                   </div>
                 ) : (
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:4, background:C.bg, padding:'4px 8px', borderRadius:8 }}>
-                    <XCircle style={{ width:11, height:11, color:C.muted }} />
-                    <span style={{ fontSize:11, fontWeight:600, color:C.muted }}>—</span>
-                  </div>
+                  <span style={{ fontSize:11, color:C.muted, textAlign:'center', display:'block' }}>—</span>
                 )}
               </div>
             )
