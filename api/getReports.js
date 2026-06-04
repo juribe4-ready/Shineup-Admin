@@ -99,17 +99,20 @@ async function getBilling(headers, query) {
       const start = new Date(f['Start Time']), end = new Date(f['End Time'])
       hoursWorked = Math.round(((end - start) / 3600000) * 10) / 10
     }
-    const staffCount = Array.isArray(f['Assigned Staff']) ? f['Assigned Staff'].length : 1
+    const staffCount = f['#Cleaners'] || 1
     const hoursTotal = hoursWorked ? Math.round(hoursWorked * staffCount * 10) / 10 : null
     const price      = f['Price'] || null
-    const payStatus  = f['Payment Status'] || 'unpaid'
+    const status     = f['Status'] || null
+    // Only default to 'unpaid' when cleaning is Done — in-progress ones have no payment status yet
+    const payStatus  = f['Payment Status'] || (status === 'Done' ? 'unpaid' : null)
     return {
       id: rec.id, date: f['Date'] || null,
       property: f['Property Text'] || 'Sin propiedad',
       clientName: Array.isArray(f['Client Name']) ? f['Client Name'][0] : (f['Client Name'] || null),
       cleaningType: f['Cleaning Type'] || null,
       paymentStatus: payStatus,
-      status: f['Status'] || null,
+      status,
+      rating: f['Rating'] || null,
       price, hoursWorked, hoursTotal, staffCount,
       hasPrice: !!f['Price'],
     }
@@ -120,11 +123,13 @@ async function getBilling(headers, query) {
   const invoiced = cleanings.filter(c => c.paymentStatus === 'invoiced')
   const paid     = cleanings.filter(c => c.paymentStatus === 'paid')
   const overdue  = cleanings.filter(c => c.paymentStatus === 'overdue')
+  // noPrice: only count Done cleanings without price (in-progress excluded)
+  const doneCleanings = cleanings.filter(c => c.status === 'Done')
 
   return {
     cleanings,
     summary: {
-      total: cleanings.length, noPrice: cleanings.filter(c => !c.hasPrice).length,
+      total: cleanings.length, noPrice: doneCleanings.filter(c => !c.hasPrice).length,
       unpaidCount: unpaid.length, invoicedCount: invoiced.length,
       paidCount: paid.length, overdueCount: overdue.length,
       unpaidAmount:   Math.round(sum(unpaid)   * 100) / 100,
