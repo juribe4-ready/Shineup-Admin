@@ -77,12 +77,10 @@ async function getBilling(headers, query) {
   const dt = dateTo   || new Date().toISOString().split('T')[0]
 
   const formula = encodeURIComponent(`OR({Status}='Done',{Status}='In Progress',{Status}='Opened')`)
-  const fields = ['Date','Status','Payment Status','Price','Property Text','Cleaning Type','Start Time','End Time','Client Name','Assigned Staff']
-    .map(f => `fields[]=${encodeURIComponent(f)}`).join('&')
 
   let allRecords = [], offset = null
   do {
-    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}?filterByFormula=${formula}&${fields}&sort[0][field]=Date&sort[0][direction]=desc${offset ? `&offset=${offset}` : ''}`
+    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}?filterByFormula=${formula}&sort[0][field]=Date&sort[0][direction]=desc${offset ? `&offset=${offset}` : ''}`
     const r = await fetch(url, { headers })
     if (!r.ok) throw new Error(await r.text())
     const data = await r.json()
