@@ -6,6 +6,7 @@ const PROPS_TABLE    = 'tbl1iETmcFP460oWN'
 const INV_TABLE      = 'tblppdLDDnyT0eye9'
 const CLEANINGS_TABLE= 'tblabOdNknnjrYUU1'
 const APPOINTMENTS_TABLE = 'tblXlpg7MuYWA8Ocn'
+const CLIENTS_TABLE      = 'Clients'
 
 async function buildMaps(headers) {
   const staffMap = {}, propMap = {}
@@ -93,6 +94,16 @@ async function getBilling(headers, query) {
     offset = data.offset || null
   } while (offset)
 
+  // Build clients map: record ID → name
+  const clientsMap = {}
+  try {
+    const cr = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLIENTS_TABLE}?fields[]=Name`, { headers })
+    if (cr.ok) {
+      const cd = await cr.json()
+      for (const c of (cd.records || [])) clientsMap[c.id] = c.fields?.Name || null
+    }
+  } catch(e) { console.error('[getBilling] clients fetch error:', e.message) }
+
   // Enrich with Client Name and Source from Appointments (best-effort, won't affect cleaning list)
   const cleaningIdSet = new Set(allRecords.map(r => r.id))
   const apptMap = {}
@@ -135,10 +146,14 @@ async function getBilling(headers, query) {
     const status     = f['Status'] || null
     // Only default to 'unpaid' when cleaning is Done — in-progress ones have no payment status yet
     const payStatus  = f['Payment Status'] || (status === 'Done' ? 'unpaid' : null)
+    const rawClient = apptMap[rec.id]?.clientName
+      || (Array.isArray(f['Client']) ? clientsMap[f['Client'][0]] : null)
+      || f['Client Name Text'] || null
+    const clientName = (rawClient && /^rec[A-Za-z0-9]{8,}$/.test(rawClient)) ? null : rawClient
     return {
       id: rec.id, date: f['Date'] || null,
       property: f['Property Text'] || 'Sin propiedad',
-      clientName: apptMap[rec.id]?.clientName || f['Client Name Text'] || (Array.isArray(f['Client']) ? f['Client'][0] : (f['Client'] || null)),
+      clientName,
       source: apptMap[rec.id]?.source || null,
       cleaningType: f['Cleaning Type Text'] || (Array.isArray(f['Cleaning Type']) ? null : f['Cleaning Type']) || null,
       paymentStatus: payStatus,
