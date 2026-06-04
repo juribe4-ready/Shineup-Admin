@@ -85,7 +85,7 @@ async function getBilling(headers, query) {
   }
 
   const formula = encodeURIComponent(`AND({Status}='Done', ${dateFilter})`)
-  const fields = ['Date','Status','Payment Status','Price','Property Text','Cleaning Type','Start Time','End Time','Rating']
+  const fields = ['Date','Status','Payment Status','Price','Property Text','Cleaning Type','Start Time','End Time','Rating','Client Name']
     .map(f => `fields[]=${encodeURIComponent(f)}`).join('&')
 
   let allRecords = [], offset = null
@@ -111,6 +111,7 @@ async function getBilling(headers, query) {
     const margin    = (price && laborCost) ? Math.round((price - laborCost) * 100) / 100 : null
     return {
       id: rec.id, date: f['Date'] || null, property: f['Property Text'] || 'Sin propiedad',
+      clientName: Array.isArray(f['Client Name']) ? f['Client Name'][0] : (f['Client Name'] || null),
       cleaningType: f['Cleaning Type'] || null, paymentStatus: f['Payment Status'] || null,
       price, hoursWorked, laborCost, margin, rating: f['Rating'] || null, hasPrice: !!f['Price'],
     }
