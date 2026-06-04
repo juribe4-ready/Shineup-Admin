@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { TrendingUp, BarChart3, Users, Clock } from 'lucide-react'
+import { TrendingUp, BarChart3, Users, Clock, DollarSign } from 'lucide-react'
 import DashboardExecutive from './DashboardExecutive'
 import StatsPage from './StatsPage'
+import BillingPage from './BillingPage'
 
 const C = {
   primary: '#6366F1',
@@ -11,18 +12,20 @@ const C = {
   bg: '#F8FAFC',
   white: '#FFFFFF',
   amber: '#F59E0B',
+  green: '#10B981',
 }
 
-type Tab = 'cascade' | 'stats' | 'cleaners' | 'trends'
+type Tab = 'cascade' | 'stats' | 'billing' | 'cleaners' | 'trends'
 
 export default function AnalysisPage() {
   const [activeTab, setActiveTab] = useState<Tab>('cascade')
 
-  const tabs: { key: Tab; label: string; Icon: any; ready: boolean }[] = [
-    { key: 'cascade', label: 'Cascada Semanal', Icon: TrendingUp, ready: true },
-    { key: 'stats', label: 'Estadísticas', Icon: BarChart3, ready: true },
-    { key: 'cleaners', label: 'Por Cleaner', Icon: Users, ready: false },
-    { key: 'trends', label: 'Tendencias', Icon: Clock, ready: false },
+  const tabs: { key: Tab; label: string; Icon: any; ready: boolean; color?: string }[] = [
+    { key: 'cascade', label: 'Cascada Semanal', Icon: TrendingUp,  ready: true },
+    { key: 'stats',   label: 'Estadísticas',    Icon: BarChart3,   ready: true },
+    { key: 'billing', label: 'Cobranza',        Icon: DollarSign,  ready: true, color: C.green },
+    { key: 'cleaners',label: 'Por Cleaner',     Icon: Users,       ready: false },
+    { key: 'trends',  label: 'Tendencias',      Icon: Clock,       ready: false },
   ]
 
   return (
@@ -51,7 +54,7 @@ export default function AnalysisPage() {
               border: 'none',
               cursor: tab.ready ? 'pointer' : 'not-allowed',
               background: activeTab === tab.key 
-                ? `linear-gradient(135deg, ${C.amber} 0%, #D97706 100%)`
+                ? `linear-gradient(135deg, ${tab.color || C.amber} 0%, ${tab.color ? tab.color + 'cc' : '#D97706'} 100%)`
                 : 'transparent',
               color: activeTab === tab.key ? 'white' : tab.ready ? C.muted : '#D1D5DB',
               fontWeight: 600,
@@ -71,6 +74,7 @@ export default function AnalysisPage() {
       {/* Content */}
       {activeTab === 'cascade' && <DashboardExecutive />}
       {activeTab === 'stats' && <StatsPage />}
+      {activeTab === 'billing' && <BillingPage />}
       {activeTab === 'cleaners' && (
         <div style={{ 
           background: C.white, 
