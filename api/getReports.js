@@ -73,19 +73,11 @@ async function getInventory(headers, staffMap, propMap) {
 
 async function getBilling(headers, query) {
   const { dateFrom, dateTo } = query
-  let dateFilter = ''
-  if (dateFrom && dateTo) {
-    dateFilter = `AND(IS_AFTER({Date}, DATEADD('${dateFrom}', -1, 'days')), IS_BEFORE({Date}, DATEADD('${dateTo}', 1, 'days')))`
-  } else if (dateFrom) {
-    dateFilter = `IS_AFTER({Date}, DATEADD('${dateFrom}', -1, 'days'))`
-  } else {
-    const d = new Date(); d.setDate(d.getDate() - 30)
-    const df = d.toISOString().split('T')[0]
-    dateFilter = `IS_AFTER({Date}, DATEADD('${df}', -1, 'days'))`
-  }
+  const df = dateFrom || (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0] })()
+  const dt = dateTo   || new Date().toISOString().split('T')[0]
 
-  const formula = encodeURIComponent(`AND(OR({Status}='Done', {Status}='In Progress', {Status}='Opened'), ${dateFilter})`)
-  const fields = ['Date','Status','Payment Status','Price','Property Text','Cleaning Type','Start Time','End Time','Rating','Client Name','Assigned Staff']
+  const formula = encodeURIComponent(`OR({Status}='Done',{Status}='In Progress',{Status}='Opened')`)
+  const fields = ['Date','Status','Payment Status','Price','Property Text','Cleaning Type','Start Time','End Time','Client Name','Assigned Staff']
     .map(f => `fields[]=${encodeURIComponent(f)}`).join('&')
 
   let allRecords = [], offset = null
@@ -94,11 +86,14 @@ async function getBilling(headers, query) {
     const r = await fetch(url, { headers })
     if (!r.ok) throw new Error(await r.text())
     const data = await r.json()
-    allRecords = allRecords.concat(data.records || [])
+    const inRange = (data.records || []).filter(rec => {
+      const d = rec.fields?.['Date']
+      return d && d >= df && d <= dt
+    })
+    allRecords = allRecords.concat(inRange)
     offset = data.offset || null
   } while (offset)
 
-  const HOURLY_RATE = 15
   const cleanings = allRecords.map(rec => {
     const f = rec.fields
     let hoursWorked = null
@@ -106,14 +101,19 @@ async function getBilling(headers, query) {
       const start = new Date(f['Start Time']), end = new Date(f['End Time'])
       hoursWorked = Math.round(((end - start) / 3600000) * 10) / 10
     }
-    const price     = f['Price'] || null
-    const laborCost = hoursWorked ? Math.round(hoursWorked * HOURLY_RATE * 100) / 100 : null
-    const margin    = (price && laborCost) ? Math.round((price - laborCost) * 100) / 100 : null
+    const staffCount = Array.isArray(f['Assigned Staff']) ? f['Assigned Staff'].length : 1
+    const hoursTotal = hoursWorked ? Math.round(hoursWorked * staffCount * 10) / 10 : null
+    const price      = f['Price'] || null
+    const payStatus  = f['Payment Status'] || 'unpaid'
     return {
-      id: rec.id, date: f['Date'] || null, property: f['Property Text'] || 'Sin propiedad',
+      id: rec.id, date: f['Date'] || null,
+      property: f['Property Text'] || 'Sin propiedad',
       clientName: Array.isArray(f['Client Name']) ? f['Client Name'][0] : (f['Client Name'] || null),
-      cleaningType: f['Cleaning Type'] || null, paymentStatus: f['Payment Status'] || null,
-      price, hoursWorked, laborCost, margin, rating: f['Rating'] || null, hasPrice: !!f['Price'],
+      cleaningType: f['Cleaning Type'] || null,
+      paymentStatus: payStatus,
+      status: f['Status'] || null,
+      price, hoursWorked, hoursTotal, staffCount,
+      hasPrice: !!f['Price'],
     }
   })
 
@@ -122,12 +122,11 @@ async function getBilling(headers, query) {
   const invoiced = cleanings.filter(c => c.paymentStatus === 'invoiced')
   const paid     = cleanings.filter(c => c.paymentStatus === 'paid')
   const overdue  = cleanings.filter(c => c.paymentStatus === 'overdue')
-  const noPrice  = cleanings.filter(c => !c.hasPrice).length
 
   return {
     cleanings,
     summary: {
-      total: cleanings.length, noPrice,
+      total: cleanings.length, noPrice: cleanings.filter(c => !c.hasPrice).length,
       unpaidCount: unpaid.length, invoicedCount: invoiced.length,
       paidCount: paid.length, overdueCount: overdue.length,
       unpaidAmount:   Math.round(sum(unpaid)   * 100) / 100,
@@ -138,6 +137,7 @@ async function getBilling(headers, query) {
     }
   }
 }
+
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
