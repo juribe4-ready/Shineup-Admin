@@ -246,6 +246,26 @@ export default function BillingPage() {
         ))}
       </div>
 
+      {/* Property + Client filters */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <select value={propFilter} onChange={e => setPropFilter(e.target.value)}
+          style={{ height: 36, padding: '0 12px', borderRadius: 10, border: `1.5px solid ${propFilter !== 'all' ? C.primary : C.border}`, background: propFilter !== 'all' ? C.primaryLight : C.white, color: propFilter !== 'all' ? C.primary : C.slate, fontSize: 12, fontWeight: 600, outline: 'none', cursor: 'pointer' }}>
+          <option value="all">Todas las propiedades</option>
+          {properties.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
+          style={{ height: 36, padding: '0 12px', borderRadius: 10, border: `1.5px solid ${clientFilter !== 'all' ? C.primary : C.border}`, background: clientFilter !== 'all' ? C.primaryLight : C.white, color: clientFilter !== 'all' ? C.primary : C.slate, fontSize: 12, fontWeight: 600, outline: 'none', cursor: 'pointer' }}>
+          <option value="all">Todos los clientes</option>
+          {clients.map(cl => <option key={cl} value={cl}>{cl}</option>)}
+        </select>
+        {(propFilter !== 'all' || clientFilter !== 'all') && (
+          <button onClick={() => { setPropFilter('all'); setClientFilter('all') }}
+            style={{ height: 36, padding: '0 12px', borderRadius: 10, border: `1.5px solid ${C.border}`, background: C.white, color: C.muted, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            Limpiar ×
+          </button>
+        )}
+      </div>
+
       {/* Table */}
       <div style={{ background: C.white, borderRadius: 16, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
         {/* Table header */}
