@@ -135,7 +135,7 @@ async function getBilling(headers, query) {
     return {
       id: rec.id, date: f['Date'] || null,
       property: f['Property Text'] || 'Sin propiedad',
-      clientName: apptMap[rec.id]?.clientName || (Array.isArray(f['Client Name']) ? f['Client Name'][0] : (f['Client Name'] || null)),
+      clientName: apptMap[rec.id]?.clientName || f['Client Name Text'] || (Array.isArray(f['Client Name']) ? null : (f['Client Name'] || null)),
       source: apptMap[rec.id]?.source || null,
       cleaningType: f['Cleaning Type Text'] || (Array.isArray(f['Cleaning Type']) ? null : f['Cleaning Type']) || null,
       paymentStatus: payStatus,
