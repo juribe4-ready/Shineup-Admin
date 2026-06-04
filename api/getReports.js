@@ -77,7 +77,7 @@ async function getBilling(headers, query) {
   const df = dateFrom || (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0] })()
   const dt = dateTo   || new Date().toISOString().split('T')[0]
 
-  const formula = encodeURIComponent(`OR({Status}='Done',{Status}='In Progress',{Status}='Opened')`)
+  const formula = encodeURIComponent(`OR({Status}='Done',{Status}='In Progress',{Status}='Opened',{Status}='Scheduled',{Status}='Programmed')`)
 
   let allRecords = [], offset = null
   do {
@@ -93,26 +93,29 @@ async function getBilling(headers, query) {
     offset = data.offset || null
   } while (offset)
 
-  // Resolve Client Name and Source from Appointments — fetch all with a linked cleaning, match by ID
+  // Enrich with Client Name and Source from Appointments (best-effort, won't affect cleaning list)
   const cleaningIdSet = new Set(allRecords.map(r => r.id))
   const apptMap = {}
   try {
     const apptFormula = encodeURIComponent(`NOT({Related Cleaning Job} = BLANK())`)
     let apptOffset = null
+    let apptPage = 0
     do {
-      const apptUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${apptFormula}${apptOffset ? `&offset=${apptOffset}` : ''}`
+      apptPage++
+      if (apptPage > 20) break // safety limit
+      const apptUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${apptFormula}&pageSize=100${apptOffset ? `&offset=${apptOffset}` : ''}`
       const ar = await fetch(apptUrl, { headers })
-      if (!ar.ok) break
+      if (!ar.ok) { console.error('[getBilling] appt fetch failed:', ar.status); break }
       const ad = await ar.json()
+      if (ad.error) { console.error('[getBilling] appt error:', ad.error); break }
       for (const appt of (ad.records || [])) {
-        const relIds = appt.fields?.['Related Cleaning Job'] || []
-        // Only process if one of these cleaning IDs is in our set
-        if (!relIds.some(id => cleaningIdSet.has(id))) continue
-        const clientRaw = appt.fields?.['Client Name'] || appt.fields?.['Client'] || appt.fields?.['clientName'] || null
-        const clientName = Array.isArray(clientRaw) ? clientRaw[0] : clientRaw
-        const source = appt.fields?.['Online Platform Source'] || appt.fields?.['Source'] || appt.fields?.['Platform Source'] || null
+        const relIds = Array.isArray(appt.fields?.['Related Cleaning Job']) ? appt.fields['Related Cleaning Job'] : []
         for (const cid of relIds) {
-          if (cleaningIdSet.has(cid)) apptMap[cid] = { clientName, source }
+          if (!cleaningIdSet.has(cid)) continue
+          const clientRaw = appt.fields?.['Client Name'] || null
+          const clientName = Array.isArray(clientRaw) ? clientRaw[0] : (clientRaw || null)
+          const source = appt.fields?.['Online Platform Source'] || appt.fields?.['Source'] || null
+          apptMap[cid] = { clientName, source }
         }
       }
       apptOffset = ad.offset || null
