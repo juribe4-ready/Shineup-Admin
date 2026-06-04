@@ -70,6 +70,74 @@ async function getInventory(headers, staffMap, propMap) {
   })
 }
 
+
+async function getBilling(headers, query) {
+  const { dateFrom, dateTo } = query
+  let dateFilter = ''
+  if (dateFrom && dateTo) {
+    dateFilter = `AND(IS_AFTER({Date}, DATEADD('${dateFrom}', -1, 'days')), IS_BEFORE({Date}, DATEADD('${dateTo}', 1, 'days')))`
+  } else if (dateFrom) {
+    dateFilter = `IS_AFTER({Date}, DATEADD('${dateFrom}', -1, 'days'))`
+  } else {
+    const d = new Date(); d.setDate(d.getDate() - 30)
+    const df = d.toISOString().split('T')[0]
+    dateFilter = `IS_AFTER({Date}, DATEADD('${df}', -1, 'days'))`
+  }
+
+  const formula = encodeURIComponent(`AND({Status}='Done', ${dateFilter})`)
+  const fields = ['Date','Status','Payment Status','Price','Property Text','Cleaning Type','Start Time','End Time','Rating']
+    .map(f => `fields[]=${encodeURIComponent(f)}`).join('&')
+
+  let allRecords = [], offset = null
+  do {
+    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}?filterByFormula=${formula}&${fields}&sort[0][field]=Date&sort[0][direction]=desc${offset ? `&offset=${offset}` : ''}`
+    const r = await fetch(url, { headers })
+    if (!r.ok) throw new Error(await r.text())
+    const data = await r.json()
+    allRecords = allRecords.concat(data.records || [])
+    offset = data.offset || null
+  } while (offset)
+
+  const HOURLY_RATE = 15
+  const cleanings = allRecords.map(rec => {
+    const f = rec.fields
+    let hoursWorked = null
+    if (f['Start Time'] && f['End Time']) {
+      const start = new Date(f['Start Time']), end = new Date(f['End Time'])
+      hoursWorked = Math.round(((end - start) / 3600000) * 10) / 10
+    }
+    const price     = f['Price'] || null
+    const laborCost = hoursWorked ? Math.round(hoursWorked * HOURLY_RATE * 100) / 100 : null
+    const margin    = (price && laborCost) ? Math.round((price - laborCost) * 100) / 100 : null
+    return {
+      id: rec.id, date: f['Date'] || null, property: f['Property Text'] || 'Sin propiedad',
+      cleaningType: f['Cleaning Type'] || null, paymentStatus: f['Payment Status'] || null,
+      price, hoursWorked, laborCost, margin, rating: f['Rating'] || null, hasPrice: !!f['Price'],
+    }
+  })
+
+  const sum = arr => arr.reduce((acc, c) => acc + (c.price || 0), 0)
+  const unpaid   = cleanings.filter(c => c.paymentStatus === 'unpaid')
+  const invoiced = cleanings.filter(c => c.paymentStatus === 'invoiced')
+  const paid     = cleanings.filter(c => c.paymentStatus === 'paid')
+  const overdue  = cleanings.filter(c => c.paymentStatus === 'overdue')
+  const noPrice  = cleanings.filter(c => !c.hasPrice).length
+
+  return {
+    cleanings,
+    summary: {
+      total: cleanings.length, noPrice,
+      unpaidCount: unpaid.length, invoicedCount: invoiced.length,
+      paidCount: paid.length, overdueCount: overdue.length,
+      unpaidAmount:   Math.round(sum(unpaid)   * 100) / 100,
+      invoicedAmount: Math.round(sum(invoiced) * 100) / 100,
+      paidAmount:     Math.round(sum(paid)     * 100) / 100,
+      overdueAmount:  Math.round(sum(overdue)  * 100) / 100,
+      totalRevenue:   Math.round(sum(cleanings.filter(c => c.price)) * 100) / 100,
+    }
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
@@ -83,6 +151,7 @@ export default async function handler(req, res) {
 
     if (type === 'incidents') return res.status(200).json(await getIncidents(headers, staffMap, propMap))
     if (type === 'inventory') return res.status(200).json(await getInventory(headers, staffMap, propMap))
+    if (type === 'billing')   return res.status(200).json(await getBilling(headers, req.query))
     return res.status(400).json({ error: `Unknown type: ${type}` })
   } catch (err) {
     return res.status(500).json({ error: err.message })

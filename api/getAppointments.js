@@ -299,9 +299,9 @@ async function handleLaunchWeek(req, res) {
       return res.status(404).json({ error: 'No se encontraron appointments' })
     }
 
-    // Fetch properties for Labor and Default Start Time
+    // Fetch properties for Labor, Default Start Time, Price, Default Cleaning Type, Usage
     const propsRes = await fetch(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE}/tbl1iETmcFP460oWN?fields[]=Name&fields[]=Labor&fields[]=Default Start Time&fields[]=Default End Time`,
+      `https://api.airtable.com/v0/${AIRTABLE_BASE}/tbl1iETmcFP460oWN?fields[]=Name&fields[]=Labor&fields[]=Default Start Time&fields[]=Default End Time&fields[]=Price&fields[]=Default Cleaning Type&fields[]=Usage`,
       { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
     )
     const propsData = await propsRes.json()
@@ -311,7 +311,10 @@ async function handleLaunchWeek(req, res) {
         name: p.fields?.Name || '', 
         labor: p.fields?.Labor || 120,
         defaultStartTime: p.fields?.['Default Start Time'] || null,
-        defaultEndTime: p.fields?.['Default End Time'] || null
+        defaultEndTime: p.fields?.['Default End Time'] || null,
+        price: p.fields?.['Price'] || null,
+        defaultCleaningType: p.fields?.['Default Cleaning Type'] || null,
+        usage: p.fields?.['Usage'] || null,
       }
     }
 
@@ -372,6 +375,17 @@ async function handleLaunchWeek(req, res) {
       if (f['Cleaning Type']) {
         cleaningFields['Cleaning Type'] = f['Cleaning Type']
       }
+
+      // Price logic: compare appointment Cleaning Type with property Default Cleaning Type + Usage
+      // If they match → use property Price. If not → leave null (needs manual entry)
+      const apptCleaningType = f['Cleaning Type'] || null
+      const propDefaultType  = propInfo.defaultCleaningType || null
+      if (apptCleaningType && propDefaultType && apptCleaningType === propDefaultType) {
+        if (propInfo.price) {
+          cleaningFields['Price'] = propInfo.price
+        }
+      }
+      // If no match or missing data → Price stays null (will show in Cobranza as "sin precio")
 
       try {
         const createRes = await fetch(
