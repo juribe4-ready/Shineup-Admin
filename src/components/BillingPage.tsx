@@ -21,7 +21,7 @@ interface Cleaning {
   id: string; date: string | null; property: string; clientName: string | null
   cleaningType: string | null; paymentStatus: string | null; status: string | null
   price: number | null; hoursWorked: number | null; hoursTotal: number | null
-  staffCount: number; rating: string | null; hasPrice: boolean
+  staffCount: number; rating: string | null; hasPrice: boolean; source: string | null
 }
 interface Summary {
   total: number; noPrice: number
@@ -66,8 +66,8 @@ const sel = (active: boolean) => ({
 } as React.CSSProperties)
 
 // Grid: date | property | client | type | #cleaners | rating | status | price | HH | HH Total | pay status
-const GRID = '75px 140px 110px 110px 80px 80px 90px 90px 55px 75px 105px'
-const COLS = ['Fecha','Propiedad','Cliente','Tipo','#Cleaners','Rating','Status','Precio','HH','HH Total','Cobro']
+const GRID = '75px minmax(120px,1fr) minmax(100px,1fr) minmax(100px,1fr) 75px 70px 90px 85px 50px 75px 90px 90px'
+const COLS = ['Fecha','Propiedad','Cliente','Tipo','#Cleaners','Rating','Status','Precio','HH','HH Total','Source','Cobro']
 
 export default function BillingPage() {
   const [dateFrom, setDateFrom] = useState(thirtyAgo())
@@ -78,6 +78,7 @@ export default function BillingPage() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [propFilter,   setPropFilter]   = useState('all')
   const [clientFilter, setClientFilter] = useState('all')
+  const [sourceFilter,  setSourceFilter]  = useState('all')
   const [toast, setToast] = useState<string | null>(null)
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
@@ -98,6 +99,7 @@ export default function BillingPage() {
 
   const properties = [...new Set(cleanings.map(c => c.property).filter(Boolean))].sort()
   const clients    = [...new Set(cleanings.map(c => c.clientName).filter(Boolean))].sort() as string[]
+  const sources    = [...new Set(cleanings.map(c => c.source).filter(Boolean))].sort() as string[]
 
   const filtered = cleanings.filter(c => {
     if (statusFilter !== 'all') {
@@ -106,15 +108,16 @@ export default function BillingPage() {
     }
     if (propFilter   !== 'all' && c.property   !== propFilter)   return false
     if (clientFilter !== 'all' && c.clientName !== clientFilter) return false
+    if (sourceFilter  !== 'all' && c.source      !== sourceFilter)  return false
     return true
   })
 
   const exportCSV = () => {
-    const headers = ['Fecha','Propiedad','Cliente','Tipo','#Cleaners','Rating','Status','Precio','HH Casa','HH Total','Estado Cobro']
+    const headers = ['Fecha','Propiedad','Cliente','Tipo','#Cleaners','Rating','Status','Precio','HH Casa','HH Total','Source','Estado Cobro']
     const rows = filtered.map(c => [
       c.date||'', `"${c.property}"`, `"${c.clientName||''}"`,
       c.cleaningType||'', c.staffCount, `"${c.rating||''}"`,
-      c.status||'', c.price??'', c.hoursWorked??'', c.hoursTotal??'', c.paymentStatus||''
+      c.status||'', c.price??'', c.hoursWorked??'', c.hoursTotal??'', `"${c.source||''}"`, c.paymentStatus||''
     ])
     const csv = [headers,...rows].map(r=>r.join(',')).join('\n')
     const blob = new Blob([csv],{type:'text/csv'})
@@ -151,8 +154,12 @@ export default function BillingPage() {
           <option value="all">Todos los clientes</option>
           {clients.map(cl=><option key={cl} value={cl}>{cl}</option>)}
         </select>
-        {(propFilter!=='all'||clientFilter!=='all') && (
-          <button onClick={()=>{setPropFilter('all');setClientFilter('all')}}
+        <select value={sourceFilter} onChange={e=>setSourceFilter(e.target.value)} style={sel(sourceFilter!=='all')}>
+          <option value="all">Todos los sources</option>
+          {sources.map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+        {(propFilter!=='all'||clientFilter!=='all'||sourceFilter!=='all') && (
+          <button onClick={()=>{setPropFilter('all');setClientFilter('all');setSourceFilter('all')}}
             style={{ height:38, padding:'0 10px', borderRadius:10, border:`1.5px solid ${C.border}`, background:C.white, color:C.muted, fontSize:13, cursor:'pointer' }}>×</button>
         )}
         <button onClick={exportCSV} style={{ display:'flex', alignItems:'center', gap:6, height:38, padding:'0 16px', borderRadius:10, border:`1.5px solid ${C.green}`, background:C.greenLight, color:C.green, cursor:'pointer', fontSize:12, fontWeight:700, marginLeft:'auto' }}>
@@ -262,6 +269,8 @@ export default function BillingPage() {
                   {c.hoursTotal?`${c.hoursTotal}h`:'—'}
                   {c.staffCount>1&&<span style={{ fontSize:10, color:C.muted }}> ×{c.staffCount}</span>}
                 </span>
+                {/* Source */}
+                <span style={{ fontSize:10, color:C.muted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textAlign:'center' }}>{c.source||'—'}</span>
                 {/* Cobro */}
                 {pc ? (
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:4, background:pc.bg, padding:'4px 8px', borderRadius:8 }}>
