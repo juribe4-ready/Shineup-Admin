@@ -22,6 +22,7 @@ const thirtyDaysAgo = () => {
 interface Cleaning {
   id: string; date: string | null; property: string
   cleaningType: string | null; paymentStatus: string | null
+  clientName: string | null
   price: number | null; hoursWorked: number | null
   laborCost: number | null; margin: number | null
   rating: string | null; hasPrice: boolean
@@ -60,6 +61,8 @@ export default function BillingPage() {
   const [summary,   setSummary]   = useState<Summary | null>(null)
   const [loading,   setLoading]   = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [propFilter, setPropFilter]     = useState<string>('all')
+  const [clientFilter, setClientFilter] = useState<string>('all')
   const [toast, setToast] = useState<string | null>(null)
 
   const showToast = (msg: string) => {
@@ -84,11 +87,18 @@ export default function BillingPage() {
 
   useEffect(() => { load() }, [load])
 
-  const filtered = cleanings.filter(c =>
-    statusFilter === 'all' ? true :
-    statusFilter === 'noPrice' ? !c.hasPrice :
-    c.paymentStatus === statusFilter
-  )
+  const properties = [...new Set(cleanings.map(c => c.property).filter(Boolean))].sort()
+  const clients    = [...new Set(cleanings.map(c => c.clientName).filter(Boolean))].sort() as string[]
+
+  const filtered = cleanings.filter(c => {
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'noPrice' && c.hasPrice) return false
+      if (statusFilter !== 'noPrice' && c.paymentStatus !== statusFilter) return false
+    }
+    if (propFilter   !== 'all' && c.property    !== propFilter)   return false
+    if (clientFilter !== 'all' && c.clientName  !== clientFilter) return false
+    return true
+  })
 
   // Export to CSV
   const exportCSV = () => {
