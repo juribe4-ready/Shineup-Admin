@@ -101,15 +101,19 @@ export default function BillingPage() {
   const clients    = [...new Set(cleanings.map(c => c.clientName).filter(Boolean))].sort() as string[]
   const sources    = [...new Set(cleanings.map(c => c.source).filter(Boolean))].sort() as string[]
 
-  const filtered = cleanings.filter(c => {
-    if (statusFilter !== 'all') {
-      if (statusFilter === 'noPrice' && c.hasPrice) return false
-      if (statusFilter !== 'noPrice' && c.paymentStatus !== statusFilter) return false
-    }
+  // preFiltered: respects prop/client/source but NOT statusFilter — used for pill counts
+  const preFiltered = cleanings.filter(c => {
     if (propFilter   !== 'all' && c.property   !== propFilter)   return false
     if (clientFilter !== 'all' && c.clientName !== clientFilter) return false
     if (sourceFilter  !== 'all' && c.source      !== sourceFilter)  return false
     return true
+  })
+
+  const filtered = preFiltered.filter(c => {
+    if (statusFilter === 'all') return true
+    if (statusFilter === 'noPrice')    return !c.hasPrice && c.status === 'Done'
+    if (statusFilter === 'inprogress') return c.status !== 'Done' && !c.paymentStatus
+    return c.paymentStatus === statusFilter
   })
 
   const exportCSV = () => {
@@ -193,11 +197,12 @@ export default function BillingPage() {
       {/* Status filter pills */}
       <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
         {[
-          { key:'all',      label:`Todas (${cleanings.length})`,              bg:C.bg,         color:C.slate },
-          { key:'unpaid',   label:`Sin Cobrar (${summary?.unpaidCount||0})`,  bg:C.amberLight, color:C.amber },
-          { key:'invoiced', label:`Facturado (${summary?.invoicedCount||0})`, bg:C.tealLight,  color:C.teal },
-          { key:'paid',     label:`Cobrado (${summary?.paidCount||0})`,       bg:C.greenLight, color:C.green },
-          { key:'noPrice',  label:`Sin Precio (${summary?.noPrice||0})`,      bg:'#FEF3C7',    color:'#D97706' },
+          { key:'all',      label:`Todas (${preFiltered.length})`,                                                            bg:C.bg,         color:C.slate },
+          { key:'unpaid',   label:`Sin Cobrar (${preFiltered.filter(c=>c.paymentStatus==='unpaid').length})`,                 bg:C.amberLight, color:C.amber },
+          { key:'invoiced', label:`Facturado (${preFiltered.filter(c=>c.paymentStatus==='invoiced').length})`,                bg:C.tealLight,  color:C.teal },
+          { key:'paid',     label:`Cobrado (${preFiltered.filter(c=>c.paymentStatus==='paid').length})`,                     bg:C.greenLight, color:C.green },
+          { key:'inprogress',label:`En Curso (${preFiltered.filter(c=>c.status!=='Done'&&!c.paymentStatus).length})`,        bg:'#DBEAFE',    color:'#2563EB' },
+          { key:'noPrice',  label:`Sin Precio (${preFiltered.filter(c=>!c.hasPrice&&c.status==='Done').length})`,            bg:'#FEF3C7',    color:'#D97706' },
         ].map(f=>(
           <button key={f.key} onClick={()=>setStatusFilter(f.key)}
             style={{ padding:'6px 14px', borderRadius:10, border:`1.5px solid ${statusFilter===f.key?f.color:C.border}`, background:statusFilter===f.key?f.bg:C.white, color:statusFilter===f.key?f.color:C.muted, fontSize:12, fontWeight:700, cursor:'pointer' }}>
