@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { DollarSign, Download, RefreshCw, AlertCircle, TrendingUp, Clock, CheckCircle2, AlertTriangle, XCircle, Filter } from 'lucide-react'
+import { DollarSign, Download, RefreshCw, AlertCircle, TrendingUp, Clock, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
 
 const C = {
   primary: '#6366F1', primaryLight: '#EEF2FF',
