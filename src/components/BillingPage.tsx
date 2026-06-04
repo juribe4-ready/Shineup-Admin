@@ -51,7 +51,12 @@ const fmtDate = (iso: string | null) => {
   return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: '2-digit' })
 }
 
-const sel = (active: boolean) => ({
+const RATING_STYLE: Record<string, { color: string; bg: string }> = {
+  '⭐⭐⭐ Bueno':  { color: '#059669', bg: '#DCFCE7' },
+  '⭐⭐ Normal': { color: '#6B7280', bg: '#F3F4F6' },
+  '⭐ Malo':    { color: '#DC2626', bg: '#FEE2E2' },
+}
+
   height: 38, padding: '0 12px', borderRadius: 10,
   border: `1.5px solid ${active ? C.primary : C.border}`,
   background: active ? C.primaryLight : C.white,
@@ -59,9 +64,9 @@ const sel = (active: boolean) => ({
   fontSize: 12, fontWeight: 600, outline: 'none', cursor: 'pointer',
 } as React.CSSProperties)
 
-// Grid columns: date | property | type | cleaners | rating | status | price | HH | HH Total | pay status
-const GRID = '80px 1fr 120px 60px 90px 100px 90px 65px 80px 110px'
-const COLS = ['Fecha','Propiedad','Tipo','#','Rating','Status','Precio','HH','HH Total','Cobro']
+// Grid: date | property | client | type | #cleaners | rating | status | price | HH | HH Total | pay status
+const GRID = '75px 140px 110px 110px 80px 80px 90px 90px 55px 75px 105px'
+const COLS = ['Fecha','Propiedad','Cliente','Tipo','#Cleaners','Rating','Status','Precio','HH','HH Total','Cobro']
 
 export default function BillingPage() {
   const [dateFrom, setDateFrom] = useState(thirtyAgo())
@@ -197,8 +202,8 @@ export default function BillingPage() {
       <div style={{ background:C.white, borderRadius:16, border:`1px solid ${C.border}`, overflow:'hidden' }}>
         {/* Sticky header */}
         <div style={{ display:'grid', gridTemplateColumns:GRID, padding:'10px 16px', background:C.bg, borderBottom:`1px solid ${C.border}`, position:'sticky', top:0, zIndex:10 }}>
-          {COLS.map(h=>(
-            <span key={h} style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</span>
+          {COLS.map((h,i)=>(
+            <span key={h} style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'0.05em', textAlign: i >= 4 ? 'center' : 'left' }}>{h}</span>
           ))}
         </div>
 
@@ -223,32 +228,47 @@ export default function BillingPage() {
                 padding:'10px 16px', borderBottom:i<filtered.length-1?`1px solid ${C.border}`:'none',
                 alignItems:'center', background:!c.hasPrice&&c.status==='Done'?'#FFFBEB':'white',
               }}>
+                {/* Fecha */}
                 <span style={{ fontSize:11, color:C.slate, fontWeight:500 }}>{fmtDate(c.date)}</span>
-                <div style={{ minWidth:0 }}>
-                  <p style={{ fontSize:13, fontWeight:700, color:C.ink, margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.property}</p>
-                  {c.clientName&&<p style={{ fontSize:10, color:C.muted, margin:0 }}>{c.clientName}</p>}
-                </div>
-                <span style={{ fontSize:11, color:C.muted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.cleaningType||'—'}</span>
+                {/* Propiedad */}
+                <span style={{ fontSize:12, fontWeight:700, color:C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.property}</span>
+                {/* Cliente */}
+                <span style={{ fontSize:11, color:C.slate, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.clientName||'—'}</span>
+                {/* Tipo */}
+                <span style={{ fontSize:11, color:C.slate, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.cleaningType||'—'}</span>
+                {/* #Cleaners */}
                 <span style={{ fontSize:12, fontWeight:700, color:C.slate, textAlign:'center' }}>{c.staffCount}</span>
-                <span style={{ fontSize:10, color:C.muted }}>{c.rating||'—'}</span>
+                {/* Rating */}
+                {(() => {
+                  const rs = c.rating ? RATING_STYLE[c.rating] : null
+                  const label = c.rating?.replace(/⭐+\s*/,'') || '—'
+                  return rs ? (
+                    <span style={{ fontSize:10, fontWeight:700, background:rs.bg, color:rs.color, padding:'3px 8px', borderRadius:6, textAlign:'center', margin:'0 auto' }}>{label}</span>
+                  ) : <span style={{ fontSize:11, color:C.muted, textAlign:'center', display:'block' }}>—</span>
+                })()}
+                {/* Status */}
                 {sc ? (
-                  <span style={{ fontSize:10, fontWeight:700, background:sc.bg, color:sc.color, padding:'3px 8px', borderRadius:6, width:'fit-content' }}>{c.status}</span>
-                ) : <span style={{ color:C.muted, fontSize:11 }}>—</span>}
-                <span style={{ fontSize:13, fontWeight:700, color:c.hasPrice?C.ink:C.amber }}>
+                  <span style={{ fontSize:10, fontWeight:700, background:sc.bg, color:sc.color, padding:'3px 8px', borderRadius:6, width:'fit-content', margin:'0 auto' }}>{c.status}</span>
+                ) : <span style={{ color:C.muted, fontSize:11, textAlign:'center', display:'block' }}>—</span>}
+                {/* Precio */}
+                <span style={{ fontSize:13, fontWeight:700, color:c.hasPrice?C.ink:C.amber, textAlign:'center' }}>
                   {c.hasPrice?fmt$(c.price):'⚠️ —'}
                 </span>
-                <span style={{ fontSize:12, color:C.slate }}>{c.hoursWorked?`${c.hoursWorked}h`:'—'}</span>
-                <span style={{ fontSize:12, color:C.slate }}>
+                {/* HH */}
+                <span style={{ fontSize:12, color:C.slate, textAlign:'center' }}>{c.hoursWorked?`${c.hoursWorked}h`:'—'}</span>
+                {/* HH Total */}
+                <span style={{ fontSize:12, color:C.slate, textAlign:'center' }}>
                   {c.hoursTotal?`${c.hoursTotal}h`:'—'}
                   {c.staffCount>1&&<span style={{ fontSize:10, color:C.muted }}> ×{c.staffCount}</span>}
                 </span>
+                {/* Cobro */}
                 {pc ? (
-                  <div style={{ display:'flex', alignItems:'center', gap:4, background:pc.bg, padding:'4px 8px', borderRadius:8, width:'fit-content' }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:4, background:pc.bg, padding:'4px 8px', borderRadius:8 }}>
                     <pc.Icon style={{ width:11, height:11, color:pc.color }} />
                     <span style={{ fontSize:11, fontWeight:700, color:pc.color }}>{pc.label}</span>
                   </div>
                 ) : (
-                  <div style={{ display:'flex', alignItems:'center', gap:4, background:C.bg, padding:'4px 8px', borderRadius:8, width:'fit-content' }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:4, background:C.bg, padding:'4px 8px', borderRadius:8 }}>
                     <XCircle style={{ width:11, height:11, color:C.muted }} />
                     <span style={{ fontSize:11, fontWeight:600, color:C.muted }}>—</span>
                   </div>
