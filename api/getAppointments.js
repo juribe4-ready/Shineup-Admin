@@ -376,16 +376,17 @@ async function handleLaunchWeek(req, res) {
         cleaningFields['Cleaning Type'] = f['Cleaning Type']
       }
 
-      // Price logic: compare appointment Cleaning Type with property Default Cleaning Type + Usage
-      // If they match → use property Price. If not → leave null (needs manual entry)
-      const apptCleaningType = f['Cleaning Type'] || null
-      const propDefaultType  = propInfo.defaultCleaningType || null
-      if (apptCleaningType && propDefaultType && apptCleaningType === propDefaultType) {
+      // Price logic: compare Cleaning Type IDs between appointment and property default
+      const apptCleaningTypeId = Array.isArray(f['Cleaning Type']) ? f['Cleaning Type'][0] : (f['Cleaning Type'] || null)
+      const propDefaultTypeId  = Array.isArray(propInfo.defaultCleaningType) ? propInfo.defaultCleaningType[0] : (propInfo.defaultCleaningType || null)
+      if (apptCleaningTypeId && propDefaultTypeId && apptCleaningTypeId === propDefaultTypeId) {
         if (propInfo.price) {
           cleaningFields['Price'] = propInfo.price
         }
+      } else if (propInfo.price && !apptCleaningTypeId) {
+        // No cleaning type on appointment — use property price anyway
+        cleaningFields['Price'] = propInfo.price
       }
-      // If no match or missing data → Price stays null (will show in Cobranza as "sin precio")
 
       try {
         const createRes = await fetch(
