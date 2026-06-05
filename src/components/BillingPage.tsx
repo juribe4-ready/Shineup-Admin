@@ -120,13 +120,21 @@ export default function BillingPage() {
 
   const exportCSV = () => {
     const headers = ['Fecha','Propiedad','Cliente','Tipo','#Cleaners','Rating','Status','Precio','HH Casa','HH Total','Source','Estado Cobro']
+    const cleanRating = (r: string | null) => {
+      if (!r) return ''
+      // Remove star emojis, keep just the label
+      return r.replace(/⭐+\s*/g, '').trim()
+    }
     const rows = filtered.map(c => [
       c.date||'', `"${c.property}"`, `"${c.clientName||''}"`,
-      c.cleaningType||'', c.staffCount, `"${c.rating||''}"`,
-      c.status||'', c.price??'', c.hoursWorked??'', c.hoursTotal??'', `"${c.source||''}"`, c.paymentStatus||''
+      `"${c.cleaningType||''}"`, typeof c.staffCount === 'number' ? c.staffCount : '',
+      `"${cleanRating(c.rating)}"`,
+      c.status||'', c.price??'', c.hoursWorked??'', c.hoursTotal??'',
+      `"${c.source||''}"`, c.paymentStatus||''
     ])
     const csv = [headers,...rows].map(r=>r.join(',')).join('\n')
-    const blob = new Blob([csv],{type:'text/csv'})
+    // Add UTF-8 BOM to prevent encoding issues in Excel
+    const blob = new Blob(['\uFEFF' + csv], {type:'text/csv;charset=utf-8;'})
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a'); a.href=url
     a.download=`cobranza_${dateFrom}_${dateTo}.csv`; a.click()
