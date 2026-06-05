@@ -94,15 +94,25 @@ async function getBilling(headers, query) {
     offset = data.offset || null
   } while (offset)
 
-  // Build clients map: record ID → name
+  // Build clients map: record ID → name (primary field of Clients table)
   const clientsMap = {}
   try {
-    const cr = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLIENTS_TABLE}?fields[]=Name`, { headers })
-    if (cr.ok) {
+    let clientOffset = null
+    do {
+      const sep = clientOffset ? `?offset=${clientOffset}` : ''
+      const cr = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLIENTS_TABLE}${sep}`, { headers })
+      if (!cr.ok) { console.error('[getBilling] clients failed:', cr.status); break }
       const cd = await cr.json()
-      for (const c of (cd.records || [])) clientsMap[c.id] = c.fields?.Name || null
-    }
-  } catch(e) { console.error('[getBilling] clients fetch error:', e.message) }
+      for (const c of (cd.records || [])) {
+        // Try all likely primary field names for Clients table
+        const f = c.fields || {}
+        const name = f['Full name'] || f['Name'] || f['Client Name'] || f['First Name'] || f['full name'] || null
+        if (name) clientsMap[c.id] = name
+      }
+      clientOffset = cd.offset || null
+    } while (clientOffset)
+    console.log('[getBilling] clientsMap:', Object.keys(clientsMap).length, 'entries, sample:', JSON.stringify(Object.entries(clientsMap).slice(0,3)))
+  } catch(e) { console.error('[getBilling] clients error:', e.message) }
 
   // Enrich with Client Name and Source from Appointments (best-effort, won't affect cleaning list)
   const cleaningIdSet = new Set(allRecords.map(r => r.id))
@@ -149,10 +159,20 @@ async function getBilling(headers, query) {
     const payStatus  = rawPayStatus 
       ? rawPayStatus.toLowerCase()
       : (status === 'Done' ? 'unpaid' : null)
-    const rawClient = apptMap[rec.id]?.clientName
-      || (Array.isArray(f['Client']) ? clientsMap[f['Client'][0]] : null)
-      || f['Client Name Text'] || null
-    const clientName = (rawClient && /^rec[A-Za-z0-9]{8,}$/.test(rawClient)) ? null : rawClient
+    // Client: ONLY from cleaning's own Client field, resolved via clientsMap
+    // apptMap is intentionally NOT used for client name — appointments can have wrong client
+    const cleaningClientRaw = Array.isArray(f['Client']) && f['Client'].length > 0
+      ? f['Client'][f['Client'].length - 1]
+      : null
+    const resolveClient = (raw) => {
+      if (!raw) return null
+      if (/^rec[A-Za-z0-9]{8,}$/.test(raw)) return clientsMap[raw] || null
+      return raw
+    }
+    const clientName = resolveClient(cleaningClientRaw) || f['Client Name Text'] || null
+    if (rec.id === 'recjiGUdQbeReKqtd' || rec.id === 'recpC9nCLTDHD5wQx') {
+      console.log(`[DEBUG] ${rec.id}: Client=${JSON.stringify(f['Client'])}, raw=${cleaningClientRaw}, resolved=${clientName}, mapSize=${Object.keys(clientsMap).length}`)
+    }
     return {
       id: rec.id, date: f['Date'] || null,
       property: f['Property Text'] || 'Sin propiedad',
