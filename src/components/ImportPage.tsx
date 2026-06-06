@@ -106,7 +106,6 @@ export default function ImportPage() {
             if (prop.name.toLowerCase().trim() === rowProp && matchType === 'none') {
               bestMatch = c; matchType = 'exact'
             }
-            }
           }
           if (matchType === 'turnoName') break
         }
