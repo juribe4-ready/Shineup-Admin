@@ -87,9 +87,14 @@ export default function ImportPage() {
       if (!res.ok) throw new Error('Error al cargar datos')
       const { cleanings, propsMap } = await res.json()
 
-      const matched: MatchResult[] = turnoRows.map(row => {
+      const normalize = (s: string) => s.toLowerCase().trim()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove accents
+      .replace(/[^a-z0-9\s]/g, '') // remove special chars
+      .replace(/\s+/g, ' ').trim()
+
+    const matched: MatchResult[] = turnoRows.map(row => {
         const rowDate = normalizeDate(row.date)
-        const rowProp = row.property.toLowerCase().trim()
+        const rowProp = normalize(row.property)
         const candidates = cleanings.filter((c: any) => c.fields?.Date === rowDate)
 
         let bestMatch: any = null
@@ -100,10 +105,10 @@ export default function ImportPage() {
           for (const pid of propIds) {
             const prop = propsMap[pid]
             if (!prop) continue
-            if (prop.turnoName && prop.turnoName.toLowerCase().trim() === rowProp) {
+            if (prop.turnoName && normalize(prop.turnoName) === rowProp) {
               bestMatch = c; matchType = 'turnoName'; break
             }
-            if (prop.name.toLowerCase().trim() === rowProp && matchType === 'none') {
+            if (normalize(prop.name) === rowProp && matchType === 'none') {
               bestMatch = c; matchType = 'exact'
             }
           }
