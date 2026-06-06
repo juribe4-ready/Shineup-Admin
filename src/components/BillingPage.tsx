@@ -102,12 +102,14 @@ export default function BillingPage() {
   const properties = [...new Set(cleanings.map(c => c.property).filter(Boolean))].sort()
   const clients    = [...new Set(cleanings.map(c => c.clientName).filter(Boolean))].sort() as string[]
   const sources    = [...new Set(cleanings.map(c => c.source).filter(Boolean))].sort() as string[]
-
   // preFiltered: respects prop/client/source but NOT statusFilter — used for pill counts
   const preFiltered = cleanings.filter(c => {
     if (propFilter   !== 'all' && c.property   !== propFilter)   return false
     if (clientFilter !== 'all' && c.clientName !== clientFilter) return false
-    if (sourceFilter  !== 'all' && c.source      !== sourceFilter)  return false
+    if (sourceFilter  !== 'all') {
+      if (sourceFilter === '__blank__' && c.source) return false
+      if (sourceFilter !== '__blank__' && c.source !== sourceFilter) return false
+    }
     return true
   })
 
@@ -166,6 +168,7 @@ export default function BillingPage() {
         </select>
         <select value={sourceFilter} onChange={e=>setSourceFilter(e.target.value)} style={sel(sourceFilter!=='all')}>
           <option value="all">Todos los sources</option>
+          <option value="__blank__">Sin source</option>
           {sources.map(s=><option key={s} value={s}>{s}</option>)}
         </select>
         <button onClick={load} disabled={loading}
