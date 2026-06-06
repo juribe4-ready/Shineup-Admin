@@ -7,6 +7,7 @@ import UsersPage from './components/UsersPage'
 import OperationsPage from './components/OperationsPage'
 import AnalysisPage from './components/AnalysisPage'
 import CommandCenterPage from './components/CommandCenterPage'
+import ImportPage from './components/ImportPage'
 import SettingsPage from './components/SettingsPage'
 
 export default function App() {
@@ -70,6 +71,7 @@ export default function App() {
       {page === 'analysis'   && <AnalysisPage />}
       {page === 'command'    && <CommandCenterPage />}
       {page === 'users'      && <UsersPage profile={profile} onSignOut={handleSignOut} />}
+      {page === 'import'     && <ImportPage />}
       {page === 'settings'   && <SettingsPage />}
     </Layout>
   )
