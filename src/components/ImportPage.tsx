@@ -101,10 +101,10 @@ export default function ImportPage() {
             const prop = propsMap[pid]
             if (!prop) continue
             if (prop.turnoName && prop.turnoName.toLowerCase().trim() === rowProp) {
-              bestMatch = c; matchType = 'turnoName'; break
+              bestMatch = c; matchType = 'turnoName' as const; break
             }
             if (prop.name.toLowerCase().trim() === rowProp) {
-              if (matchType !== 'turnoName') { bestMatch = c; matchType = 'exact' }
+              if (matchType !== 'turnoName') { bestMatch = c; matchType = 'exact' as const }
             }
           }
           if (matchType === 'turnoName') break
