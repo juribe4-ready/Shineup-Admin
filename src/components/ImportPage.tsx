@@ -49,7 +49,7 @@ function parseCSV(text: string): TurnoRow[] {
       customer:      custCol >= 0 ? cols[custCol] : '',
       amount:        amtCol  >= 0 ? parseFloat(cols[amtCol].replace(/[$,]/g,'')) || 0 : 0,
       property:      propCol >= 0 ? cols[propCol] : '',
-      projectNumber: projCol >= 0 ? cols[projCol] : '',
+      projectNumber: (() => { const raw = projCol >= 0 ? cols[projCol] : ''; const m = raw.match(/#(\d+)/); return m ? m[1] : raw })(),
       status,
     })
   }
@@ -88,8 +88,8 @@ export default function ImportPage() {
       const { cleanings, propsMap } = await res.json()
 
       const normalize = (s: string) => s.toLowerCase().trim()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove accents
-      .replace(/[^a-z0-9\s]/g, '') // remove special chars
+      .replace(/[^\x00-\x7F]/g, ' ') // replace ALL non-ASCII with space (handles ¶ú, ÃÂ· etc)
+      .replace(/[^a-z0-9\s]/g, '')
       .replace(/\s+/g, ' ').trim()
 
     const matched: MatchResult[] = turnoRows.map(row => {
