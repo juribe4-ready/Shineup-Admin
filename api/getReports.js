@@ -225,8 +225,55 @@ export default async function handler(req, res) {
     if (type === 'incidents') return res.status(200).json(await getIncidents(headers, staffMap, propMap))
     if (type === 'inventory') return res.status(200).json(await getInventory(headers, staffMap, propMap))
     if (type === 'billing')   return res.status(200).json(await getBilling(headers, req.query))
+    if (type === 'importMatch' && req.method === 'GET')  return res.status(200).json(await getImportMatch(headers, req.query))
+    if (type === 'importApply' && req.method === 'POST') return res.status(200).json(await applyImportPayments(headers, req.body))
     return res.status(400).json({ error: `Unknown type: ${type}` })
   } catch (err) {
     return res.status(500).json({ error: err.message })
   }
+}
+
+async function getImportMatch(headers, query) {
+  const { dateFrom, dateTo } = query
+  const propsRes = await fetch(
+    `https://api.airtable.com/v0/${AIRTABLE_BASE}/${PROPS_TABLE}?fields[]=Name&fields[]=Turno%20Name`,
+    { headers }
+  )
+  const propsData = await propsRes.json()
+  const propsMap = {}
+  for (const p of (propsData.records || [])) {
+    propsMap[p.id] = { name: p.fields?.Name || '', turnoName: p.fields?.['Turno Name'] || '' }
+  }
+  let allCleanings = [], offset = null
+  do {
+    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}?pageSize=100${offset?`&offset=${offset}`:''}`
+    const r = await fetch(url, { headers })
+    const data = await r.json()
+    const inRange = (data.records||[]).filter(rec => {
+      const d = rec.fields?.Date
+      return d && d >= dateFrom && d <= dateTo
+    })
+    allCleanings = allCleanings.concat(inRange)
+    offset = data.offset || null
+  } while (offset)
+  return { cleanings: allCleanings, propsMap }
+}
+
+async function applyImportPayments(headers, body) {
+  const { updates } = body
+  const results = []
+  for (const u of (updates || [])) {
+    try {
+      const r = await fetch(
+        `https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${u.cleaningId}`,
+        { method: 'PATCH', headers, body: JSON.stringify({ fields: {
+          'Payment Status': 'Paid',
+          'Price':         u.amount,
+          'Turno Project': u.projectNumber || '',
+        }})}
+      )
+      results.push({ cleaningId: u.cleaningId, ok: r.ok })
+    } catch(e) { results.push({ cleaningId: u.cleaningId, ok: false }) }
+  }
+  return { results }
 }
