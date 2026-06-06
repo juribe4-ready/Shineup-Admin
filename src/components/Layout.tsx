@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Profile } from '../supabase'
 import {
   CalendarDays, Users, LogOut, ChevronLeft, 
-  TrendingUp, Settings, Home, ChevronRight, Radio, LayoutDashboard, Menu, X as XIcon
+  TrendingUp, Settings, Home, ChevronRight, Radio, LayoutDashboard, Menu, X as XIcon, Upload
 } from 'lucide-react'
 
 const C = {
@@ -28,6 +28,7 @@ export type PageKey =
   | 'analysis'      // Cascadas + Productividad + Tendencias  
   | 'command'       // North Star + KPIs ejecutivos
   | 'users'         // Usuarios
+  | 'import'        // Importar Pagos
   | 'settings'      // Configuración
 
 interface NavItem {
@@ -76,6 +77,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   // CONFIG
   { key: 'users',      label: 'Usuarios',      Icon: Users,     section: 'config' },
+  { key: 'import',     label: 'Importar',      Icon: Upload,    section: 'config' },
   { key: 'settings',   label: 'Configuración', Icon: Settings,  section: 'config' },
 ]
 
@@ -85,6 +87,7 @@ const PAGE_TITLES: Record<PageKey, string> = {
   analysis:   'Análisis',
   command:    'Command Center',
   users:      'Gestión de Usuarios',
+  import:     'Importar Pagos',
   settings:   'Configuración',
 }
 
@@ -94,6 +97,7 @@ const PAGE_SUBTITLES: Record<PageKey, string> = {
   analysis:   'Cascadas, productividad y tendencias',
   command:    'North Star y KPIs ejecutivos',
   users:      'Administración de usuarios',
+  import:     'Turno · Guesty · Hospitable',
   settings:   'Configuración del sistema',
 }
 
