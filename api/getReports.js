@@ -293,7 +293,7 @@ async function createTurnoAppointments(headers, body) {
     if (!p.propertyId) { results.push({ name: p.name, ok: false, reason: 'no_match' }); continue }
     try {
       // Columbus EDT = UTC-4, use 10am local time
-      const fields: Record<string,any> = {
+      const fields = {
         'Requested Date & Time': `${date}T14:00:00.000Z`,
         'Status': 'Confirmed',
         'Property': [p.propertyId],
