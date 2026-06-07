@@ -90,28 +90,26 @@ export default function ImportPage() {
       )}
 
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize:18, fontWeight:800, color:C.ink, margin:0 }}>Importar de Turno</h2>
-        <p style={{ fontSize:13, color:C.muted, marginTop:4 }}>Pagos y creación de appointments desde Turno</p>
+        <h2 style={{ fontSize:18, fontWeight:800, color:C.ink, margin:0 }}>Importar</h2>
+        <p style={{ fontSize:13, color:C.muted, marginTop:4 }}>Pagos y appointments desde plataformas externas</p>
       </div>
 
-      {/* Tab bar */}
-      <div style={{ display:'flex', gap:6, marginBottom:24, background:C.white, padding:5, borderRadius:16, border:`1px solid ${C.border}`, width:'fit-content' }}>
-        <button onClick={() => setTab('pay')} style={{
-          display:'flex', alignItems:'center', gap:7, padding:'9px 18px', borderRadius:11, border:'none', cursor:'pointer',
-          background: tab==='pay' ? `linear-gradient(135deg, ${C.green} 0%, #059669 100%)` : 'transparent',
-          color: tab==='pay' ? 'white' : C.muted, fontWeight:600, fontSize:13,
-          fontFamily:"'Inter', sans-serif", transition:'all 0.2s',
-        }}>
-          <DollarSign style={{ width:15, height:15 }} /> Marcar Pagados
-        </button>
-        <button onClick={() => setTab('appt')} style={{
-          display:'flex', alignItems:'center', gap:7, padding:'9px 18px', borderRadius:11, border:'none', cursor:'pointer',
-          background: tab==='appt' ? `linear-gradient(135deg, ${C.primary} 0%, #4F46E5 100%)` : 'transparent',
-          color: tab==='appt' ? 'white' : C.muted, fontWeight:600, fontSize:13,
-          fontFamily:"'Inter', sans-serif", transition:'all 0.2s',
-        }}>
-          <CalendarDays style={{ width:15, height:15 }} /> Crear Appointments
-        </button>
+      {/* Tab bar — Analysis style */}
+      <div style={{ display:'flex', gap:4, marginBottom:24, background:C.white, padding:5, borderRadius:16, border:`1px solid ${C.border}`, width:'fit-content', flexWrap:'wrap' }}>
+        {([
+          { key:'pay',  label:'Pagos',        Icon: DollarSign,  color: C.green   },
+          { key:'appt', label:'Appointments',  Icon: CalendarDays, color: C.primary },
+        ] as const).map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)} style={{
+            display:'flex', alignItems:'center', gap:7, padding:'8px 16px', borderRadius:11, border:'none', cursor:'pointer',
+            background: tab===t.key ? `linear-gradient(135deg, ${t.color} 0%, ${t.color}cc 100%)` : 'transparent',
+            color: tab===t.key ? 'white' : C.muted, fontWeight:600, fontSize:13,
+            fontFamily:"'Inter', sans-serif", transition:'all 0.2s',
+            boxShadow: tab===t.key ? `0 4px 12px ${t.color}40` : 'none',
+          }}>
+            <t.Icon style={{ width:14, height:14 }} /> {t.label}
+          </button>
+        ))}
       </div>
 
       {tab === 'pay'  && <PayTab  showToast={showToast} />}
