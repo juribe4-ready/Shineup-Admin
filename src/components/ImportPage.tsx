@@ -58,7 +58,22 @@ function parseCSV(text: string): TurnoRow[] {
 
 function normalizeDate(raw: string): string {
   if (!raw) return ''
-  const d = new Date(raw)
+  // Handle "May 29 2026" or "May 29, 2026" or "2026-05-29"
+  const clean = raw.trim().replace(',', '')
+  const months: Record<string,string> = {
+    jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',
+    jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'
+  }
+  // "May 29 2026" format
+  const m = clean.match(/^([A-Za-z]+)\s+(\d{1,2})\s+(\d{4})$/)
+  if (m) {
+    const mon = months[m[1].toLowerCase().slice(0,3)]
+    if (mon) return `${m[3]}-${mon}-${m[2].padStart(2,'0')}`
+  }
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean
+  // Fallback
+  const d = new Date(clean)
   if (!isNaN(d.getTime())) return d.toLocaleDateString('en-CA')
   return ''
 }
