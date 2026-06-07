@@ -227,9 +227,9 @@ export default async function handler(req, res) {
     if (type === 'billing')   return res.status(200).json(await getBilling(headers, req.query))
     if (type === 'importMatch' && req.method === 'GET')  return res.status(200).json(await getImportMatch(headers, req.query))
     if (type === 'cleaningTypes') {
-      const ct = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Cleaning%20Type?fields[]=Name`, { headers })
+      const ct = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Cleaning%20Type?fields[]=Cleaning%20Type%20Name`, { headers })
       const ctData = await ct.json()
-      return res.status(200).json({ cleaningTypes: (ctData.records||[]).map(r => ({ id: r.id, name: r.fields?.Name||'' })) })
+      return res.status(200).json({ cleaningTypes: (ctData.records||[]).map(r => ({ id: r.id, name: r.fields?.['Cleaning Type Name']||'' })) })
     }
     if (type === 'importApply' && req.method === 'POST') return res.status(200).json(await applyImportPayments(headers, req.body))
     if (type === 'createAppointments' && req.method === 'POST') return res.status(200).json(await createTurnoAppointments(headers, req.body))
@@ -308,7 +308,7 @@ async function createTurnoAppointments(headers, body) {
         'Status': 'Confirmed',
         'Source': 'Turno',
         'Property': [p.propertyId],
-        ...(body.cleaningTypeId ? { 'Cleaning Type': [body.cleaningTypeId] } : {}),
+        ...(body.cleaningTypeId ? { 'Cleaning Type': body.cleaningTypeId.startsWith('rec') ? [body.cleaningTypeId] : body.cleaningTypeId } : {}),
       }
       const r = await fetch(
         `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblXlpg7MuYWA8Ocn`,
