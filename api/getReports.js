@@ -235,13 +235,19 @@ export default async function handler(req, res) {
 
 async function getImportMatch(headers, query) {
   const { dateFrom, dateTo } = query
-  const propsRes = await fetch(
-    `https://api.airtable.com/v0/${AIRTABLE_BASE}/${PROPS_TABLE}?fields[]=Name&fields[]=Turno%20Name`,
-    { headers }
-  )
-  const propsData = await propsRes.json()
+  // Fetch all properties without field filter to ensure Turno Name is included
+  let allProps = [], propsOffset = null
+  do {
+    const propsRes = await fetch(
+      `https://api.airtable.com/v0/${AIRTABLE_BASE}/${PROPS_TABLE}${propsOffset ? `?offset=${propsOffset}` : ''}`,
+      { headers }
+    )
+    const propsData = await propsRes.json()
+    allProps = allProps.concat(propsData.records || [])
+    propsOffset = propsData.offset || null
+  } while (propsOffset)
   const propsMap = {}
-  for (const p of (propsData.records || [])) {
+  for (const p of allProps) {
     propsMap[p.id] = { name: p.fields?.Name || '', turnoName: p.fields?.['Turno Name'] || '' }
   }
   let allCleanings = [], offset = null
