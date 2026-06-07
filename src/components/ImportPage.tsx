@@ -290,12 +290,14 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
 // TAB 2: CREAR APPOINTMENTS
 // ─────────────────────────────────────────────
 function ApptTab({ showToast }: { showToast: (m:string)=>void }) {
-  const [date,       setDate]       = useState(todayDate())
-  const [rawText,    setRawText]    = useState('')
-  const [propMatches, setPropMatches] = useState<PropMatch[]>([])
-  const [loading,    setLoading]    = useState(false)
-  const [creating,   setCreating]   = useState(false)
-  const [results,    setResults]    = useState<{created:number;errors:number}|null>(null)
+  const [date,          setDate]          = useState(todayDate())
+  const [rawText,       setRawText]       = useState('')
+  const [propMatches,   setPropMatches]   = useState<PropMatch[]>([])
+  const [loading,       setLoading]       = useState(false)
+  const [creating,      setCreating]      = useState(false)
+  const [results,       setResults]       = useState<{created:number;errors:number}|null>(null)
+  const [cleaningTypes, setCleaningTypes] = useState<{id:string;name:string}[]>([])
+  const [cleaningTypeId, setCleaningTypeId] = useState<string>('')
 
   const matchProperties = useCallback(async (text: string) => {
     const names = text.split('\n').map(l => l.trim()).filter(Boolean)
@@ -305,6 +307,13 @@ function ApptTab({ showToast }: { showToast: (m:string)=>void }) {
       const r = await fetch(`/api/getReports?type=importMatch&dateFrom=${date}&dateTo=${date}`)
       const data = await r.json()
       const propsMap = data.propsMap || {}
+      // Load cleaning types once
+      if (data.cleaningTypes?.length && cleaningTypes.length === 0) {
+        setCleaningTypes(data.cleaningTypes)
+        // Default to Standard STR Turnover
+        const def = data.cleaningTypes.find((t: any) => t.name.toLowerCase().includes('standard str'))
+        if (def) setCleaningTypeId(def.id)
+      }
       const matched = names.map(name => {
         const normName = normalize(name)
         let bestId: string|null = null, bestPropName = '', matchType: 'turnoName'|'exact'|'none' = 'none'
@@ -343,7 +352,7 @@ function ApptTab({ showToast }: { showToast: (m:string)=>void }) {
     try {
       const res = await fetch('/api/getReports?type=createAppointments', {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ date, properties: toCreate.map(p => ({ name: p.name, propertyId: p.propertyId })) })
+        body: JSON.stringify({ date, cleaningTypeId, properties: toCreate.map(p => ({ name: p.name, propertyId: p.propertyId })) })
       })
       const data = await res.json()
       const created = data.results?.filter((r:any)=>r.ok).length||0
@@ -364,8 +373,18 @@ function ApptTab({ showToast }: { showToast: (m:string)=>void }) {
         <p style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>Fecha Requested</p>
         <input type="date" value={date} onChange={e => setDate(e.target.value)}
           style={{ fontSize:28, fontWeight:800, color:C.primary, border:'none', outline:'none', background:'transparent', fontFamily:"'Inter', sans-serif", cursor:'pointer', width:'100%' }} />
-        <p style={{ fontSize:12, color:C.muted, marginTop:6 }}>
-          Todos los appointments se crearán con esta fecha · Source: <strong>Turno</strong> · Status: <strong>Confirmed</strong>
+        {cleaningTypes.length > 0 && (
+          <div style={{ marginTop:12 }}>
+            <p style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>Tipo de Limpieza</p>
+            <select value={cleaningTypeId} onChange={e => setCleaningTypeId(e.target.value)}
+              style={{ height:38, padding:'0 12px', borderRadius:10, border:`1.5px solid ${C.border}`, fontSize:14, fontWeight:600, color:C.ink, outline:'none', background:'white', cursor:'pointer', minWidth:240 }}>
+              <option value="">Sin tipo</option>
+              {cleaningTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+        )}
+        <p style={{ fontSize:12, color:C.muted, marginTop:10 }}>
+          Source: <strong>Turno</strong> · Status: <strong>Confirmed</strong>
         </p>
       </div>
 
