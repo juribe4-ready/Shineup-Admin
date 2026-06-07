@@ -296,7 +296,7 @@ async function createTurnoAppointments(headers, body) {
       const fields = {
         'Requested Date & Time': `${date}T14:00:00.000Z`,
         'Status': 'Confirmed',
-        'Online Platform Source': 'Turno',
+        'Source': 'Turno',
         'Property': [p.propertyId],
       }
       const r = await fetch(
