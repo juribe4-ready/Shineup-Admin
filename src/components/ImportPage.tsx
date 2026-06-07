@@ -120,8 +120,11 @@ export default function ImportPage() {
           for (const pid of propIds) {
             const prop = propsMap[pid]
             if (!prop) continue
-            if (prop.turnoName && normalize(prop.turnoName) === rowProp) {
-              bestMatch = c; matchType = 'turnoName'; break
+            if (prop.turnoName) {
+              const normTurno = normalize(prop.turnoName)
+              if (normTurno === rowProp || normTurno.includes(rowProp) || rowProp.includes(normTurno)) {
+                bestMatch = c; matchType = 'turnoName'; break
+              }
             }
             if (normalize(prop.name) === rowProp && matchType === 'none') {
               bestMatch = c; matchType = 'exact'
