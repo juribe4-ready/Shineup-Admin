@@ -304,8 +304,7 @@ function ApptTab({ showToast }: { showToast: (m:string)=>void }) {
     if (!names.length) return
     setLoading(true)
     try {
-      // Fetch all properties
-      let allProps: any[] = [], offset: string|null = null
+      let offset: string|null = null
       do {
         const r = await fetch(`/api/getReports?type=importMatch&dateFrom=${date}&dateTo=${date}`)
         const data = await r.json()
