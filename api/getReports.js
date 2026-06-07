@@ -227,6 +227,7 @@ export default async function handler(req, res) {
     if (type === 'billing')   return res.status(200).json(await getBilling(headers, req.query))
     if (type === 'importMatch' && req.method === 'GET')  return res.status(200).json(await getImportMatch(headers, req.query))
     if (type === 'importApply' && req.method === 'POST') return res.status(200).json(await applyImportPayments(headers, req.body))
+    if (type === 'createAppointments' && req.method === 'POST') return res.status(200).json(await createTurnoAppointments(headers, req.body))
     return res.status(400).json({ error: `Unknown type: ${type}` })
   } catch (err) {
     return res.status(500).json({ error: err.message })
@@ -280,6 +281,30 @@ async function applyImportPayments(headers, body) {
       )
       results.push({ cleaningId: u.cleaningId, ok: r.ok })
     } catch(e) { results.push({ cleaningId: u.cleaningId, ok: false }) }
+  }
+  return { results }
+}
+
+async function createTurnoAppointments(headers, body) {
+  const { date, properties } = body
+  // properties = [{name: 'truncated name from turno', propertyId: 'recXXX or null'}]
+  const results = []
+  for (const p of (properties || [])) {
+    if (!p.propertyId) { results.push({ name: p.name, ok: false, reason: 'no_match' }); continue }
+    try {
+      const fields = {
+        'Requested Date & Time': `${date}T10:00:00.000Z`,
+        'Status': 'Confirmed',
+        'Online Platform Source': 'Turno',
+        'Property': [p.propertyId],
+      }
+      const r = await fetch(
+        `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblXlpg7MuYWA8Ocn`,
+        { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) }
+      )
+      const data = await r.json()
+      results.push({ name: p.name, ok: r.ok, id: data.id, reason: data.error?.message })
+    } catch(e) { results.push({ name: p.name, ok: false, reason: e.message }) }
   }
   return { results }
 }
