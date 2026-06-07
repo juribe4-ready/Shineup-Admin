@@ -296,10 +296,9 @@ async function createTurnoAppointments(headers, body) {
       const fields = {
         'Requested Date & Time': `${date}T14:00:00.000Z`,
         'Status': 'Confirmed',
+        'Online Platform Source': 'Turno',
         'Property': [p.propertyId],
       }
-      // Only add source if it's a valid select value in your Airtable
-      // fields['Online Platform Source'] = 'Turno'
       const r = await fetch(
         `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblXlpg7MuYWA8Ocn`,
         { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) }
