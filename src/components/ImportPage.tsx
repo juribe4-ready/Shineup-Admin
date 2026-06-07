@@ -301,7 +301,7 @@ function ApptTab({ showToast }: { showToast: (m:string)=>void }) {
 
   // Load cleaning types on mount
   useEffect(() => {
-    fetch(`/api/getReports?type=importMatch&dateFrom=${todayDate()}&dateTo=${todayDate()}`)
+    fetch('/api/getReports?type=cleaningTypes')
       .then(r => r.json())
       .then(data => {
         if (data.cleaningTypes?.length) {
