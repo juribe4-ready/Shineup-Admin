@@ -226,6 +226,11 @@ export default async function handler(req, res) {
     if (type === 'inventory') return res.status(200).json(await getInventory(headers, staffMap, propMap))
     if (type === 'billing')   return res.status(200).json(await getBilling(headers, req.query))
     if (type === 'importMatch' && req.method === 'GET')  return res.status(200).json(await getImportMatch(headers, req.query))
+    if (type === 'cleaningTypes') {
+      const ct = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Cleaning%20Type?fields[]=Name`, { headers })
+      const ctData = await ct.json()
+      return res.status(200).json({ cleaningTypes: (ctData.records||[]).map(r => ({ id: r.id, name: r.fields?.Name||'' })) })
+    }
     if (type === 'importApply' && req.method === 'POST') return res.status(200).json(await applyImportPayments(headers, req.body))
     if (type === 'createAppointments' && req.method === 'POST') return res.status(200).json(await createTurnoAppointments(headers, req.body))
     return res.status(400).json({ error: `Unknown type: ${type}` })
