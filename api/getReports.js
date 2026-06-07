@@ -292,12 +292,14 @@ async function createTurnoAppointments(headers, body) {
   for (const p of (properties || [])) {
     if (!p.propertyId) { results.push({ name: p.name, ok: false, reason: 'no_match' }); continue }
     try {
-      const fields = {
-        'Requested Date & Time': `${date}T10:00:00.000Z`,
+      // Columbus EDT = UTC-4, use 10am local time
+      const fields: Record<string,any> = {
+        'Requested Date & Time': `${date}T14:00:00.000Z`,
         'Status': 'Confirmed',
-        'Online Platform Source': 'Turno',
         'Property': [p.propertyId],
       }
+      // Only add source if it's a valid select value in your Airtable
+      // fields['Online Platform Source'] = 'Turno'
       const r = await fetch(
         `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblXlpg7MuYWA8Ocn`,
         { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) }
