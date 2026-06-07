@@ -299,6 +299,19 @@ function ApptTab({ showToast }: { showToast: (m:string)=>void }) {
   const [cleaningTypes, setCleaningTypes] = useState<{id:string;name:string}[]>([])
   const [cleaningTypeId, setCleaningTypeId] = useState<string>('')
 
+  // Load cleaning types on mount
+  useEffect(() => {
+    fetch(`/api/getReports?type=importMatch&dateFrom=${todayDate()}&dateTo=${todayDate()}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.cleaningTypes?.length) {
+          setCleaningTypes(data.cleaningTypes)
+          const def = data.cleaningTypes.find((t: any) => t.name.toLowerCase().includes('standard str'))
+          if (def) setCleaningTypeId(def.id)
+        }
+      }).catch(() => {})
+  }, [])
+
   const matchProperties = useCallback(async (text: string) => {
     const names = text.split('\n').map(l => l.trim()).filter(Boolean)
     if (!names.length) return
