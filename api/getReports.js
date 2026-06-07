@@ -236,6 +236,11 @@ export default async function handler(req, res) {
 
 async function getImportMatch(headers, query) {
   const { dateFrom, dateTo } = query
+
+  // Fetch cleaning types
+  const ctRes = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Cleaning%20Type?fields[]=Name`, { headers })
+  const ctData = await ctRes.json()
+  const cleaningTypes = (ctData.records || []).map(r => ({ id: r.id, name: r.fields?.Name || '' }))
   // Fetch all properties without field filter to ensure Turno Name is included
   let allProps = [], propsOffset = null
   do {
@@ -263,7 +268,7 @@ async function getImportMatch(headers, query) {
     allCleanings = allCleanings.concat(inRange)
     offset = data.offset || null
   } while (offset)
-  return { cleanings: allCleanings, propsMap }
+  return { cleanings: allCleanings, propsMap, cleaningTypes }
 }
 
 async function applyImportPayments(headers, body) {
@@ -298,6 +303,7 @@ async function createTurnoAppointments(headers, body) {
         'Status': 'Confirmed',
         'Source': 'Turno',
         'Property': [p.propertyId],
+        ...(body.cleaningTypeId ? { 'Cleaning Type': [body.cleaningTypeId] } : {}),
       }
       const r = await fetch(
         `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblXlpg7MuYWA8Ocn`,
