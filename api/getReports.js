@@ -272,7 +272,7 @@ async function applyImportPayments(headers, body) {
     try {
       const r = await fetch(
         `https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${u.cleaningId}`,
-        { method: 'PATCH', headers, body: JSON.stringify({ fields: {
+        { method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: {
           'Payment Status': 'Paid',
           'Price':         u.amount,
           'Turno Project': u.projectNumber || '',
