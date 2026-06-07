@@ -304,31 +304,26 @@ function ApptTab({ showToast }: { showToast: (m:string)=>void }) {
     if (!names.length) return
     setLoading(true)
     try {
-      let offset: string|null = null
-      do {
-        const r = await fetch(`/api/getReports?type=importMatch&dateFrom=${date}&dateTo=${date}`)
-        const data = await r.json()
-        // We just need propsMap from this call
-        const propsMap = data.propsMap || {}
-        const matched = names.map(name => {
-          const normName = normalize(name)
-          let bestId: string|null = null, bestPropName = '', matchType: 'turnoName'|'exact'|'none' = 'none'
-          for (const [id, prop] of Object.entries(propsMap) as [string, any][]) {
-            if (prop.turnoName) {
-              const nt = normalize(prop.turnoName)
-              if (nt === normName || nt.includes(normName) || normName.includes(nt)) {
-                bestId = id; bestPropName = prop.name; matchType = 'turnoName'; break
-              }
-            }
-            if (normalize(prop.name) === normName && matchType === 'none') {
-              bestId = id; bestPropName = prop.name; matchType = 'exact'
+      const r = await fetch(`/api/getReports?type=importMatch&dateFrom=${date}&dateTo=${date}`)
+      const data = await r.json()
+      const propsMap = data.propsMap || {}
+      const matched = names.map(name => {
+        const normName = normalize(name)
+        let bestId: string|null = null, bestPropName = '', matchType: 'turnoName'|'exact'|'none' = 'none'
+        for (const [id, prop] of Object.entries(propsMap) as [string, any][]) {
+          if (prop.turnoName) {
+            const nt = normalize(prop.turnoName)
+            if (nt === normName || nt.includes(normName) || normName.includes(nt)) {
+              bestId = id; bestPropName = prop.name; matchType = 'turnoName'; break
             }
           }
-          return { name, propertyId: bestId, propertyName: bestPropName, matchType }
-        })
-        setPropMatches(matched)
-        break
-      } while (offset)
+          if (normalize(prop.name) === normName && matchType === 'none') {
+            bestId = id; bestPropName = prop.name; matchType = 'exact'
+          }
+        }
+        return { name, propertyId: bestId, propertyName: bestPropName, matchType }
+      })
+      setPropMatches(matched)
     } catch(e: any) { showToast('Error: '+e.message) }
     finally { setLoading(false) }
   }, [date, showToast])
