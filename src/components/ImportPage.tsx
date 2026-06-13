@@ -128,7 +128,8 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
   const [loading,    setLoading]    = useState(false)
   const [processing, setProcessing] = useState(false)
   const [results,    setResults]    = useState<{paid:number;skipped:number;errors:number}|null>(null)
-  const [fileName,   setFileName]   = useState('')
+  const [fileName,       setFileName]       = useState('')
+  const [showUnmatched,  setShowUnmatched]  = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const matchWithAPI = useCallback(async (turnoRows: TurnoRow[]) => {
@@ -192,10 +193,40 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
   const toProcess = matches.filter(m => m.cleaningId && !m.alreadyPaid)
   const alreadyPd = matches.filter(m => m.alreadyPaid)
   const unmatched = matches.filter(m => !m.cleaningId)
+  const displayed = showUnmatched ? unmatched : matches
   const totalAmt  = toProcess.reduce((a,m) => a+m.turnoRow.amount, 0)
 
   return (
     <div>
+      {/* Quick date range note */}
+      <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:12,flexWrap:'wrap'}}>
+        <span style={{fontSize:11,color:C.muted,fontWeight:600}}>Quick range:</span>
+        {[
+          { label:'This week', fn: () => {
+            const now = new Date()
+            const mon = new Date(now); mon.setDate(now.getDate() - ((now.getDay()+6)%7))
+            const sun = new Date(mon); sun.setDate(mon.getDate()+6)
+            return [mon.toLocaleDateString('en-US',{month:'short',day:'numeric'}), sun.toLocaleDateString('en-US',{month:'short',day:'numeric'})]
+          }},
+          { label:'MTD', fn: () => {
+            const now = new Date()
+            return [new Date(now.getFullYear(),now.getMonth(),1).toLocaleDateString('en-US',{month:'short',day:'numeric'}), now.toLocaleDateString('en-US',{month:'short',day:'numeric'})]
+          }},
+          { label:'YTD', fn: () => {
+            const now = new Date()
+            return [new Date(now.getFullYear(),0,1).toLocaleDateString('en-US',{month:'short',day:'numeric'}), now.toLocaleDateString('en-US',{month:'short',day:'numeric'})]
+          }},
+        ].map(btn => {
+          const [from, to] = btn.fn()
+          return (
+            <span key={btn.label} style={{fontSize:11,fontWeight:600,color:C.muted,background:C.bg,border:`1px solid ${C.border}`,borderRadius:7,padding:'3px 10px'}}>
+              {btn.label}: <span style={{color:C.slate}}>{from} – {to}</span>
+            </span>
+          )
+        })}
+        <span style={{fontSize:11,color:C.muted,marginLeft:4}}>Export your CSV from Turno for this period</span>
+      </div>
+
       {/* Upload */}
       <div onClick={() => fileRef.current?.click()} onDragOver={e=>e.preventDefault()}
         onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)handleFile(f)}}
@@ -230,6 +261,17 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
           ))}
         </div>
 
+        {/* Filter toggle */}
+        {unmatched.length > 0 && (
+          <div style={{display:'flex',gap:8,marginBottom:12,alignItems:'center'}}>
+            <button onClick={() => setShowUnmatched(f => !f)}
+              style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:10,border:`1.5px solid ${showUnmatched ? C.red : C.border}`,background:showUnmatched ? C.redLight : C.white,color:showUnmatched ? C.red : C.muted,fontSize:12,fontWeight:700,cursor:'pointer',transition:'all 0.15s'}}>
+              <XCircle style={{width:13,height:13}}/> {showUnmatched ? `Showing ${unmatched.length} unmatched` : `Show unmatched only (${unmatched.length})`}
+            </button>
+            {showUnmatched && <button onClick={() => setShowUnmatched(false)} style={{fontSize:12,color:C.muted,background:'none',border:'none',cursor:'pointer'}}>Show all</button>}
+          </div>
+        )}
+
         {toProcess.length > 0 && !results && (
           <button onClick={applyPayments} disabled={processing} style={{display:'flex',alignItems:'center',gap:8,height:44,padding:'0 24px',borderRadius:12,border:'none',background:`linear-gradient(135deg,${C.green} 0%,#059669 100%)`,color:'white',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:16,boxShadow:'0 4px 12px #10B98140'}}>
             {processing ? <><RefreshCw style={{width:16,height:16,animation:'spin 1s linear infinite'}} />Procesando...</> : <><CheckCircle2 style={{width:16,height:16}} />Marcar {toProcess.length} como Paid (${totalAmt.toFixed(2)})</>}
@@ -242,8 +284,8 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
         </div>}
 
         <div style={{background:C.white,borderRadius:16,border:`1px solid ${C.border}`,overflow:'hidden'}}>
-          <div style={{display:'grid',gridTemplateColumns:'90px 1fr 1fr 90px 90px 100px',padding:'10px 16px',background:C.bg,borderBottom:`1px solid ${C.border}`}}>
-            {['Fecha','Propiedad Turno','Limpieza ShineUp','Monto','Match','Estado'].map(h=>(
+          <div style={{display:'grid',gridTemplateColumns:'80px 1fr 1fr 90px 80px 80px 90px',padding:'10px 16px',background:C.bg,borderBottom:`1px solid ${C.border}`}}>
+            {['Fecha','Propiedad Turno','Limpieza ShineUp','Proyecto','Monto','Match','Estado'].map(h=>(
               <span key={h} style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:'uppercase',letterSpacing:'0.05em'}}>{h}</span>
             ))}
           </div>
@@ -253,10 +295,11 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
               const ml=m.matchType==='none'?'Sin match':m.matchType==='turnoName'?'Turno Name':'Exacto'
               const sc=m.alreadyPaid?'#2563EB':m.cleaningId?C.green:C.red
               return (
-                <div key={i} style={{display:'grid',gridTemplateColumns:'90px 1fr 1fr 90px 90px 100px',padding:'10px 16px',borderBottom:i<matches.length-1?`1px solid ${C.border}`:'none',alignItems:'center',background:m.matchType==='none'?'#FFF5F5':m.alreadyPaid?'#F0F9FF':'white'}}>
+                <div key={i} style={{display:'grid',gridTemplateColumns:'80px 1fr 1fr 90px 80px 80px 90px',padding:'10px 16px',borderBottom:i<displayed.length-1?`1px solid ${C.border}`:'none',alignItems:'center',background:m.matchType==='none'?'#FFF5F5':m.alreadyPaid?'#F0F9FF':'white'}}>
                   <span style={{fontSize:11,color:C.slate}}>{m.turnoRow.date}</span>
                   <span style={{fontSize:12,color:C.ink,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.turnoRow.property}</span>
                   <span style={{fontSize:12,color:m.cleaningId?C.ink:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.cleaningProperty||'—'}</span>
+                  <span style={{fontSize:11,color:C.muted,fontFamily:'monospace'}}>{m.turnoRow.projectNumber||'—'}</span>
                   <span style={{fontSize:13,fontWeight:700,color:C.ink}}>${m.turnoRow.amount.toFixed(2)}</span>
                   <span style={{fontSize:10,fontWeight:700,color:mc,background:`${mc}15`,padding:'3px 8px',borderRadius:6,textAlign:'center'}}>{ml}</span>
                   <span style={{fontSize:11,fontWeight:700,color:sc}}>{m.alreadyPaid?'Ya pagada':m.cleaningId?'Pagar':'—'}</span>
