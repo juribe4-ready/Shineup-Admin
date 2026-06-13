@@ -299,7 +299,9 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
           }} style={{display:'flex',alignItems:'center',gap:6,height:38,padding:'0 14px',borderRadius:10,border:`1.5px solid ${C.green}`,background:C.greenLight,color:C.green,fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',flexShrink:0}}>
             ↓ Export {showUnmatched?`unmatched (${displayed.length})`:`all (${displayed.length})`}
           </button>
-        </div>,borderRadius:16,border:`1px solid ${C.border}`,overflow:'hidden'}}>
+        </div>
+
+        <div style={{background:C.white,borderRadius:16,border:`1px solid ${C.border}`,overflow:'hidden'}}>
           <div style={{display:'grid',gridTemplateColumns:'70px 1fr 160px 90px 80px 80px 90px',padding:'10px 16px',background:C.bg,borderBottom:`1px solid ${C.border}`}}>
             {['Fecha','Propiedad Turno','Limpieza ShineUp','Proyecto','Monto','Match','Estado'].map(h=>(
               <span key={h} style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:'uppercase',letterSpacing:'0.05em'}}>{h}</span>
