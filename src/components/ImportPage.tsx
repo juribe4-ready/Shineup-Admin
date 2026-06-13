@@ -260,6 +260,25 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
           {results.errors>0&&<div style={{background:C.redLight,border:`1px solid ${C.red}30`,borderRadius:10,padding:'10px 16px',fontSize:13,fontWeight:700,color:C.red}}>{results.errors} errores</div>}
         </div>}
 
+        {/* Money totals */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12}}>
+          <div style={{background:C.greenLight,borderRadius:12,padding:'10px 14px',border:`1px solid ${C.green}25`}}>
+            <div style={{fontSize:10,fontWeight:700,color:C.green,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:2}}>Pagadas</div>
+            <div style={{fontSize:18,fontWeight:800,color:C.green}}>${alreadyPd.reduce((a,m)=>a+m.turnoRow.amount,0).toFixed(2)}</div>
+            <div style={{fontSize:10,color:C.muted}}>{alreadyPd.length} limpiezas</div>
+          </div>
+          <div style={{background:C.amberLight,borderRadius:12,padding:'10px 14px',border:`1px solid ${C.amber}25`}}>
+            <div style={{fontSize:10,fontWeight:700,color:C.amber,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:2}}>Para pagar</div>
+            <div style={{fontSize:18,fontWeight:800,color:C.amber}}>${toProcess.reduce((a,m)=>a+m.turnoRow.amount,0).toFixed(2)}</div>
+            <div style={{fontSize:10,color:C.muted}}>{toProcess.length} limpiezas</div>
+          </div>
+          <div style={{background:C.redLight,borderRadius:12,padding:'10px 14px',border:`1px solid ${C.red}25`}}>
+            <div style={{fontSize:10,fontWeight:700,color:C.red,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:2}}>Sin match</div>
+            <div style={{fontSize:18,fontWeight:800,color:C.red}}>${unmatched.reduce((a,m)=>a+m.turnoRow.amount,0).toFixed(2)}</div>
+            <div style={{fontSize:10,color:C.muted}}>{unmatched.length} limpiezas</div>
+          </div>
+        </div>
+
         <div style={{background:C.white,borderRadius:16,border:`1px solid ${C.border}`,overflow:'hidden'}}>
           <div style={{display:'grid',gridTemplateColumns:'70px 1fr 160px 90px 80px 80px 90px',padding:'10px 16px',background:C.bg,borderBottom:`1px solid ${C.border}`}}>
             {['Fecha','Propiedad Turno','Limpieza ShineUp','Proyecto','Monto','Match','Estado'].map(h=>(
@@ -267,7 +286,7 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
             ))}
           </div>
           <div style={{maxHeight:400,overflowY:'auto'}}>
-            {matches.map((m,i)=>{
+            {displayed.map((m,i)=>{
               const mc=m.matchType==='none'?C.red:m.matchType==='turnoName'?C.green:C.primary
               const ml=m.matchType==='none'?'Sin match':m.matchType==='turnoName'?'Turno Name':'Exacto'
               const sc=m.alreadyPaid?'#2563EB':m.cleaningId?C.green:C.red
