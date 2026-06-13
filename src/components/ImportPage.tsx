@@ -260,8 +260,9 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
           {results.errors>0&&<div style={{background:C.redLight,border:`1px solid ${C.red}30`,borderRadius:10,padding:'10px 16px',fontSize:13,fontWeight:700,color:C.red}}>{results.errors} errores</div>}
         </div>}
 
-        {/* Money totals */}
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12}}>
+        {/* Money totals + Export */}
+        <div style={{display:'flex',alignItems:'flex-end',gap:8,marginBottom:12}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,flex:1}}>
           <div style={{background:C.greenLight,borderRadius:12,padding:'10px 14px',border:`1px solid ${C.green}25`}}>
             <div style={{fontSize:10,fontWeight:700,color:C.green,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:2}}>Pagadas</div>
             <div style={{fontSize:18,fontWeight:800,color:C.green}}>${alreadyPd.reduce((a,m)=>a+m.turnoRow.amount,0).toFixed(2)}</div>
@@ -277,9 +278,28 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
             <div style={{fontSize:18,fontWeight:800,color:C.red}}>${unmatched.reduce((a,m)=>a+m.turnoRow.amount,0).toFixed(2)}</div>
             <div style={{fontSize:10,color:C.muted}}>{unmatched.length} limpiezas</div>
           </div>
-        </div>
-
-        <div style={{background:C.white,borderRadius:16,border:`1px solid ${C.border}`,overflow:'hidden'}}>
+          </div>
+          <button onClick={() => {
+            const headers = ['Fecha','Propiedad Turno','Limpieza ShineUp','Proyecto','Monto','Match','Estado']
+            const rows = displayed.map(m => [
+              m.turnoRow.date,
+              `"${m.turnoRow.property}"`,
+              `"${m.cleaningProperty||''}"`,
+              m.turnoRow.projectNumber||'',
+              m.turnoRow.amount.toFixed(2),
+              m.matchType==='none'?'Sin match':m.matchType==='turnoName'?'Turno Name':'Exacto',
+              m.alreadyPaid?'Ya pagada':m.cleaningId?'Para pagar':'Sin match'
+            ])
+            const csv = [headers,...rows].map(r=>r.join(',')).join('\n')
+            const blob = new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'})
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a'); a.href=url
+            a.download = `import_${showUnmatched?'unmatched':'all'}_${new Date().toISOString().slice(0,10)}.csv`
+            a.click(); URL.revokeObjectURL(url)
+          }} style={{display:'flex',alignItems:'center',gap:6,height:38,padding:'0 14px',borderRadius:10,border:`1.5px solid ${C.green}`,background:C.greenLight,color:C.green,fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',flexShrink:0}}>
+            ↓ Export {showUnmatched?`unmatched (${displayed.length})`:`all (${displayed.length})`}
+          </button>
+        </div>,borderRadius:16,border:`1px solid ${C.border}`,overflow:'hidden'}}>
           <div style={{display:'grid',gridTemplateColumns:'70px 1fr 160px 90px 80px 80px 90px',padding:'10px 16px',background:C.bg,borderBottom:`1px solid ${C.border}`}}>
             {['Fecha','Propiedad Turno','Limpieza ShineUp','Proyecto','Monto','Match','Estado'].map(h=>(
               <span key={h} style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:'uppercase',letterSpacing:'0.05em'}}>{h}</span>
