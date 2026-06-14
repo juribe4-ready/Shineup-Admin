@@ -158,6 +158,42 @@ export default function BillingPage() {
         <span style={{ color:C.muted, fontSize:13 }}>—</span>
         <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
           style={{ height:38, padding:'0 12px', borderRadius:10, border:`1.5px solid ${C.border}`, fontSize:13, color:C.ink, outline:'none' }} />
+
+        {/* Quick range buttons */}
+        {(() => {
+          const tz = { timeZone: 'America/New_York' }
+          const today = new Date().toLocaleDateString('en-CA', tz)
+          const now = new Date()
+          const dow = (now.getDay() + 6) % 7 // 0=Mon
+          const mon = new Date(now); mon.setDate(now.getDate() - dow)
+          const monStr = mon.toLocaleDateString('en-CA', tz)
+          const weekNum = (() => {
+            const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
+            const dayNum = d.getUTCDay() || 7
+            d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+            return Math.ceil((((d.valueOf() - yearStart.valueOf()) / 86400000) + 1) / 7)
+          })()
+          const mtdStart = new Date(now.getFullYear(), now.getMonth(), 1).toLocaleDateString('en-CA', tz)
+          const ytdStart = `${now.getFullYear()}-01-01`
+
+          return [
+            { label: 'Today',           from: today,    to: today,   active: dateFrom===today && dateTo===today },
+            { label: `W${weekNum}`,     from: monStr,   to: today,   active: dateFrom===monStr && dateTo===today },
+            { label: 'MTD',             from: mtdStart, to: today,   active: dateFrom===mtdStart && dateTo===today },
+            { label: 'YTD',             from: ytdStart, to: today,   active: dateFrom===ytdStart && dateTo===today },
+          ].map(b => (
+            <button key={b.label} onClick={() => { setDateFrom(b.from); setDateTo(b.to) }}
+              style={{ height:38, padding:'0 12px', borderRadius:10, fontSize:12, fontWeight:700, cursor:'pointer', transition:'all 0.15s',
+                border:`1.5px solid ${b.active ? C.primary : C.border}`,
+                background: b.active ? C.primaryLight : C.white,
+                color: b.active ? C.primary : C.muted,
+              }}>
+              {b.label}
+            </button>
+          ))
+        })()}
+
         <select value={propFilter} onChange={e=>setPropFilter(e.target.value)} style={sel(propFilter!=='all')}>
           <option value="all">Todas las propiedades</option>
           {properties.map(p=><option key={p} value={p}>{p}</option>)}
