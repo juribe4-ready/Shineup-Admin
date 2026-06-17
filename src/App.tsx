@@ -10,6 +10,7 @@ import CommandCenterPage from './components/CommandCenterPage'
 import ImportPage from './components/ImportPage'
 import SettingsPage from './components/SettingsPage'
 import HomePage from './components/HomePage'
+import SquadsPage from './components/SquadsPage'
 
 export default function App() {
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -75,7 +76,7 @@ export default function App() {
       {page === 'plan_predispatch' && <ComingSoon title="Pre-dispatch" />}
       {page === 'plan_field'       && <ComingSoon title="Field" />}
       {page === 'tars_rules'       && <SettingsPage />}
-      {page === 'tars_squads'      && <ComingSoon title="Squads" />}
+      {page === 'tars_squads'      && <SquadsPage />}
       {page === 'tars_blocks'      && <ComingSoon title="Squad Blocks" />}
       {page === 'earn_cascade'     && <AnalysisPage initialTab="cascade" />}
       {page === 'earn_stats'       && <AnalysisPage initialTab="stats" />}
