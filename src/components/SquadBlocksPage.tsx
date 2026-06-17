@@ -100,6 +100,16 @@ export default function SquadBlocksPage() {
     return strOnlyDays.includes(dow) || strOnlyDates.includes(date)
   }
 
+  // Group squads the same way Pre-dispatch does: Weekend, Weekday, Flexible — alphabetical within each
+  const weekendSquads = squads.filter(s => s.type === 'Weekend' || s.type === 'Weekend/Holiday').sort((a, b) => a.name.localeCompare(b.name))
+  const weekdaySquads = squads.filter(s => s.type === 'Weekday').sort((a, b) => a.name.localeCompare(b.name))
+  const flexibleSquads = squads.filter(s => s.type === 'Flexible').sort((a, b) => a.name.localeCompare(b.name))
+  const squadGroups = [
+    { label: 'Weekend', items: weekendSquads },
+    { label: 'Weekday', items: weekdaySquads },
+    { label: 'Flexible', items: flexibleSquads },
+  ]
+
   const openCreate = (squadId?: string, date?: string) => {
     setForm({ ...emptyForm, squadId: squadId || squads[0]?.id || '', date: date || dates[0] })
     setShowForm(true)
@@ -236,40 +246,47 @@ export default function SquadBlocksPage() {
             })}
           </div>
 
-          {squads.map(squad => (
-            <div key={squad.id} style={{ display: 'grid', gridTemplateColumns: '140px repeat(7, 1fr)', borderBottom: `1px solid ${C.border}` }}>
-              <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8, borderRight: `1px solid ${C.border}` }}>
-                <span style={{ width: 9, height: 9, borderRadius: '50%', background: squad.color, flexShrink: 0 }} />
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: 12.5, fontWeight: 700, color: C.ink, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{squad.name}</p>
-                  <p style={{ fontSize: 10, color: C.muted, margin: 0 }}>{squad.type}</p>
-                </div>
+          {squadGroups.map(group => group.items.length > 0 && (
+            <div key={group.label}>
+              <div style={{ padding: '6px 14px', background: C.bg, borderBottom: `1px solid ${C.border}` }}>
+                <p style={{ fontSize: 9.5, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>{group.label}</p>
               </div>
-              {dates.map(date => {
-                const structural = isStructuralSTR(date)
-                const dayBlocks = blocks.filter(b => b.squadId === squad.id && b.date === date)
-                return (
-                  <div key={date} onClick={() => openCreate(squad.id, date)}
-                    style={{ padding: '6px', minHeight: 56, borderLeft: `1px solid ${C.border}`, background: structural ? '#FFFBEB' : C.white, cursor: 'pointer' }}>
-                    {structural && dayBlocks.length === 0 && (
-                      <div style={{ fontSize: 9.5, fontWeight: 700, color: C.amber, textAlign: 'center', padding: '4px 0' }}>STR-only</div>
-                    )}
-                    {dayBlocks.map(b => (
-                      <div key={b.id} onClick={e => e.stopPropagation()}
-                        style={{ background: b.type === 'Appointment' ? C.greenLight : C.bg, border: `1px solid ${b.type === 'Appointment' ? C.green : C.teal}30`, borderRadius: 7, padding: '3px 6px', marginBottom: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
-                        <span style={{ fontSize: 9.5, fontWeight: 700, color: b.type === 'Appointment' ? C.green : C.teal, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {b.startTime}–{b.endTime}
-                        </span>
-                        {b.type !== 'Appointment' && (
-                          <button onClick={() => handleDelete(b.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
-                            <X style={{ width: 9, height: 9, color: C.muted }} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+              {group.items.map(squad => (
+                <div key={squad.id} style={{ display: 'grid', gridTemplateColumns: '140px repeat(7, 1fr)', borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8, borderRight: `1px solid ${C.border}` }}>
+                    <span style={{ width: 9, height: 9, borderRadius: '50%', background: squad.color, flexShrink: 0 }} />
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontSize: 12.5, fontWeight: 700, color: C.ink, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{squad.name}</p>
+                      <p style={{ fontSize: 10, color: C.muted, margin: 0 }}>{squad.type}</p>
+                    </div>
                   </div>
-                )
-              })}
+                  {dates.map(date => {
+                    const structural = isStructuralSTR(date)
+                    const dayBlocks = blocks.filter(b => b.squadId === squad.id && b.date === date)
+                    return (
+                      <div key={date} onClick={() => openCreate(squad.id, date)}
+                        style={{ padding: '6px', minHeight: 56, borderLeft: `1px solid ${C.border}`, background: structural ? '#FFFBEB' : C.white, cursor: 'pointer' }}>
+                        {structural && dayBlocks.length === 0 && (
+                          <div style={{ fontSize: 9.5, fontWeight: 700, color: C.amber, textAlign: 'center', padding: '4px 0' }}>STR-only</div>
+                        )}
+                        {dayBlocks.map(b => (
+                          <div key={b.id} onClick={e => e.stopPropagation()}
+                            style={{ background: b.type === 'Appointment' ? C.greenLight : C.bg, border: `1px solid ${b.type === 'Appointment' ? C.green : C.teal}30`, borderRadius: 7, padding: '3px 6px', marginBottom: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+                            <span style={{ fontSize: 9.5, fontWeight: 700, color: b.type === 'Appointment' ? C.green : C.teal, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {b.startTime}–{b.endTime}
+                            </span>
+                            {b.type !== 'Appointment' && (
+                              <button onClick={() => handleDelete(b.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+                                <X style={{ width: 9, height: 9, color: C.muted }} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
             </div>
           ))}
         </div>

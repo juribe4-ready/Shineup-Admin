@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronLeft, ChevronRight, RefreshCw, Users } from 'lucide-react'
+import { ChevronLeft, ChevronRight, RefreshCw, Users, X } from 'lucide-react'
 
 const C = {
   primary: '#6366F1', primaryLight: '#EEF2FF',
@@ -125,6 +125,19 @@ export default function PreDispatchPage() {
       loadData()
     } catch { showToast('Error al asignar', 'err') }
     finally { setSaving(false) }
+  }
+
+  // Remove a squad assignment — the cleaning returns to the unassigned row automatically
+  const handleDeleteBlock = async (blockId: string) => {
+    try {
+      await fetch('/api/deleteSquadBlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blockId })
+      })
+      setBlocks(prev => prev.filter(b => b.id !== blockId))
+      showToast('Asignación eliminada')
+    } catch { showToast('Error al eliminar', 'err') }
   }
 
   const fmtDay = (iso: string) => {
@@ -261,9 +274,14 @@ export default function PreDispatchPage() {
                         className="border-l p-1.5 min-h-[60px]"
                         style={{ borderColor: C.border, background: isRelevant ? C.white : C.bg, opacity: isRelevant ? 1 : 0.4 }}>
                         {dayBlocks.map(b => (
-                          <div key={b.id} className="rounded-xl px-2 py-1 mb-1" style={{ background: C.greenLight, border: `1px solid ${C.green}30` }}>
-                            <p className="text-[9px] font-black truncate" style={{ color: C.green }}>{b.startTime}–{b.endTime}</p>
-                            {b.notes && <p className="text-[8.5px] truncate" style={{ color: C.muted }}>{b.notes}</p>}
+                          <div key={b.id} className="rounded-xl px-2 py-1 mb-1 flex items-center justify-between gap-1" style={{ background: C.greenLight, border: `1px solid ${C.green}30` }}>
+                            <div className="min-w-0">
+                              <p className="text-[9px] font-black truncate" style={{ color: C.green }}>{b.startTime}–{b.endTime}</p>
+                              {b.notes && <p className="text-[8.5px] truncate" style={{ color: C.muted }}>{b.notes}</p>}
+                            </div>
+                            <button onClick={() => handleDeleteBlock(b.id)} className="shrink-0 flex" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                              <X className="w-2.5 h-2.5" style={{ color: C.muted }} />
+                            </button>
                           </div>
                         ))}
                       </div>
