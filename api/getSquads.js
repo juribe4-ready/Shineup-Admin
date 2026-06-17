@@ -2,6 +2,7 @@ const AIRTABLE_BASE = 'appBwnoxgyIXILe6M'
 const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN
 const SQUADS_TABLE = 'tbl6CaYpYaZe1PY0s'
 const BLOCKS_TABLE = 'tblR9T67eyBrIi5Ny'
+const CLEANINGS_TABLE = 'tblabOdNknnjrYUU1'
 
 async function fetchAllSquads(includeInactive) {
   const squadsRes = await fetch(
@@ -89,7 +90,7 @@ export default async function handler(req, res) {
     const weekEnd = dates[6]
     const formula = encodeURIComponent(`AND({Date}>='${dates[0]}', {Date}<='${weekEnd}')`)
     const blocksRes = await fetch(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}?filterByFormula=${formula}&fields[]=Squads&fields[]=Date&fields[]=StartTime&fields[]=EndTime&fields[]=Type&fields[]=Appointment&fields[]=Notes`,
+      `https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}?filterByFormula=${formula}`,
       { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
     )
     const blocksData = await blocksRes.json()
@@ -102,10 +103,27 @@ export default async function handler(req, res) {
       endTime: r.fields?.EndTime || '',
       type: r.fields?.Type || 'Manual Block',
       appointmentId: Array.isArray(r.fields?.Appointment) ? r.fields.Appointment[0] : null,
+      cleaningId: Array.isArray(r.fields?.Cleaning) ? r.fields.Cleaning[0] : (r.fields?.Cleaning || null),
       notes: r.fields?.Notes || '',
     }))
 
-    return res.status(200).json({ squads, blocks, dates })
+    // Fetch Cleanings for this week — these are the real launched jobs that need a squad assigned
+    const cleaningsFormula = encodeURIComponent(`AND({Date}>='${dates[0]}', {Date}<='${weekEnd}')`)
+    const cleaningsRes = await fetch(
+      `https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}?filterByFormula=${cleaningsFormula}`,
+      { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
+    )
+    const cleaningsData = await cleaningsRes.json()
+    const cleanings = (cleaningsData.records || []).map(r => ({
+      id: r.id,
+      date: r.fields?.Date || '',
+      scheduledTime: r.fields?.['Scheduled Time'] || null,
+      status: r.fields?.Status || 'Scheduled',
+      propertyText: r.fields?.['Property Text'] || 'Sin propiedad',
+      assignedStaff: r.fields?.['Assigned Staff'] || [],
+    }))
+
+    return res.status(200).json({ squads, blocks, cleanings, dates })
   } catch (err) {
     console.error('[getSquads] Error:', err)
     return res.status(500).json({ error: err.message })

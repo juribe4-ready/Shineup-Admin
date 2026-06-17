@@ -24,7 +24,7 @@ export default async function handler(req, res) {
 
   try {
     const body = await parseBody(req)
-    const { squadId, date, startTime, endTime, type, appointmentId, notes } = body
+    const { squadId, date, startTime, endTime, type, appointmentId, cleaningId, notes } = body
 
     if (!squadId || !date || !startTime || !endTime) {
       return res.status(400).json({ error: 'squadId, date, startTime, endTime requeridos' })
@@ -62,8 +62,9 @@ export default async function handler(req, res) {
     }
     if (notes) fields.Notes = notes
     if (appointmentId) fields.Appointment = [appointmentId]
+    if (cleaningId) fields.Cleaning = [cleaningId]
 
-    const airtableRes = await fetch(
+    const doCreate = async (fieldsToSend) => fetch(
       `https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}`,
       {
         method: 'POST',
@@ -71,10 +72,22 @@ export default async function handler(req, res) {
           Authorization: `Bearer ${AIRTABLE_TOKEN}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ fields })
+        body: JSON.stringify({ fields: fieldsToSend })
       }
     )
-    const data = await airtableRes.json()
+
+    let airtableRes = await doCreate(fields)
+    let data = await airtableRes.json()
+
+    // If the Cleaning field doesn't exist yet in Airtable, retry without it
+    // so the block is still created — the link can be added later once the field exists.
+    if (!airtableRes.ok && data.error?.type === 'UNKNOWN_FIELD_NAME' && fields.Cleaning) {
+      console.warn('[createSquadBlock] Cleaning field not found in Airtable, retrying without it')
+      const { Cleaning, ...fieldsWithoutCleaning } = fields
+      airtableRes = await doCreate(fieldsWithoutCleaning)
+      data = await airtableRes.json()
+    }
+
     if (!airtableRes.ok) throw new Error(JSON.stringify(data))
 
     return res.status(200).json({ success: true, id: data.id })
