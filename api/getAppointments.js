@@ -51,41 +51,25 @@ async function handleListAppointments(req, res) {
       `AND(DATETIME_FORMAT({Requested Date & Time},'YYYY-MM-DD') >= '${startStr}', DATETIME_FORMAT({Requested Date & Time},'YYYY-MM-DD') <= '${endStr}')`
     )
 
-    if (debug === '1') {
-      // Run the ACTUAL filtered query to see what it returns
-      const filteredUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${formula}&pageSize=20`
-      const filteredRes = await fetch(filteredUrl, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } })
-      const filteredData = await filteredRes.json()
-
-      // Also specifically search for known June 18 appointment IDs to confirm they exist and what they look like
-      const knownFormula = encodeURIComponent(`OR({Appointment ID}='APP -IVO5v',{Appointment ID}='APP -9AmbJ',{Appointment ID}='APP -aQnOb',{Appointment ID}='APP -kwN6q')`)
-      const knownUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${knownFormula}`
-      const knownRes = await fetch(knownUrl, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } })
-      const knownData = await knownRes.json()
-
-      return res.status(200).json({
-        debug: true,
-        formulaUsed: decodeURIComponent(formula),
-        startStr, endStr,
-        filteredCount: filteredData.records?.length || 0,
-        filteredError: filteredData.error || null,
-        filteredSample: (filteredData.records || []).slice(0, 10).map(r => ({
-          id: r.id, appointmentId: r.fields?.['Appointment ID'], status: r.fields?.Status, dt: r.fields?.['Requested Date & Time']
-        })),
-        knownRecordsCount: knownData.records?.length || 0,
-        knownRecordsError: knownData.error || null,
-        knownRecordsRaw: (knownData.records || []).map(r => ({
-          id: r.id, appointmentId: r.fields?.['Appointment ID'], status: r.fields?.Status, dt: r.fields?.['Requested Date & Time']
-        })),
-      })
-    }
-
     const fieldsParam = [
       'Appointment ID', 'Requested Date & Time', 'Estimated Duration', 'Status',
       'Client Name', 'Property Address', 'Notes', 'Online Platform Source',
     ].map(f => `fields[]=${encodeURIComponent(f)}`).join('&')
 
     const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${formula}&${fieldsParam}&sort[0][field]=${encodeURIComponent('Requested Date & Time')}&sort[0][direction]=asc`
+
+    if (debug === '1') {
+      const debugRes = await fetch(url, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } })
+      const debugData = await debugRes.json()
+      return res.status(200).json({
+        debug: true,
+        exactUrlUsed: url,
+        httpStatus: debugRes.status,
+        airtableError: debugData.error || null,
+        recordCount: debugData.records?.length || 0,
+        rawRecords: (debugData.records || []).slice(0, 10),
+      })
+    }
 
     const airtableRes = await fetch(url, {
       headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
