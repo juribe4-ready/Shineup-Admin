@@ -28,7 +28,36 @@ export default function OperationsPage({ profile }: Props) {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [isToday, setIsToday] = useState(true)
+  const [incidentCount, setIncidentCount] = useState(0)
+  const [inventoryCount, setInventoryCount] = useState(0)
   // lastUpdated removed
+
+  // Fetch incidents + inventory counts for the selected date
+  useEffect(() => {
+    const loadCounts = async () => {
+      try {
+        const [incRes, invRes] = await Promise.all([
+          fetch('/api/getReports?type=incidents'),
+          fetch('/api/getReports?type=inventory'),
+        ])
+        if (incRes.ok) {
+          const incidents = await incRes.json()
+          setIncidentCount((incidents || []).filter((i: any) => {
+            const d = i.creationDate ? new Date(i.creationDate).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) : null
+            return d === date
+          }).length)
+        }
+        if (invRes.ok) {
+          const inventory = await invRes.json()
+          setInventoryCount((inventory || []).filter((i: any) => {
+            const d = i.date ? (i.date.includes('T') ? new Date(i.date).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) : i.date) : null
+            return d === date
+          }).length)
+        }
+      } catch {}
+    }
+    loadCounts()
+  }, [date, dateChanged])
 
   // Fetch stats for the tab badge
   useEffect(() => {
@@ -137,6 +166,12 @@ export default function OperationsPage({ profile }: Props) {
         >
           <AlertTriangle style={{ width: 15, height: 15 }} />
           Incidentes
+          {incidentCount > 0 && (
+            <span style={{
+              background: activeTab === 'incidents' ? 'rgba(255,255,255,0.25)' : C.bg,
+              borderRadius: 8, padding: '1px 7px', fontSize: 11, fontWeight: 800,
+            }}>{incidentCount}</span>
+          )}
         </button>
 
         {/* RUPTURAS */}
@@ -157,6 +192,12 @@ export default function OperationsPage({ profile }: Props) {
         >
           <Package style={{ width: 15, height: 15 }} />
           Rupturas
+          {inventoryCount > 0 && (
+            <span style={{
+              background: activeTab === 'inventory' ? 'rgba(255,255,255,0.25)' : C.bg,
+              borderRadius: 8, padding: '1px 7px', fontSize: 11, fontWeight: 800,
+            }}>{inventoryCount}</span>
+          )}
         </button>
       </div>{/* end tabs pill */}
 

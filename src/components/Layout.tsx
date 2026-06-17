@@ -163,7 +163,7 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
   const [hoveredItem, setHoveredItem] = useState<PageKey | null>(null)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    operate: true, plan: true, tars: true, earn: true, grow: true, system: true,
+    operate: false, plan: true, tars: true, earn: false, grow: false, system: false,
   })
 
   const toggleSection = (key: string) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }))
