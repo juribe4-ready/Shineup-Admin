@@ -17,12 +17,13 @@ interface DashboardStats {
   total: number; done: number; inProgress: number; programmed: number; opened: number
 }
 
-interface Props { profile: Profile }
+interface Props { profile: Profile; initialTab?: Tab }
 
 const todayDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
 
-export default function OperationsPage({ profile }: Props) {
-  const [activeTab, setActiveTab] = useState<Tab>('live')
+export default function OperationsPage({ profile, initialTab = 'live' }: Props) {
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab)
+  useEffect(() => { setActiveTab(initialTab) }, [initialTab])
   const [date, setDate] = useState(todayDate())
   const [dateChanged, setDateChanged] = useState(false)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
@@ -119,7 +120,7 @@ export default function OperationsPage({ profile }: Props) {
               }} />
             )}
           </div>
-          <span>Monitoreo</span>
+          <span>Monitoring</span>
 
           {/* Stats pills — solo si hay datos */}
           {stats && (
@@ -165,7 +166,7 @@ export default function OperationsPage({ profile }: Props) {
           }}
         >
           <AlertTriangle style={{ width: 15, height: 15 }} />
-          Incidentes
+          Incidents
           {incidentCount > 0 && (
             <span style={{
               background: activeTab === 'incidents' ? 'rgba(255,255,255,0.25)' : C.bg,
@@ -191,7 +192,7 @@ export default function OperationsPage({ profile }: Props) {
           }}
         >
           <Package style={{ width: 15, height: 15 }} />
-          Rupturas
+          Ruptures
           {inventoryCount > 0 && (
             <span style={{
               background: activeTab === 'inventory' ? 'rgba(255,255,255,0.25)' : C.bg,

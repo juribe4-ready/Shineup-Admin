@@ -3,7 +3,7 @@ import { Profile } from '../supabase'
 import {
   CalendarDays, Users, LogOut, ChevronLeft, 
   TrendingUp, Settings, Home, ChevronRight, Radio, LayoutDashboard, Menu, X as XIcon, Upload,
-  Rocket, ChevronDown, HardHat, ListChecks, Layers, CalendarClock
+  Rocket, ChevronDown, HardHat, ListChecks, Layers, CalendarClock, AlertTriangle, Package, DollarSign
 } from 'lucide-react'
 
 const C = {
@@ -24,14 +24,18 @@ const C = {
 
 // Nueva estructura de páginas - De operativo a estratégico
 export type PageKey = 
-  | 'operations'        // CCO — monitoreo en vivo
+  | 'cco_monitoring'    // CCO — live monitoring
+  | 'cco_incidents'     // CCO — incidents
+  | 'cco_ruptures'      // CCO — inventory ruptures
   | 'plan_week'         // Plan → Week
   | 'plan_predispatch'  // Plan → Pre-dispatch
   | 'plan_field'        // Plan → Field
   | 'tars_rules'        // TARS OS → Rules
   | 'tars_squads'       // TARS OS → Squads
   | 'tars_blocks'       // TARS OS → Squad Blocks
-  | 'analysis'          // Earn → Analysis
+  | 'earn_cascade'      // Earn → Weekly cascade
+  | 'earn_stats'        // Earn → Stats
+  | 'earn_billing'      // Earn → Billing
   | 'command'           // Grow → Command Center
   | 'users'             // System → Users
   | 'import'            // System → Import
@@ -47,12 +51,26 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  // OPERATE — live, right now
+  // OPERATE — live, right now, three real pages
   { 
-    key: 'operations', 
-    label: 'CCO',
-    sublabel: 'Live monitoring',
+    key: 'cco_monitoring', 
+    label: 'Monitoring',
+    sublabel: 'Live cleanings map',
     Icon: Radio,        
+    section: 'operate',
+  },
+  { 
+    key: 'cco_incidents', 
+    label: 'Incidents',
+    sublabel: 'Reported issues',
+    Icon: AlertTriangle,        
+    section: 'operate',
+  },
+  { 
+    key: 'cco_ruptures', 
+    label: 'Ruptures',
+    sublabel: 'Inventory breaks',
+    Icon: Package,        
     section: 'operate',
   },
   // PLAN — three horizons, each its own page
@@ -99,12 +117,26 @@ const NAV_ITEMS: NavItem[] = [
     Icon: CalendarClock,    
     section: 'tars',
   },
-  // EARN — what happened, what it's worth
+  // EARN — what happened, what it's worth, three real pages
   { 
-    key: 'analysis',     
-    label: 'Analysis',  
-    sublabel: 'Cascades · stats · trends',
+    key: 'earn_cascade',     
+    label: 'Weekly Cascade',  
+    sublabel: 'Plan vs real',
     Icon: TrendingUp,       
+    section: 'earn',
+  },
+  { 
+    key: 'earn_stats',     
+    label: 'Stats',  
+    sublabel: 'Productivity',
+    Icon: LayoutDashboard,       
+    section: 'earn',
+  },
+  { 
+    key: 'earn_billing',     
+    label: 'Billing',  
+    sublabel: 'Payment status',
+    Icon: DollarSign,       
     section: 'earn',
   },
   // GROW — North Star
@@ -121,31 +153,39 @@ const NAV_ITEMS: NavItem[] = [
 ]
 
 const PAGE_TITLES: Record<PageKey, string> = {
-  operations:       'CCO',
-  plan_week:        'Week',
-  plan_predispatch: 'Pre-dispatch',
-  plan_field:       'Field',
-  tars_rules:       'TARS OS — Rules',
-  tars_squads:      'TARS OS — Squads',
-  tars_blocks:      'TARS OS — Squad Blocks',
-  analysis:         'Analysis',
-  command:          'Command Center',
-  users:            'Users',
-  import:           'Import',
+  cco_monitoring:    'Monitoring',
+  cco_incidents:     'Incidents',
+  cco_ruptures:      'Ruptures',
+  plan_week:         'Week',
+  plan_predispatch:  'Pre-dispatch',
+  plan_field:        'Field',
+  tars_rules:        'TARS OS — Rules',
+  tars_squads:       'TARS OS — Squads',
+  tars_blocks:       'TARS OS — Squad Blocks',
+  earn_cascade:      'Weekly Cascade',
+  earn_stats:        'Stats',
+  earn_billing:      'Billing',
+  command:           'Command Center',
+  users:             'Users',
+  import:            'Import',
 }
 
 const PAGE_SUBTITLES: Record<PageKey, string> = {
-  operations:       'Operations control center',
-  plan_week:        'Launch the week & assign squads',
-  plan_predispatch: 'Staff, equipment & warnings — night before',
-  plan_field:       'Clock in/out & day-of execution',
-  tars_rules:       'Prime time, STR-only days, ESD calibration',
-  tars_squads:      'Team roster, hours & capacity',
-  tars_blocks:      'Structural capacity calendar',
-  analysis:         'Cascades, productivity & trends',
-  command:          'North Star & executive KPIs',
-  users:            'User management',
-  import:           'Turno · Guesty · Hospitable',
+  cco_monitoring:    'Live cleanings map & status',
+  cco_incidents:     'Reported issues today',
+  cco_ruptures:      'Inventory breaks today',
+  plan_week:         'Launch the week & assign squads',
+  plan_predispatch:  'Staff, equipment & warnings — night before',
+  plan_field:        'Clock in/out & day-of execution',
+  tars_rules:        'Prime time, STR-only days, ESD calibration',
+  tars_squads:       'Team roster, hours & capacity',
+  tars_blocks:       'Structural capacity calendar',
+  earn_cascade:      'Plan vs real, weekly cost cascade',
+  earn_stats:        'Productivity & performance stats',
+  earn_billing:      'Payment status & Turno import',
+  command:           'North Star & executive KPIs',
+  users:             'User management',
+  import:            'Turno · Guesty · Hospitable',
 }
 
 interface Props {

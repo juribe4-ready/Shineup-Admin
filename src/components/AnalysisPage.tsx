@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { TrendingUp, BarChart3, Users, Clock, DollarSign } from 'lucide-react'
 import DashboardExecutive from './DashboardExecutive'
 import StatsPage from './StatsPage'
@@ -17,15 +17,18 @@ const C = {
 
 type Tab = 'cascade' | 'stats' | 'billing' | 'cleaners' | 'trends'
 
-export default function AnalysisPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('cascade')
+interface Props { initialTab?: Tab }
+
+export default function AnalysisPage({ initialTab = 'cascade' }: Props) {
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab)
+  useEffect(() => { setActiveTab(initialTab) }, [initialTab])
 
   const tabs: { key: Tab; label: string; Icon: any; ready: boolean; color?: string }[] = [
-    { key: 'cascade', label: 'Cascada Semanal', Icon: TrendingUp,  ready: true },
-    { key: 'stats',   label: 'Estadísticas',    Icon: BarChart3,   ready: true },
-    { key: 'billing', label: 'Cobranza',        Icon: DollarSign,  ready: true, color: C.green },
-    { key: 'cleaners',label: 'Por Cleaner',     Icon: Users,       ready: false },
-    { key: 'trends',  label: 'Tendencias',      Icon: Clock,       ready: false },
+    { key: 'cascade', label: 'Weekly Cascade', Icon: TrendingUp,  ready: true },
+    { key: 'stats',   label: 'Stats',          Icon: BarChart3,   ready: true },
+    { key: 'billing', label: 'Billing',        Icon: DollarSign,  ready: true, color: C.green },
+    { key: 'cleaners',label: 'By Cleaner',     Icon: Users,       ready: false },
+    { key: 'trends',  label: 'Trends',         Icon: Clock,       ready: false },
   ]
 
   return (
