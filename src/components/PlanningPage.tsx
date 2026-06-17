@@ -85,8 +85,16 @@ function getMonday(date: Date): Date {
   const day = d.getDay()
   const diff = d.getDate() - day + (day === 0 ? -6 : 1)
   d.setDate(diff)
-  d.setHours(0, 0, 0, 0)
+  d.setHours(12, 0, 0, 0) // noon local time avoids any UTC date-shift when later converted
   return d
+}
+
+function addDaysToISO(iso: string, days: number): string {
+  // Pure string-based date math — never touches Date/timezone conversion
+  const [y, m, d] = iso.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  dt.setUTCDate(dt.getUTCDate() + days)
+  return dt.toISOString().split('T')[0]
 }
 
 function fmtDate(iso: string): string {
@@ -128,13 +136,13 @@ export default function PlanningPage() {
   const [bType, setBType]     = useState('Manual Block')
   const [bNotes, setBNotes]   = useState('')
 
+  // Drag and drop state
+  const [draggedApptId, setDraggedApptId] = useState<string | null>(null)
+  const [dragOverCell, setDragOverCell]   = useState<string | null>(null)
+
   const weekStartStr = weekStart.toISOString().split('T')[0]
 
-  const dates = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(weekStart)
-    d.setDate(weekStart.getDate() + i)
-    return d.toISOString().split('T')[0]
-  })
+  const dates = Array.from({ length: 7 }, (_, i) => addDaysToISO(weekStartStr, i))
 
   const showToast = (msg: string, type: 'ok' | 'err' = 'ok') => {
     setToast({ msg, type })
@@ -289,6 +297,40 @@ export default function PlanningPage() {
     } catch { showToast('Error al eliminar', 'err') }
   }
 
+  // Drag and drop: assign an appointment to a squad on a given date
+  const handleDropAppt = async (squadId: string, date: string, apptId: string) => {
+    setDraggedApptId(null)
+    setDragOverCell(null)
+    const appt = appointments.find(a => a.id === apptId)
+    const squad = squads.find(s => s.id === squadId)
+    if (!appt || !squad) return
+
+    // Derive start/end time from appointment, falling back to squad hours
+    let startTime = appt.time || `${String(squad.startHour).padStart(2, '0')}:00`
+    const durMin = appt.duration > 0 ? appt.duration : 90
+    const startMinTotal = timeToMin(startTime)
+    const endMinTotal = startMinTotal + durMin
+    const endTime = `${String(Math.floor(endMinTotal / 60)).padStart(2, '0')}:${String(endMinTotal % 60).padStart(2, '0')}`
+
+    setSaving(true)
+    try {
+      const res = await fetch('/api/createSquadBlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          squadId, date, startTime, endTime,
+          type: 'Appointment', appointmentId: apptId,
+          notes: appt.clientName || appt.address || '',
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) { showToast(data.error || 'Conflicto de horario', 'err'); return }
+      showToast(`Asignado a ${squad.name} ✓`)
+      loadData()
+    } catch { showToast('Error al asignar', 'err') }
+    finally { setSaving(false) }
+  }
+
   // Calculate availability percentage for a squad on a date
   const getAvailPct = (squad: Squad, date: string) => {
     const dayStart = squad.startHour * 60
@@ -327,6 +369,10 @@ export default function PlanningPage() {
     if (isWeekend(date)) return [...weekendSquads, ...flexibleSquads]
     return [...weekdaySquads, ...flexibleSquads]
   }
+
+  // Appointments confirmed but not yet linked to any squad block
+  const assignedApptIds = new Set(blocks.map(b => b.appointmentId).filter(Boolean))
+  const unassignedAppts = appointments.filter(a => a.status === 'Confirmed' && !assignedApptIds.has(a.id))
 
   return (
     <div className="space-y-6" style={{ fontFamily: 'Poppins, sans-serif' }}>
@@ -542,6 +588,33 @@ export default function PlanningPage() {
           })}
         </div>
 
+        {/* Unassigned appointments row — drag these into a squad cell below */}
+        {!loading && unassignedAppts.length > 0 && (
+          <div className="grid border-b" style={{ gridTemplateColumns: '140px repeat(7, 1fr)', borderColor: C.border, background: '#FFFBEB' }}>
+            <div className="px-3 py-3 flex items-center border-r" style={{ borderColor: C.border }}>
+              <p className="font-bold text-[11px]" style={{ color: C.amber }}>Sin asignar</p>
+            </div>
+            {dates.map(date => {
+              const dayUnassigned = unassignedAppts.filter(a => a.date === date)
+              return (
+                <div key={date} className="border-l p-1.5 min-h-[60px]" style={{ borderColor: C.border }}>
+                  {dayUnassigned.map(appt => (
+                    <div key={appt.id}
+                      draggable
+                      onDragStart={() => setDraggedApptId(appt.id)}
+                      onDragEnd={() => setDraggedApptId(null)}
+                      onClick={() => setSelectedAppt(appt)}
+                      className="rounded-xl px-2 py-1 mb-1 cursor-grab active:cursor-grabbing transition-opacity"
+                      style={{ background: '#FEF3C7', border: '1px solid #FDE68A', opacity: draggedApptId === appt.id ? 0.4 : 1 }}>
+                      <p className="text-[9px] font-black truncate" style={{ color: '#92400E' }}>{appt.time} · {appt.clientName || appt.address}</p>
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
         {/* Squad rows */}
         {loading ? (
           <div className="flex items-center justify-center py-16">
@@ -569,11 +642,24 @@ export default function PlanningPage() {
                 const available = relevantSquads(date).some(s => s.id === squad.id)
                 const dayBlocks = blocks.filter(b => b.squadId === squad.id && b.date === date)
                 const availPct = available ? getAvailPct(squad, date) : 0
-                const dayAppts = appointments.filter(a => a.date === date)
 
                 return (
                   <div key={date} className="border-l relative min-h-[80px] p-1.5 group"
-                    style={{ borderColor: C.border, background: available ? C.white : '#F8FAFC' }}>
+                    style={{
+                      borderColor: C.border,
+                      background: available
+                        ? (dragOverCell === `${squad.id}_${date}` ? '#EEF2FF' : C.white)
+                        : '#F8FAFC',
+                      outline: dragOverCell === `${squad.id}_${date}` ? `2px dashed ${C.primary}` : 'none',
+                      outlineOffset: -2,
+                    }}
+                    onDragOver={(e) => { if (available && draggedApptId) { e.preventDefault(); setDragOverCell(`${squad.id}_${date}`) } }}
+                    onDragLeave={() => setDragOverCell(prev => prev === `${squad.id}_${date}` ? null : prev)}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      if (available && draggedApptId) handleDropAppt(squad.id, date, draggedApptId)
+                    }}
+                  >
                     {!available ? (
                       <div className="absolute inset-0 group cursor-pointer" onClick={() => openBlockForm(squad.id, date)}>
                         <div className="w-full h-full opacity-10" style={{ background: `repeating-linear-gradient(45deg, ${C.muted} 0px, ${C.muted} 1px, transparent 1px, transparent 8px)` }} />
@@ -590,30 +676,44 @@ export default function PlanningPage() {
                         </div>
                         <p className="text-[9px] font-bold mb-1" style={{ color: availPct > 60 ? C.green : availPct > 30 ? C.amber : C.red }}>{availPct}% libre</p>
 
-                        {/* Blocks */}
-                        {dayBlocks.map(block => (
-                          <div key={block.id} className="rounded-xl px-2 py-1 mb-1 flex items-start justify-between gap-1 group/block"
-                            style={{ background: `${squad.color}20`, border: `1px solid ${squad.color}40` }}>
-                            <div className="min-w-0">
-                              <p className="text-[9px] font-black truncate" style={{ color: squad.color }}>{block.type}</p>
-                              <p className="text-[9px] font-medium" style={{ color: C.muted }}>{block.startTime}–{block.endTime}</p>
+                        {/* Blocks — Appointment-type blocks show the linked appointment, others show block type */}
+                        {dayBlocks.map(block => {
+                          const linkedAppt = block.appointmentId ? appointments.find(a => a.id === block.appointmentId) : null
+                          if (block.type === 'Appointment' && linkedAppt) {
+                            return (
+                              <div key={block.id}
+                                draggable
+                                onDragStart={() => setDraggedApptId(linkedAppt.id)}
+                                onDragEnd={() => setDraggedApptId(null)}
+                                onClick={() => setSelectedAppt(linkedAppt)}
+                                className="rounded-xl px-2 py-1 mb-1 flex items-start justify-between gap-1 group/block cursor-grab active:cursor-grabbing transition-opacity"
+                                style={{ background: '#DCFCE7', border: '1px solid #BBF7D0', opacity: draggedApptId === linkedAppt.id ? 0.4 : 1 }}>
+                                <div className="min-w-0">
+                                  <p className="text-[9px] font-black truncate" style={{ color: '#059669' }}>{linkedAppt.time} · {linkedAppt.clientName || linkedAppt.address}</p>
+                                </div>
+                                <button onClick={(e) => { e.stopPropagation(); handleDeleteBlock(block.id) }}
+                                  className="w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover/block:opacity-100 transition-opacity shrink-0 mt-0.5"
+                                  style={{ background: C.red }}>
+                                  <X className="w-2.5 h-2.5 text-white" />
+                                </button>
+                              </div>
+                            )
+                          }
+                          return (
+                            <div key={block.id} className="rounded-xl px-2 py-1 mb-1 flex items-start justify-between gap-1 group/block"
+                              style={{ background: `${squad.color}20`, border: `1px solid ${squad.color}40` }}>
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-black truncate" style={{ color: squad.color }}>{block.type}</p>
+                                <p className="text-[9px] font-medium" style={{ color: C.muted }}>{block.startTime}–{block.endTime}</p>
+                              </div>
+                              <button onClick={() => handleDeleteBlock(block.id)}
+                                className="w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover/block:opacity-100 transition-opacity shrink-0 mt-0.5"
+                                style={{ background: C.red }}>
+                                <X className="w-2.5 h-2.5 text-white" />
+                              </button>
                             </div>
-                            <button onClick={() => handleDeleteBlock(block.id)}
-                              className="w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover/block:opacity-100 transition-opacity shrink-0 mt-0.5"
-                              style={{ background: C.red }}>
-                              <X className="w-2.5 h-2.5 text-white" />
-                            </button>
-                          </div>
-                        ))}
-
-                        {/* Appointment pills */}
-                        {dayAppts.filter(a => a.status === 'Confirmed').map(appt => (
-                          <button key={appt.id} onClick={() => setSelectedAppt(appt)}
-                            className="w-full rounded-xl px-2 py-1 mb-1 text-left hover:opacity-80 transition-opacity"
-                            style={{ background: '#DCFCE7', border: '1px solid #BBF7D0' }}>
-                            <p className="text-[9px] font-black truncate" style={{ color: '#059669' }}>{appt.time} · {appt.clientName || appt.address}</p>
-                          </button>
-                        ))}
+                          )
+                        })}
 
                         {/* Add block button - always available */}
                         <button onClick={() => openBlockForm(squad.id, date)}
