@@ -66,13 +66,26 @@ export default function App() {
 
   return (
     <Layout profile={profile} page={page} onNavigate={setPage} onSignOut={handleSignOut}>
-      {page === 'operations' && <OperationsPage profile={profile} />}
-      {page === 'planning'   && <PlanningPage />}
-      {page === 'analysis'   && <AnalysisPage />}
-      {page === 'command'    && <CommandCenterPage />}
-      {page === 'users'      && <UsersPage profile={profile} onSignOut={handleSignOut} />}
-      {page === 'import'     && <ImportPage />}
-      {page === 'settings'   && <SettingsPage />}
+      {page === 'operations'       && <OperationsPage profile={profile} />}
+      {page === 'plan_week'        && <PlanningPage />}
+      {page === 'plan_predispatch' && <ComingSoon title="Pre-dispatch" />}
+      {page === 'plan_field'       && <ComingSoon title="Field" />}
+      {page === 'tars_rules'       && <SettingsPage />}
+      {page === 'tars_squads'      && <ComingSoon title="Squads" />}
+      {page === 'tars_blocks'      && <ComingSoon title="Squad Blocks" />}
+      {page === 'analysis'         && <AnalysisPage />}
+      {page === 'command'          && <CommandCenterPage />}
+      {page === 'users'            && <UsersPage profile={profile} onSignOut={handleSignOut} />}
+      {page === 'import'           && <ImportPage />}
     </Layout>
+  )
+}
+
+function ComingSoon({ title }: { title: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 24px', color: '#94A3B8', fontFamily: "'Inter', sans-serif" }}>
+      <p style={{ fontSize: 14, fontWeight: 600 }}>{title} — coming soon</p>
+      <p style={{ fontSize: 12, marginTop: 4 }}>This page is part of the planned roadmap</p>
+    </div>
   )
 }
