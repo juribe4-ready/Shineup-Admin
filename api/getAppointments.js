@@ -53,7 +53,7 @@ async function handleListAppointments(req, res) {
 
     const fieldsParam = [
       'Appointment ID', 'Requested Date & Time', 'Status',
-      'Client Name', 'Property Address', 'Notes', 'Online Platform Source',
+      'Client Name', 'Notes', 'Source',
     ].map(f => `fields[]=${encodeURIComponent(f)}`).join('&')
 
     const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${formula}&${fieldsParam}&sort[0][field]=${encodeURIComponent('Requested Date & Time')}&sort[0][direction]=asc`
@@ -96,7 +96,7 @@ async function handleListAppointments(req, res) {
         clientName: Array.isArray(r.fields?.['Client Name']) ? r.fields['Client Name'][0] : (r.fields?.['Client Name'] || ''),
         address: Array.isArray(r.fields?.['Property Address']) ? r.fields['Property Address'][0] : (r.fields?.['Property Address'] || ''),
         notes: r.fields?.['Notes'] || '',
-        source: r.fields?.['Online Platform Source'] || '',
+        source: r.fields?.['Source'] || '',
       }
     })
 
