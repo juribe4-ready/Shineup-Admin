@@ -245,6 +245,14 @@ export default function PreDispatchPage() {
         ))}
       </div>
 
+      {/* TEMP DEBUG — remove after diagnosing */}
+      <div style={{ background: '#1E1B4B', color: '#A5B4FC', padding: 14, borderRadius: 12, fontSize: 10.5, fontFamily: 'monospace', lineHeight: 1.6, wordBreak: 'break-all' }}>
+        <p style={{ color: 'white', fontWeight: 700, marginBottom: 6 }}>DEBUG — quitar después</p>
+        {cleanings.map(c => (
+          <p key={c.id}>{c.propertyText}: raw="{c.scheduledTime}" → parsed="{timeFromScheduled(c.scheduledTime)}"</p>
+        ))}
+      </div>
+
       {/* Grid */}
       <div className="rounded-3xl overflow-hidden shadow-sm" style={{ background: C.white, border: `1px solid ${C.border}` }}>
 
