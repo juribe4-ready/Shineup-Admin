@@ -52,7 +52,7 @@ async function handleListAppointments(req, res) {
     )
 
     const fieldsParam = [
-      'Appointment ID', 'Requested Date & Time', 'Estimated Duration', 'Status',
+      'Appointment ID', 'Requested Date & Time', 'Status',
       'Client Name', 'Property Address', 'Notes', 'Online Platform Source',
     ].map(f => `fields[]=${encodeURIComponent(f)}`).join('&')
 
@@ -75,6 +75,11 @@ async function handleListAppointments(req, res) {
       headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
     })
     const data = await airtableRes.json()
+
+    if (data.error) {
+      console.error('[getAppointments] Airtable rejected query:', JSON.stringify(data.error))
+      return res.status(500).json({ error: `Airtable: ${data.error.type} — ${data.error.message}` })
+    }
 
     const appointments = (data.records || []).map(r => {
       const dt = r.fields?.['Requested Date & Time'] || null
