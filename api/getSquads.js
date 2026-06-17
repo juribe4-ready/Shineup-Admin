@@ -143,6 +143,7 @@ export default async function handler(req, res) {
       assignedStaff: r.fields?.['Assigned Staff'] || [],
       appointmentCode: cleaningIdToApptCode[r.id] || null,
       appointmentRecordId: cleaningIdToApptRecordId[r.id] || null,
+      cleaningType: r.fields?.['Cleaning Type Text'] || (Array.isArray(r.fields?.['Cleaning Type']) ? null : r.fields?.['Cleaning Type']) || null,
     }))
 
     return res.status(200).json({ squads, blocks, cleanings, dates })
