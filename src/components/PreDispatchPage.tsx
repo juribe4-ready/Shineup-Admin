@@ -12,7 +12,7 @@ const C = {
 
 interface Squad { id: string; name: string; color: string; type: string; startHour: number; endHour: number }
 interface Block { id: string; squadId: string; date: string; startTime: string; endTime: string; type: string; cleaningId: string | null; notes: string }
-interface Cleaning { id: string; date: string; scheduledTime: string | null; status: string; propertyText: string; assignedStaff: string[] }
+interface Cleaning { id: string; date: string; scheduledTime: string | null; status: string; propertyText: string; assignedStaff: string[]; appointmentCode: string | null; appointmentRecordId: string | null }
 
 function getMonday(d: Date) {
   const dow = (d.getDay() + 6) % 7
@@ -144,8 +144,8 @@ export default function PreDispatchPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           squadId: squad.id, date, startTime: validStart, endTime,
-          type: 'Appointment', cleaningId: cleaning.id,
-          notes: cleaning.propertyText || '',
+          type: 'Appointment', cleaningId: cleaning.id, appointmentId: cleaning.appointmentRecordId || undefined,
+          notes: cleaning.appointmentCode ? `${cleaning.propertyText} (${cleaning.appointmentCode})` : (cleaning.propertyText || ''),
         })
       })
       const data = await res.json()
