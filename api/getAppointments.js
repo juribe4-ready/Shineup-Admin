@@ -52,19 +52,31 @@ async function handleListAppointments(req, res) {
     )
 
     if (debug === '1') {
-      // Fetch with NO filter at all, just to confirm base connectivity + field names
-      const rawUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?pageSize=5`
-      const rawRes = await fetch(rawUrl, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } })
-      const rawData = await rawRes.json()
+      // Run the ACTUAL filtered query to see what it returns
+      const filteredUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${formula}&pageSize=20`
+      const filteredRes = await fetch(filteredUrl, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } })
+      const filteredData = await filteredRes.json()
+
+      // Also specifically search for known June 18 appointment IDs to confirm they exist and what they look like
+      const knownFormula = encodeURIComponent(`OR({Appointment ID}='APP -IVO5v',{Appointment ID}='APP -9AmbJ',{Appointment ID}='APP -aQnOb',{Appointment ID}='APP -kwN6q')`)
+      const knownUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${knownFormula}`
+      const knownRes = await fetch(knownUrl, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } })
+      const knownData = await knownRes.json()
+
       return res.status(200).json({
         debug: true,
         formulaUsed: decodeURIComponent(formula),
         startStr, endStr,
-        unfilteredCount: rawData.records?.length || 0,
-        unfilteredSample: rawData.records?.slice(0, 3).map(r => ({
-          id: r.id, fields: r.fields
-        })) || [],
-        rawError: rawData.error || null,
+        filteredCount: filteredData.records?.length || 0,
+        filteredError: filteredData.error || null,
+        filteredSample: (filteredData.records || []).slice(0, 10).map(r => ({
+          id: r.id, appointmentId: r.fields?.['Appointment ID'], status: r.fields?.Status, dt: r.fields?.['Requested Date & Time']
+        })),
+        knownRecordsCount: knownData.records?.length || 0,
+        knownRecordsError: knownData.error || null,
+        knownRecordsRaw: (knownData.records || []).map(r => ({
+          id: r.id, appointmentId: r.fields?.['Appointment ID'], status: r.fields?.Status, dt: r.fields?.['Requested Date & Time']
+        })),
       })
     }
 
