@@ -61,9 +61,10 @@ export default function RulesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ config })
       })
-      if (r.ok) { setSaved(true); showToast('TARS config saved'); setTimeout(() => setSaved(false), 2000) }
-      else showToast('Error saving')
-    } catch { showToast('Error saving') }
+      const d = await r.json()
+      if (r.ok && d.ok) { setSaved(true); showToast('TARS config saved'); setTimeout(() => setSaved(false), 2000) }
+      else showToast(d.error ? `Error: ${d.error.slice(0, 120)}` : 'Error saving')
+    } catch (e: any) { showToast(`Error: ${e.message}`) }
     finally { setSaving(false) }
   }
 
