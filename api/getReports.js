@@ -348,19 +348,29 @@ async function saveTARSConfig(headers, body) {
     const checkD = await checkR.json()
     const existingId = checkD.records?.[0]?.id
 
+    let saveRes
     if (existingId) {
-      await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Standards/${existingId}`, {
+      saveRes = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Standards/${existingId}`, {
         method: 'PATCH',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ fields: { Value: value } })
       })
     } else {
-      await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Standards`, {
+      saveRes = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Standards`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ fields: { Name: 'TARS_CONFIG', Value: value } })
       })
     }
+
+    if (!saveRes.ok) {
+      const errBody = await saveRes.text()
+      console.error('[saveTARSConfig] Airtable rejected write:', saveRes.status, errBody)
+      return { ok: false, error: `Airtable error ${saveRes.status}: ${errBody}` }
+    }
     return { ok: true }
-  } catch(e) { return { ok: false, error: e.message } }
+  } catch(e) {
+    console.error('[saveTARSConfig] Exception:', e.message)
+    return { ok: false, error: e.message }
+  }
 }
