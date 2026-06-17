@@ -226,6 +226,8 @@ export default async function handler(req, res) {
     if (type === 'inventory') return res.status(200).json(await getInventory(headers, staffMap, propMap))
     if (type === 'billing')   return res.status(200).json(await getBilling(headers, req.query))
     if (type === 'importMatch' && req.method === 'GET')  return res.status(200).json(await getImportMatch(headers, req.query))
+    if (type === 'tarsConfig' && req.method === 'GET')  return res.status(200).json(await getTARSConfig(headers))
+    if (type === 'tarsConfig' && req.method === 'POST') return res.status(200).json(await saveTARSConfig(headers, req.body))
     if (type === 'cleaningTypes') {
       const ct = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Cleaning%20Type?fields[]=Cleaning%20Type%20Name`, { headers })
       const ctData = await ct.json()
@@ -319,4 +321,46 @@ async function createTurnoAppointments(headers, body) {
     } catch(e) { results.push({ name: p.name, ok: false, reason: e.message }) }
   }
   return { results }
+}
+
+async function getTARSConfig(headers) {
+  try {
+    const r = await fetch(
+      `https://api.airtable.com/v0/${AIRTABLE_BASE}/Standards?filterByFormula={Name}='TARS_CONFIG'&fields[]=Name&fields[]=Value`,
+      { headers }
+    )
+    if (!r.ok) return { config: null }
+    const d = await r.json()
+    const rec = d.records?.[0]
+    if (!rec?.fields?.Value) return { config: null }
+    return { config: JSON.parse(rec.fields.Value), recordId: rec.id }
+  } catch { return { config: null } }
+}
+
+async function saveTARSConfig(headers, body) {
+  const { config } = body
+  const value = JSON.stringify(config)
+  try {
+    const checkR = await fetch(
+      `https://api.airtable.com/v0/${AIRTABLE_BASE}/Standards?filterByFormula={Name}='TARS_CONFIG'&fields[]=Name`,
+      { headers }
+    )
+    const checkD = await checkR.json()
+    const existingId = checkD.records?.[0]?.id
+
+    if (existingId) {
+      await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Standards/${existingId}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: { Value: value } })
+      })
+    } else {
+      await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Standards`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: { Name: 'TARS_CONFIG', Value: value } })
+      })
+    }
+    return { ok: true }
+  } catch(e) { return { ok: false, error: e.message } }
 }
