@@ -109,7 +109,6 @@ export default function HomePage({ profile, onNavigate }: Props) {
 
   useEffect(() => { load() }, [])
 
-  const fmtMoney = (n: number) => `$${(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
   const fmtTime = (iso: string | null) => iso ? new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—'
 
   const upcoming = cleanings
