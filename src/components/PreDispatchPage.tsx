@@ -80,10 +80,12 @@ export default function PreDispatchPage() {
     return d === 0 || d === 6
   }
 
-  const weekdaySquads = squads.filter(s => s.type === 'Weekday')
-  const weekendSquads = squads.filter(s => s.type === 'Weekend' || s.type === 'Weekend/Holiday')
-  const flexibleSquads = squads.filter(s => s.type === 'Flexible')
+  const weekdaySquads = squads.filter(s => s.type === 'Weekday').sort((a, b) => a.name.localeCompare(b.name))
+  const weekendSquads = squads.filter(s => s.type === 'Weekend' || s.type === 'Weekend/Holiday').sort((a, b) => a.name.localeCompare(b.name))
+  const flexibleSquads = squads.filter(s => s.type === 'Flexible').sort((a, b) => a.name.localeCompare(b.name))
 
+  // Flexible squads work every day, so they're always "relevant" alongside whichever
+  // group (weekday/weekend) matches the date.
   const relevantSquads = (date: string) => {
     if (isWeekend(date)) return [...weekendSquads, ...flexibleSquads]
     return [...weekdaySquads, ...flexibleSquads]
@@ -217,7 +219,7 @@ export default function PreDispatchPage() {
           </div>
         )}
 
-        {/* Squad rows */}
+        {/* Squad rows — grouped by Weekend, Weekday, Flexible; alphabetical within each */}
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 border-3 rounded-full animate-spin" style={{ borderColor: C.border, borderTopColor: C.primary }} />
@@ -228,33 +230,47 @@ export default function PreDispatchPage() {
             <p className="text-[11px]">Crea squads en TARS Core → Squads</p>
           </div>
         ) : (
-          squads.map(squad => (
-            <div key={squad.id} className="grid border-b" style={{ gridTemplateColumns: '140px repeat(7, 1fr)', borderColor: C.border }}>
-              <div className="px-3 py-3 flex items-center gap-2 border-r" style={{ borderColor: C.border }}>
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: squad.color }} />
-                <div className="min-w-0">
-                  <p className="text-[12px] font-bold truncate" style={{ color: C.ink }}>{squad.name}</p>
-                  <p className="text-[10px]" style={{ color: C.muted }}>{squad.type}</p>
+          [
+            { label: 'Weekend', items: weekendSquads },
+            { label: 'Weekday', items: weekdaySquads },
+            { label: 'Flexible', items: flexibleSquads },
+          ].map(group => group.items.length > 0 && (
+            <div key={group.label}>
+              <div className="grid" style={{ gridTemplateColumns: '140px repeat(7, 1fr)' }}>
+                <div className="px-3 py-1.5" style={{ background: C.bg }}>
+                  <p className="text-[9.5px] font-black uppercase tracking-wide" style={{ color: C.muted }}>{group.label}</p>
                 </div>
+                <div className="col-span-7" style={{ background: C.bg }} />
               </div>
-              {dates.map(date => {
-                const isRelevant = relevantSquads(date).some(s => s.id === squad.id)
-                const dayBlocks = blocks.filter(b => b.squadId === squad.id && b.date === date)
-                return (
-                  <div key={date}
-                    onDragOver={e => isRelevant && e.preventDefault()}
-                    onDrop={() => draggedCleaningId && isRelevant && handleDropCleaning(squad.id, date, draggedCleaningId)}
-                    className="border-l p-1.5 min-h-[60px]"
-                    style={{ borderColor: C.border, background: isRelevant ? C.white : C.bg, opacity: isRelevant ? 1 : 0.4 }}>
-                    {dayBlocks.map(b => (
-                      <div key={b.id} className="rounded-xl px-2 py-1 mb-1" style={{ background: C.greenLight, border: `1px solid ${C.green}30` }}>
-                        <p className="text-[9px] font-black truncate" style={{ color: C.green }}>{b.startTime}–{b.endTime}</p>
-                        {b.notes && <p className="text-[8.5px] truncate" style={{ color: C.muted }}>{b.notes}</p>}
-                      </div>
-                    ))}
+              {group.items.map(squad => (
+                <div key={squad.id} className="grid border-b" style={{ gridTemplateColumns: '140px repeat(7, 1fr)', borderColor: C.border }}>
+                  <div className="px-3 py-3 flex items-center gap-2 border-r" style={{ borderColor: C.border }}>
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: squad.color }} />
+                    <div className="min-w-0">
+                      <p className="text-[12px] font-bold truncate" style={{ color: C.ink }}>{squad.name}</p>
+                      <p className="text-[10px]" style={{ color: C.muted }}>{squad.type}</p>
+                    </div>
                   </div>
-                )
-              })}
+                  {dates.map(date => {
+                    const isRelevant = relevantSquads(date).some(s => s.id === squad.id)
+                    const dayBlocks = blocks.filter(b => b.squadId === squad.id && b.date === date)
+                    return (
+                      <div key={date}
+                        onDragOver={e => isRelevant && e.preventDefault()}
+                        onDrop={() => draggedCleaningId && isRelevant && handleDropCleaning(squad.id, date, draggedCleaningId)}
+                        className="border-l p-1.5 min-h-[60px]"
+                        style={{ borderColor: C.border, background: isRelevant ? C.white : C.bg, opacity: isRelevant ? 1 : 0.4 }}>
+                        {dayBlocks.map(b => (
+                          <div key={b.id} className="rounded-xl px-2 py-1 mb-1" style={{ background: C.greenLight, border: `1px solid ${C.green}30` }}>
+                            <p className="text-[9px] font-black truncate" style={{ color: C.green }}>{b.startTime}–{b.endTime}</p>
+                            {b.notes && <p className="text-[8.5px] truncate" style={{ color: C.muted }}>{b.notes}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
             </div>
           ))
         )}

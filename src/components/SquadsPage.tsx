@@ -79,6 +79,7 @@ export default function SquadsPage() {
       })
       showToast('Squad deactivated')
       setConfirmDelete(null)
+      setShowForm(false)
       load()
     } catch { showToast('Error deactivating', 'err') }
     finally { setSaving(false) }
@@ -222,6 +223,30 @@ export default function SquadsPage() {
               {saving ? <RefreshCw style={{ width: 14, height: 14 }} className="animate-spin" /> : <Save style={{ width: 14, height: 14 }} />}
               {editingId ? 'Save changes' : 'Create squad'}
             </button>
+
+            {editingId && (
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+                {confirmDelete === editingId ? (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <p style={{ flex: 1, fontSize: 11.5, color: C.red, margin: 0, alignSelf: 'center' }}>¿Desactivar este squad?</p>
+                    <button onClick={() => setConfirmDelete(null)}
+                      style={{ height: 32, padding: '0 12px', borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.white, color: C.slate, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      Cancelar
+                    </button>
+                    <button onClick={() => handleDeactivate(editingId)} disabled={saving}
+                      style={{ height: 32, padding: '0 14px', borderRadius: 8, border: `1.5px solid ${C.red}`, background: C.redLight, color: C.red, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                      Confirmar
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={() => setConfirmDelete(editingId)}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 36, borderRadius: 9, border: `1.5px solid ${C.red}30`, background: C.redLight, color: C.red, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+                    <Trash2 style={{ width: 13, height: 13 }} />
+                    Desactivar squad
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
