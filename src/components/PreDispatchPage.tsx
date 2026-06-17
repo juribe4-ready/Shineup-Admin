@@ -194,13 +194,13 @@ export default function PreDispatchPage() {
         {/* Unassigned cleanings row — drag these into a squad cell below */}
         {!loading && unassignedCleanings.length > 0 && (
           <div className="grid border-b" style={{ gridTemplateColumns: '140px repeat(7, 1fr)', borderColor: C.border, background: '#FFFBEB' }}>
-            <div className="px-3 py-3 flex items-center border-r" style={{ borderColor: C.border }}>
+            <div className="px-3 py-3 flex items-start border-r" style={{ borderColor: C.border }}>
               <p className="font-bold text-[11px]" style={{ color: C.amber }}>Sin squad</p>
             </div>
             {dates.map(date => {
               const dayUnassigned = unassignedCleanings.filter(c => c.date === date)
               return (
-                <div key={date} className="border-l p-1.5 min-h-[60px]" style={{ borderColor: C.border }}>
+                <div key={date} className="border-l p-1.5 overflow-y-auto" style={{ borderColor: C.border, maxHeight: 220, minHeight: 60 }}>
                   {dayUnassigned.map(c => (
                     <div key={c.id}
                       draggable
