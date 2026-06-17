@@ -80,7 +80,12 @@ async function handleListAppointments(req, res) {
       })
     }
 
-    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${formula}&fields[]=Appointment ID&fields[]=Requested Date & Time&fields[]=Estimated Duration&fields[]=Status&fields[]=Client Name&fields[]=Property Address&fields[]=Notes&fields[]=Online Platform Source&sort[0][field]=Requested Date & Time&sort[0][direction]=asc`
+    const fieldsParam = [
+      'Appointment ID', 'Requested Date & Time', 'Estimated Duration', 'Status',
+      'Client Name', 'Property Address', 'Notes', 'Online Platform Source',
+    ].map(f => `fields[]=${encodeURIComponent(f)}`).join('&')
+
+    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${formula}&${fieldsParam}&sort[0][field]=${encodeURIComponent('Requested Date & Time')}&sort[0][direction]=asc`
 
     const airtableRes = await fetch(url, {
       headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
@@ -326,8 +331,10 @@ async function handleLaunchWeek(req, res) {
     }
 
     // Fetch properties for Labor, Default Start Time, Price, Default Cleaning Type, Usage
+    const propsFieldsParam = ['Name', 'Labor', 'Default Start Time', 'Default End Time', 'Price', 'Default Cleaning Type', 'Usage']
+      .map(f => `fields[]=${encodeURIComponent(f)}`).join('&')
     const propsRes = await fetch(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE}/tbl1iETmcFP460oWN?fields[]=Name&fields[]=Labor&fields[]=Default Start Time&fields[]=Default End Time&fields[]=Price&fields[]=Default Cleaning Type&fields[]=Usage`,
+      `https://api.airtable.com/v0/${AIRTABLE_BASE}/tbl1iETmcFP460oWN?${propsFieldsParam}`,
       { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
     )
     const propsData = await propsRes.json()
