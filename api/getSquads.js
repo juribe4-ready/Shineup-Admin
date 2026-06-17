@@ -3,16 +3,82 @@ const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN
 const SQUADS_TABLE = 'tbl6CaYpYaZe1PY0s'
 const BLOCKS_TABLE = 'tblR9T67eyBrIi5Ny'
 
+async function fetchAllSquads(includeInactive) {
+  const squadsRes = await fetch(
+    `https://api.airtable.com/v0/${AIRTABLE_BASE}/${SQUADS_TABLE}?fields[]=Name&fields[]=Color&fields[]=Type&fields[]=Active&fields[]=StartHour&fields[]=EndHour`,
+    { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
+  )
+  const squadsData = await squadsRes.json()
+  return (squadsData.records || [])
+    .filter(r => includeInactive || r.fields?.Active)
+    .map(r => ({
+      id: r.id,
+      name: r.fields?.Name || '',
+      color: r.fields?.Color || '#94A3B8',
+      type: r.fields?.Type || 'Weekday',
+      active: r.fields?.Active !== false,
+      startHour: r.fields?.StartHour ?? 8,
+      endHour: r.fields?.EndHour ?? 18,
+    }))
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') return res.status(200).end()
 
-  try {
-    const { weekStart } = req.query
-    if (!weekStart) return res.status(400).json({ error: 'weekStart requerido' })
+  const headers = { Authorization: `Bearer ${AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' }
 
-    // Get week dates (Mon-Sun)
+  try {
+    // POST — create, update, or deactivate a squad
+    if (req.method === 'POST') {
+      const { action, squadId, name, color, type, startHour, endHour, active } = req.body || {}
+
+      if (action === 'delete' || action === 'deactivate') {
+        if (!squadId) return res.status(400).json({ error: 'squadId requerido' })
+        await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${SQUADS_TABLE}/${squadId}`, {
+          method: 'PATCH', headers, body: JSON.stringify({ fields: { Active: false } })
+        })
+        return res.status(200).json({ ok: true })
+      }
+
+      const fields = {
+        ...(name !== undefined ? { Name: name } : {}),
+        ...(color !== undefined ? { Color: color } : {}),
+        ...(type !== undefined ? { Type: type } : {}),
+        ...(startHour !== undefined ? { StartHour: startHour } : {}),
+        ...(endHour !== undefined ? { EndHour: endHour } : {}),
+        ...(active !== undefined ? { Active: active } : {}),
+      }
+
+      if (squadId) {
+        const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${SQUADS_TABLE}/${squadId}`, {
+          method: 'PATCH', headers, body: JSON.stringify({ fields })
+        })
+        if (!r.ok) return res.status(500).json({ error: await r.text() })
+        return res.status(200).json({ ok: true })
+      } else {
+        if (!name) return res.status(400).json({ error: 'name requerido' })
+        const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${SQUADS_TABLE}`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ fields: { Name: name, Color: color || '#6366F1', Type: type || 'Weekday', StartHour: startHour ?? 8, EndHour: endHour ?? 18, Active: true } })
+        })
+        if (!r.ok) return res.status(500).json({ error: await r.text() })
+        const created = await r.json()
+        return res.status(200).json({ ok: true, id: created.id })
+      }
+    }
+
+    // GET — list squads, optionally with week blocks
+    const { weekStart, includeInactive } = req.query
+
+    if (!weekStart) {
+      const squads = await fetchAllSquads(includeInactive === 'true')
+      return res.status(200).json({ squads })
+    }
+
+    const squads = await fetchAllSquads(false)
+
     const start = new Date(weekStart)
     const dates = Array.from({ length: 7 }, (_, i) => {
       const d = new Date(start)
@@ -20,39 +86,13 @@ export default async function handler(req, res) {
       return d.toISOString().split('T')[0]
     })
 
-    // Fetch squads
-    const squadsRes = await fetch(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE}/${SQUADS_TABLE}?fields[]=Name&fields[]=Color&fields[]=Type&fields[]=Active&fields[]=StartHour&fields[]=EndHour`,
-      { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
-    )
-    const squadsData = await squadsRes.json()
-    const squads = (squadsData.records || [])
-      .filter(r => r.fields?.Active)
-      .map(r => ({
-        id: r.id,
-        name: r.fields?.Name || '',
-        color: r.fields?.Color || '#94A3B8',
-        type: r.fields?.Type || 'Weekday',
-        startHour: r.fields?.StartHour ?? 8,
-        endHour: r.fields?.EndHour ?? 18,
-      }))
-
-    // Fetch blocks for the week
     const weekEnd = dates[6]
-    const formula = encodeURIComponent(
-      `AND({Date}>='${dates[0]}', {Date}<='${weekEnd}')`
-    )
-    console.log('[getSquads] Block filter formula:', `AND({Date}>='${dates[0]}', {Date}<='${weekEnd}')`)
+    const formula = encodeURIComponent(`AND({Date}>='${dates[0]}', {Date}<='${weekEnd}')`)
     const blocksRes = await fetch(
       `https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}?filterByFormula=${formula}&fields[]=Squads&fields[]=Date&fields[]=StartTime&fields[]=EndTime&fields[]=Type&fields[]=Appointment&fields[]=Notes`,
       { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
     )
-    console.log('[getSquads] Blocks API status:', blocksRes.status)
     const blocksData = await blocksRes.json()
-    console.log('[getSquads] Raw blocks count:', (blocksData.records || []).length)
-    if (blocksData.records?.[0]) {
-      console.log('[getSquads] Sample block fields:', JSON.stringify(blocksData.records[0].fields))
-    }
 
     const blocks = (blocksData.records || []).map(r => ({
       id: r.id,
@@ -64,8 +104,6 @@ export default async function handler(req, res) {
       appointmentId: Array.isArray(r.fields?.Appointment) ? r.fields.Appointment[0] : null,
       notes: r.fields?.Notes || '',
     }))
-
-    console.log('[getSquads] Processed blocks:', blocks.map(b => ({ id: b.id, squadId: b.squadId, date: b.date })))
 
     return res.status(200).json({ squads, blocks, dates })
   } catch (err) {
