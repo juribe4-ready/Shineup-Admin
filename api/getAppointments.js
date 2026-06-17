@@ -34,7 +34,7 @@ export default async function handler(req, res) {
 // Original getAppointments - list for PlanningPage squads section
 async function handleListAppointments(req, res) {
   try {
-    const { weekStart } = req.query
+    const { weekStart, debug } = req.query
     if (!weekStart) return res.status(400).json({ error: 'weekStart requerido' })
 
     const start = new Date(weekStart)
@@ -43,16 +43,30 @@ async function handleListAppointments(req, res) {
 
     const startStr = start.toISOString().split('T')[0]
     const endStr = end.toISOString().split('T')[0]
-    
-    // Para incluir el primer día, usamos el día anterior a las 23:59
-    const dayBefore = new Date(start)
-    dayBefore.setDate(dayBefore.getDate() - 1)
-    const dayBeforeStr = dayBefore.toISOString().split('T')[0]
 
-    // Filter: IS_AFTER día anterior (incluye el primer día) AND IS_BEFORE fin+1
+    // Compare only the DATE portion (YYYY-MM-DD) of the field, formatted explicitly,
+    // to avoid any timezone ambiguity between the stored UTC value and Airtable's
+    // field-level timezone display setting. This compares strings, not datetimes.
     const formula = encodeURIComponent(
-      `AND(IS_AFTER({Requested Date & Time},'${dayBeforeStr}T23:59:59'),IS_BEFORE({Requested Date & Time},'${endStr}T23:59:59'))`
+      `AND(DATETIME_FORMAT({Requested Date & Time},'YYYY-MM-DD') >= '${startStr}', DATETIME_FORMAT({Requested Date & Time},'YYYY-MM-DD') <= '${endStr}')`
     )
+
+    if (debug === '1') {
+      // Fetch with NO filter at all, just to confirm base connectivity + field names
+      const rawUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?pageSize=5`
+      const rawRes = await fetch(rawUrl, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } })
+      const rawData = await rawRes.json()
+      return res.status(200).json({
+        debug: true,
+        formulaUsed: decodeURIComponent(formula),
+        startStr, endStr,
+        unfilteredCount: rawData.records?.length || 0,
+        unfilteredSample: rawData.records?.slice(0, 3).map(r => ({
+          id: r.id, fields: r.fields
+        })) || [],
+        rawError: rawData.error || null,
+      })
+    }
 
     const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${formula}&fields[]=Appointment ID&fields[]=Requested Date & Time&fields[]=Estimated Duration&fields[]=Status&fields[]=Client Name&fields[]=Property Address&fields[]=Notes&fields[]=Online Platform Source&sort[0][field]=Requested Date & Time&sort[0][direction]=asc`
 
