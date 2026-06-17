@@ -51,6 +51,7 @@ export type PageKey =
   | 'command'           // Grow → Command Center
   | 'users'             // System → Users
   | 'import'            // System → Import
+  | 'system_settings'   // System → Settings
 
 interface NavItem {
   key: PageKey
@@ -170,6 +171,7 @@ const NAV_ITEMS: NavItem[] = [
   // SYSTEM — set once, not checked daily
   { key: 'users',      label: 'Users',    Icon: Users,    section: 'system' },
   { key: 'import',     label: 'Import',   Icon: Upload,   section: 'system' },
+  { key: 'system_settings', label: 'Settings', Icon: Settings, section: 'system' },
 ]
 
 const PAGE_TITLES: Record<PageKey, string> = {
@@ -189,6 +191,7 @@ const PAGE_TITLES: Record<PageKey, string> = {
   command:           'Command Center',
   users:             'Users',
   import:            'Import',
+  system_settings:   'Settings',
 }
 
 const PAGE_SUBTITLES: Record<PageKey, string> = {
@@ -208,6 +211,7 @@ const PAGE_SUBTITLES: Record<PageKey, string> = {
   command:           'North Star & executive KPIs',
   users:             'User management',
   import:            'Turno · Guesty · Hospitable',
+  system_settings:   'Company info & general preferences',
 }
 
 interface Props {
