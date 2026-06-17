@@ -449,34 +449,35 @@ async function getAvailability(headers, query) {
   const apptFormula = encodeURIComponent(
     `AND({Status}='Confirmed', IS_AFTER({Requested Date & Time},'${dayStart}'), IS_BEFORE({Requested Date & Time},'${dayEnd}'))`
   )
+  const apptFieldsParam = ['Requested Date & Time', 'Status'].map(f => `fields[]=${encodeURIComponent(f)}`).join('&')
   const apptRes = await fetch(
-    `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${apptFormula}&fields[]=Requested Date & Time&fields[]=Estimated Duration`,
+    `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${apptFormula}&${apptFieldsParam}`,
     { headers }
   )
   const apptData = await apptRes.json()
-  const assignedApptIds = new Set() // we don't have block->appointment link fetched here; treat all confirmed as unassigned-demand pool
-  const unassignedApptHours = (apptData.records || [])
-    .filter(r => !assignedApptIds.has(r.id))
-    .reduce((sum, r) => sum + ((r.fields?.['Estimated Duration'] || 90) / 60), 0)
+  const unassignedApptCount = apptData.error ? 0 : (apptData.records || []).length
+  // No verified duration field exists on Appointments yet — use a conservative default per job.
+  const unassignedApptHours = unassignedApptCount * 1.5
 
-  // 5. Compute the largest free contiguous gap across all squads (simple per-squad scan)
-  let bestGapHours = 0
+  // 5. Compute free hours PER SQUAD (largest contiguous gap within that squad's day),
+  //    then SUM across all relevant squads for that day — this reflects total real capacity,
+  //    not just whichever single squad happens to be most free.
+  let totalFreeHours = 0
   for (const sq of activeSquads) {
     const busy = (blocksBySquad[sq.id] || []).sort((a, b) => a[0] - b[0])
     let cursor = sq.startMin
+    let squadFree = 0
     for (const [s, e] of busy) {
-      if (s > cursor) bestGapHours = Math.max(bestGapHours, (s - cursor) / 60)
+      if (s > cursor) squadFree += (s - cursor) / 60
       cursor = Math.max(cursor, e)
     }
-    if (sq.endMin > cursor) bestGapHours = Math.max(bestGapHours, (sq.endMin - cursor) / 60)
+    if (sq.endMin > cursor) squadFree += (sq.endMin - cursor) / 60
+    totalFreeHours += squadFree
   }
 
-  // 6. Apply route buffer, then subtract unassigned confirmed STR demand from the day's total slack
+  // 6. Apply route buffer, then subtract unassigned confirmed STR demand from total free capacity
   const bufferPct = (config.routeBufferPct || 0) / 100
-  const totalCapacityHours = activeSquads.reduce((sum, s) => sum + (s.endMin - s.startMin) / 60, 0)
-  const totalBusyHours = Object.values(blocksBySquad).flat().reduce((sum, [s, e]) => sum + (e - s) / 60, 0)
-  const rawResidual = totalCapacityHours - totalBusyHours - unassignedApptHours
-  const residualHours = Math.max(0, Math.min(bestGapHours, rawResidual)) * (1 - bufferPct)
+  const residualHours = Math.max(0, totalFreeHours - unassignedApptHours) * (1 - bufferPct)
 
   const available = residualHours >= duration
 
@@ -491,6 +492,6 @@ async function getAvailability(headers, query) {
     requestedHours: duration,
     suggestedPrice,
     ratePerHour: rate,
-    reason: available ? null : 'Not enough contiguous free capacity that day',
+    reason: available ? null : 'Not enough free capacity that day',
   }
 }
