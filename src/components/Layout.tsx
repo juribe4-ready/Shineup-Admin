@@ -3,7 +3,7 @@ import { Profile } from '../supabase'
 import {
   CalendarDays, Users, LogOut, ChevronLeft, 
   TrendingUp, Settings, Home, ChevronRight, Radio, LayoutDashboard, Menu, X as XIcon, Upload,
-  ChevronDown, HardHat, ListChecks, Layers, CalendarClock, AlertTriangle, Package, DollarSign, Sparkles
+  ChevronDown, HardHat, ListChecks, Layers, CalendarClock, AlertTriangle, Package, DollarSign
 } from 'lucide-react'
 
 function AstronautIcon({ style }: { style?: any }) {
@@ -225,7 +225,7 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
   const [hoveredItem, setHoveredItem] = useState<PageKey | null>(null)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    operate: false, plan: true, tars: true, earn: false, grow: false, system: false,
+    operate: false, plan: false, tars: false, earn: false, grow: false, system: false,
   })
 
   const toggleSection = (key: string) => setOpenSections(prev => {
@@ -302,25 +302,10 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
           minHeight: 64
         }}>
           {!collapsed && (
-            <div style={{ 
-              width: 38, 
-              height: 38, 
-              borderRadius: 11, 
-              background: 'linear-gradient(135deg, #818CF8 0%, #6366F1 50%, #A855F7 100%)',
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              boxShadow: '0 0 0 1px rgba(255,255,255,0.1) inset, 0 6px 16px rgba(99, 102, 241, 0.45)',
-              flexShrink: 0,
-            }}>
-              <Sparkles className="w-[18px] h-[18px] text-white" strokeWidth={2.5} />
-            </div>
-          )}
-          {!collapsed && (
             <div style={{ flex: 1, minWidth: 0 }}>
               <span style={{ 
                 color: 'white', 
-                fontSize: 19, 
+                fontSize: 24, 
                 fontWeight: 800, 
                 letterSpacing: '-0.02em',
                 display: 'block',
@@ -328,7 +313,7 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
               }}>
                 Shine<span style={{ color: '#FBBF24' }}>UP</span>
               </span>
-              <span style={{ fontSize: 10.5, color: '#A5ADFB', fontWeight: 600, letterSpacing: '0.02em' }}>
+              <span style={{ fontSize: 13, color: '#A5ADFB', fontWeight: 600, letterSpacing: '0.02em' }}>
                 Operating System
               </span>
             </div>
