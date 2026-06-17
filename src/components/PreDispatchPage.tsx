@@ -91,16 +91,32 @@ export default function PreDispatchPage() {
     return [...weekdaySquads, ...flexibleSquads]
   }
 
-  // Cleanings already launched, scheduled, but with no squad block linked yet
+  // Cleanings already launched, scheduled, but with no squad block linked yet,
+  // minus any currently mid-assignment (prevents double-drop before the refresh completes)
+  const [pendingCleaningIds, setPendingCleaningIds] = useState<Set<string>>(new Set())
   const assignedCleaningIds = new Set(blocks.map(b => b.cleaningId).filter(Boolean))
-  const unassignedCleanings = cleanings.filter(c => !assignedCleaningIds.has(c.id))
+  const unassignedCleanings = cleanings.filter(c => !assignedCleaningIds.has(c.id) && !pendingCleaningIds.has(c.id))
 
   // Drag and drop: assign a launched Cleaning to a squad on a given date
   const handleDropCleaning = async (squadId: string, date: string, cleaningId: string) => {
     setDraggedCleaningId(null)
+
+    // Guard: this cleaning is already being assigned (double-drop protection)
+    if (pendingCleaningIds.has(cleaningId)) return
+    // Guard: this cleaning already has a squad block (stale UI before refresh caught up)
+    if (assignedCleaningIds.has(cleaningId)) { showToast('Esta limpieza ya tiene squad asignado', 'err'); return }
+
     const cleaning = cleanings.find(c => c.id === cleaningId)
     const squad = squads.find(s => s.id === squadId)
     if (!cleaning || !squad) return
+
+    const dateMismatch = cleaning.date !== date
+    const confirmMsg = dateMismatch
+      ? `Esta limpieza es del ${cleaning.date}, pero la estás asignando el ${date}. ¿Confirmas el cambio de fecha y la asignación a ${squad.name}?`
+      : `¿Asignar esta limpieza a ${squad.name}?`
+    if (!window.confirm(confirmMsg)) return
+
+    setPendingCleaningIds(prev => new Set(prev).add(cleaningId))
 
     const startTime = timeFromScheduled(cleaning.scheduledTime)
     const validStart = startTime !== '--:--' ? startTime : `${String(squad.startHour).padStart(2, '0')}:00`
@@ -124,7 +140,10 @@ export default function PreDispatchPage() {
       showToast(`Asignado a ${squad.name} ✓`)
       loadData()
     } catch { showToast('Error al asignar', 'err') }
-    finally { setSaving(false) }
+    finally {
+      setSaving(false)
+      setPendingCleaningIds(prev => { const next = new Set(prev); next.delete(cleaningId); return next })
+    }
   }
 
   // Remove a squad assignment — the cleaning returns to the unassigned row automatically
@@ -232,7 +251,7 @@ export default function PreDispatchPage() {
           </div>
         )}
 
-        {/* Squad rows — grouped by Weekend, Weekday, Flexible; alphabetical within each */}
+        {/* Squad rows — grouped by Flexible, Weekday, Weekend; alphabetical within each */}
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 border-3 rounded-full animate-spin" style={{ borderColor: C.border, borderTopColor: C.primary }} />
@@ -244,9 +263,9 @@ export default function PreDispatchPage() {
           </div>
         ) : (
           [
-            { label: 'Weekend', items: weekendSquads },
-            { label: 'Weekday', items: weekdaySquads },
             { label: 'Flexible', items: flexibleSquads },
+            { label: 'Weekday', items: weekdaySquads },
+            { label: 'Weekend', items: weekendSquads },
           ].map(group => group.items.length > 0 && (
             <div key={group.label}>
               <div className="grid" style={{ gridTemplateColumns: '140px repeat(7, 1fr)' }}>

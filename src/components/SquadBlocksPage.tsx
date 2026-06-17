@@ -105,9 +105,9 @@ export default function SquadBlocksPage() {
   const weekdaySquads = squads.filter(s => s.type === 'Weekday').sort((a, b) => a.name.localeCompare(b.name))
   const flexibleSquads = squads.filter(s => s.type === 'Flexible').sort((a, b) => a.name.localeCompare(b.name))
   const squadGroups = [
-    { label: 'Weekend', items: weekendSquads },
-    { label: 'Weekday', items: weekdaySquads },
     { label: 'Flexible', items: flexibleSquads },
+    { label: 'Weekday', items: weekdaySquads },
+    { label: 'Weekend', items: weekendSquads },
   ]
 
   const openCreate = (squadId?: string, date?: string) => {
