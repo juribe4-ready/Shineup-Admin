@@ -3,8 +3,19 @@ import { Profile } from '../supabase'
 import {
   CalendarDays, Users, LogOut, ChevronLeft, 
   TrendingUp, Settings, Home, ChevronRight, Radio, LayoutDashboard, Menu, X as XIcon, Upload,
-  Rocket, ChevronDown, HardHat, ListChecks, Layers, CalendarClock, AlertTriangle, Package, DollarSign
+  ChevronDown, HardHat, ListChecks, Layers, CalendarClock, AlertTriangle, Package, DollarSign
 } from 'lucide-react'
+
+function AstronautIcon({ style }: { style?: any }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" style={style}>
+      <circle cx="12" cy="10" r="6.5" stroke="currentColor" strokeWidth="1.8"/>
+      <circle cx="12" cy="10" r="3.8" stroke="currentColor" strokeWidth="1.4"/>
+      <path d="M7 14.5C5.5 16 5 18 5.5 20.5M17 14.5C18.5 16 19 18 18.5 20.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+      <path d="M9 20.5h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+    </svg>
+  )
+}
 
 const C = {
   sidebarBg:  '#0F172A',
@@ -206,7 +217,12 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
     operate: false, plan: true, tars: true, earn: false, grow: false, system: false,
   })
 
-  const toggleSection = (key: string) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }))
+  const toggleSection = (key: string) => setOpenSections(prev => {
+    const isOpen = prev[key]
+    const next: Record<string, boolean> = { operate: false, plan: false, tars: false, earn: false, grow: false, system: false }
+    next[key] = !isOpen
+    return next
+  })
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768)
@@ -336,7 +352,7 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
           {[
             { key: 'operate', label: 'Operate', items: operateItems, sectionIcon: null as any },
             { key: 'plan',    label: 'Plan',    items: planItems,    sectionIcon: null as any },
-            { key: 'tars',    label: 'TARS OS', items: tarsItems,    sectionIcon: Rocket },
+            { key: 'tars',    label: 'TARS OS', items: tarsItems,    sectionIcon: AstronautIcon },
             { key: 'earn',    label: 'Earn',    items: earnItems,    sectionIcon: null as any },
             { key: 'grow',    label: 'Grow',    items: growItems,    sectionIcon: null as any },
             { key: 'system',  label: 'System',  items: systemItems,  sectionIcon: null as any },
@@ -349,35 +365,38 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
                 <button
                   onClick={() => toggleSection(group.key)}
                   style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '4px 12px', marginBottom: 6, background: 'none', border: 'none', cursor: 'pointer',
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 12px', marginBottom: 4, borderRadius: 8,
+                    background: openSections[group.key] ? 'rgba(255,255,255,0.05)' : 'transparent',
+                    border: 'none', cursor: 'pointer',
                   }}
                 >
                   {group.sectionIcon && (
-                    <group.sectionIcon style={{ width: 12, height: 12, color: '#A5ADFB', flexShrink: 0 }} />
+                    <group.sectionIcon style={{ width: 15, height: 15, color: '#A5ADFB', flexShrink: 0 }} />
                   )}
                   <span style={{
-                    fontSize: 10, fontWeight: 600, letterSpacing: '0.07em',
-                    color: group.sectionIcon ? '#A5ADFB' : 'rgba(255,255,255,0.28)',
-                    textTransform: 'uppercase', flex: 1, textAlign: 'left',
+                    fontSize: 13, fontWeight: 700, letterSpacing: '0.01em',
+                    color: group.sectionIcon ? '#C7CCFC' : 'rgba(255,255,255,0.82)',
+                    flex: 1, textAlign: 'left',
                   }}>
                     {group.label}
                   </span>
                   <ChevronDown style={{
-                    width: 12, height: 12, color: 'rgba(255,255,255,0.3)',
+                    width: 14, height: 14, color: 'rgba(255,255,255,0.4)',
                     transform: openSections[group.key] ? 'rotate(0deg)' : 'rotate(-90deg)',
                     transition: 'transform 0.15s ease',
+                    flexShrink: 0,
                   }} />
                 </button>
               ) : (
                 group.sectionIcon && (
                   <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0', marginBottom: 4 }}>
-                    <group.sectionIcon style={{ width: 14, height: 14, color: '#A5ADFB' }} />
+                    <group.sectionIcon style={{ width: 15, height: 15, color: '#A5ADFB' }} />
                   </div>
                 )
               )}
               {(collapsed || openSections[group.key]) && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 2 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 6, paddingLeft: collapsed ? 0 : 4 }}>
                   {group.items.map(item => (
                     <NavBtn 
                       key={item.key} 
