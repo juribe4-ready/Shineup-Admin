@@ -13,7 +13,7 @@ import SettingsPage from './components/SettingsPage'
 export default function App() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState<PageKey>('operations')
+  const [page, setPage] = useState<PageKey>('cco_monitoring')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -66,14 +66,18 @@ export default function App() {
 
   return (
     <Layout profile={profile} page={page} onNavigate={setPage} onSignOut={handleSignOut}>
-      {page === 'operations'       && <OperationsPage profile={profile} />}
+      {page === 'cco_monitoring'   && <OperationsPage profile={profile} initialTab="live" />}
+      {page === 'cco_incidents'    && <OperationsPage profile={profile} initialTab="incidents" />}
+      {page === 'cco_ruptures'     && <OperationsPage profile={profile} initialTab="inventory" />}
       {page === 'plan_week'        && <PlanningPage />}
       {page === 'plan_predispatch' && <ComingSoon title="Pre-dispatch" />}
       {page === 'plan_field'       && <ComingSoon title="Field" />}
       {page === 'tars_rules'       && <SettingsPage />}
       {page === 'tars_squads'      && <ComingSoon title="Squads" />}
       {page === 'tars_blocks'      && <ComingSoon title="Squad Blocks" />}
-      {page === 'analysis'         && <AnalysisPage />}
+      {page === 'earn_cascade'     && <AnalysisPage initialTab="cascade" />}
+      {page === 'earn_stats'       && <AnalysisPage initialTab="stats" />}
+      {page === 'earn_billing'     && <AnalysisPage initialTab="billing" />}
       {page === 'command'          && <CommandCenterPage />}
       {page === 'users'            && <UsersPage profile={profile} onSignOut={handleSignOut} />}
       {page === 'import'           && <ImportPage />}
