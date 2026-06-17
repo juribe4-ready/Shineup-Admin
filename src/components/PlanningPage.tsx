@@ -118,6 +118,7 @@ export default function PlanningPage() {
   const [toast, setToast]               = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const [saving, setSaving]             = useState(false)
   const [blockTypes, setBlockTypes]     = useState<string[]>(['Appointment', 'Manual Block', 'STR', 'Holiday Block', 'Rest'])
+  const [debugInfo, setDebugInfo]       = useState<any>(null)
 
   // Week Launcher state
   const [weekSummary, setWeekSummary]   = useState<WeekSummary | null>(null)
@@ -161,13 +162,31 @@ export default function PlanningPage() {
         fetch(`/api/getSquads?weekStart=${weekStartStr}`),
         fetch(`/api/getAppointments?weekStart=${weekStartStr}`)
       ])
+
+      let squadsErrText = ''
+      let apptErrText = ''
+
       if (squadsRes.ok) {
         const d = await squadsRes.json()
         setSquads(d.squads || [])
         setBlocks(d.blocks || [])
+      } else {
+        squadsErrText = await squadsRes.text()
+        console.error('[Planning] getSquads failed', squadsRes.status, squadsErrText)
       }
-      if (apptRes.ok) setAppointments(await apptRes.json())
-    } catch { showToast('Error al cargar', 'err') }
+
+      if (apptRes.ok) {
+        setAppointments(await apptRes.json())
+      } else {
+        apptErrText = await apptRes.text()
+        console.error('[Planning] getAppointments failed', apptRes.status, apptErrText)
+      }
+
+      setDebugInfo({
+        squadsStatus: squadsRes.status, squadsOk: squadsRes.ok, squadsErr: squadsErrText,
+        apptStatus: apptRes.status, apptOk: apptRes.ok, apptErr: apptErrText,
+      })
+    } catch (e: any) { showToast('Error al cargar', 'err'); setDebugInfo({ exception: e.message }) }
     finally { setLoading(false) }
   }, [weekStartStr])
 
@@ -378,8 +397,13 @@ export default function PlanningPage() {
     <div className="space-y-6" style={{ fontFamily: 'Poppins, sans-serif' }}>
 
       {/* TEMP DEBUG PANEL — remove after diagnosing */}
-      <div style={{ background: '#1E1B4B', color: '#A5B4FC', padding: 14, borderRadius: 12, fontSize: 11, fontFamily: 'monospace', lineHeight: 1.6 }}>
+      <div style={{ background: '#1E1B4B', color: '#A5B4FC', padding: 14, borderRadius: 12, fontSize: 11, fontFamily: 'monospace', lineHeight: 1.6, wordBreak: 'break-all' }}>
         <p style={{ color: 'white', fontWeight: 700, marginBottom: 6 }}>DEBUG — quitar después</p>
+        <p>HTTP status getSquads: {debugInfo?.squadsStatus} ok={String(debugInfo?.squadsOk)}</p>
+        {debugInfo?.squadsErr && <p style={{ color: '#FCA5A5' }}>error getSquads: {debugInfo.squadsErr.slice(0, 300)}</p>}
+        <p>HTTP status getAppointments: {debugInfo?.apptStatus} ok={String(debugInfo?.apptOk)}</p>
+        {debugInfo?.apptErr && <p style={{ color: '#FCA5A5' }}>error getAppointments: {debugInfo.apptErr.slice(0, 300)}</p>}
+        {debugInfo?.exception && <p style={{ color: '#FCA5A5' }}>exception: {debugInfo.exception}</p>}
         <p>dates (columnas del grid): {JSON.stringify(dates)}</p>
         <p>total appointments cargados: {appointments.length}</p>
         <p>appointments con status==='Confirmed': {appointments.filter(a => a.status === 'Confirmed').length}</p>
