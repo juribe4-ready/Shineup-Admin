@@ -114,6 +114,26 @@ export default async function handler(req, res) {
       { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
     )
     const cleaningsData = await cleaningsRes.json()
+
+    // Reverse-lookup: each Cleaning doesn't store its origin Appointment, but each
+    // Appointment stores 'Related Cleaning Job' pointing TO its Cleaning. Fetch appointments
+    // for this week and build a Cleaning ID -> Appointment Code map for full traceability.
+    const apptLookupFormula = encodeURIComponent(`AND({Date}>='${dates[0]}', {Date}<='${weekEnd}')`)
+    const apptLookupRes = await fetch(
+      `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblXlpg7MuYWA8Ocn?filterByFormula=${apptLookupFormula}`,
+      { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
+    )
+    const apptLookupData = await apptLookupRes.json()
+    const cleaningIdToApptCode = {}
+    const cleaningIdToApptRecordId = {}
+    for (const r of (apptLookupData.records || [])) {
+      const relatedCleaningId = Array.isArray(r.fields?.['Related Cleaning Job']) ? r.fields['Related Cleaning Job'][0] : null
+      if (relatedCleaningId) {
+        cleaningIdToApptCode[relatedCleaningId] = r.fields?.['Appointment ID'] || null
+        cleaningIdToApptRecordId[relatedCleaningId] = r.id
+      }
+    }
+
     const cleanings = (cleaningsData.records || []).map(r => ({
       id: r.id,
       date: r.fields?.Date || '',
@@ -121,6 +141,8 @@ export default async function handler(req, res) {
       status: r.fields?.Status || 'Scheduled',
       propertyText: r.fields?.['Property Text'] || 'Sin propiedad',
       assignedStaff: r.fields?.['Assigned Staff'] || [],
+      appointmentCode: cleaningIdToApptCode[r.id] || null,
+      appointmentRecordId: cleaningIdToApptRecordId[r.id] || null,
     }))
 
     return res.status(200).json({ squads, blocks, cleanings, dates })
