@@ -84,9 +84,6 @@ export default function SquadsPage() {
     finally { setSaving(false) }
   }
 
-  const weekdaySquads = squads.filter(s => s.type === 'Weekday' || s.type === 'Flexible')
-  const weekendSquads = squads.filter(s => s.type === 'Weekend' || s.type === 'Flexible')
-
   return (
     <div style={{ maxWidth: 820, fontFamily: "'Inter', sans-serif" }}>
       {toast && (
