@@ -377,6 +377,18 @@ export default function PlanningPage() {
   return (
     <div className="space-y-6" style={{ fontFamily: 'Poppins, sans-serif' }}>
 
+      {/* TEMP DEBUG PANEL — remove after diagnosing */}
+      <div style={{ background: '#1E1B4B', color: '#A5B4FC', padding: 14, borderRadius: 12, fontSize: 11, fontFamily: 'monospace', lineHeight: 1.6 }}>
+        <p style={{ color: 'white', fontWeight: 700, marginBottom: 6 }}>DEBUG — quitar después</p>
+        <p>dates (columnas del grid): {JSON.stringify(dates)}</p>
+        <p>total appointments cargados: {appointments.length}</p>
+        <p>appointments con status==='Confirmed': {appointments.filter(a => a.status === 'Confirmed').length}</p>
+        <p>total blocks cargados: {blocks.length}</p>
+        <p>assignedApptIds (de blocks): {JSON.stringify([...assignedApptIds])}</p>
+        <p>unassignedAppts.length: {unassignedAppts.length}</p>
+        <p>primeros 5 appointments crudos: {JSON.stringify(appointments.slice(0, 5).map(a => ({ id: a.id, date: a.date, status: a.status, time: a.time })))}</p>
+      </div>
+
       {/* Toast */}
       {toast && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100] px-5 py-3 rounded-2xl shadow-xl text-white text-[13px] font-bold"
