@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { Profile } from '../supabase'
 import {
   CalendarDays, Users, LogOut, ChevronLeft, 
-  TrendingUp, Settings, Home, ChevronRight, Radio, LayoutDashboard, Menu, X as XIcon, Upload
+  TrendingUp, Settings, Home, ChevronRight, Radio, LayoutDashboard, Menu, X as XIcon, Upload,
+  Rocket, ChevronDown, Moon, HardHat, ListChecks, Layers, CalendarClock
 } from 'lucide-react'
 
 const C = {
@@ -23,20 +24,24 @@ const C = {
 
 // Nueva estructura de páginas - De operativo a estratégico
 export type PageKey = 
-  | 'operations'    // Monitoreo en vivo (día actual) + Incidentes + Rupturas
-  | 'planning'      // Lanzador de semana + Calendario
-  | 'analysis'      // Cascadas + Productividad + Tendencias  
-  | 'command'       // North Star + KPIs ejecutivos
-  | 'users'         // Usuarios
-  | 'import'        // Importar Pagos
-  | 'settings'      // Configuración
+  | 'operations'        // CCO — monitoreo en vivo
+  | 'plan_week'         // Plan → Week
+  | 'plan_predispatch'  // Plan → Pre-dispatch
+  | 'plan_field'        // Plan → Field
+  | 'tars_rules'        // TARS OS → Rules
+  | 'tars_squads'       // TARS OS → Squads
+  | 'tars_blocks'       // TARS OS → Squad Blocks
+  | 'analysis'          // Earn → Analysis
+  | 'command'           // Grow → Command Center
+  | 'users'             // System → Users
+  | 'import'            // System → Import
 
 interface NavItem {
   key: PageKey
   label: string
   sublabel?: string
   Icon: any
-  section: 'operate' | 'plan' | 'earn' | 'grow' | 'system'
+  section: 'operate' | 'plan' | 'tars' | 'earn' | 'grow' | 'system'
   badge?: number
   gradient?: string
 }
@@ -49,16 +54,50 @@ const NAV_ITEMS: NavItem[] = [
     sublabel: 'Live monitoring',
     Icon: Radio,        
     section: 'operate',
-    gradient: 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
   },
-  // PLAN — three horizons live as tabs inside this one page
+  // PLAN — three horizons, each its own page
   { 
-    key: 'planning',   
-    label: 'Planning', 
-    sublabel: 'Week · Pre-dispatch · Field',
+    key: 'plan_week',   
+    label: 'Week', 
+    sublabel: 'Launch & assign squads',
     Icon: CalendarDays,    
     section: 'plan',
-    gradient: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)'
+  },
+  { 
+    key: 'plan_predispatch',   
+    label: 'Pre-dispatch', 
+    sublabel: 'Staff, kits & warnings',
+    Icon: ListChecks,    
+    section: 'plan',
+  },
+  { 
+    key: 'plan_field',   
+    label: 'Field', 
+    sublabel: 'Clock in/out, day-of',
+    Icon: HardHat,    
+    section: 'plan',
+  },
+  // TARS OS — capacity, revenue & routing intelligence
+  { 
+    key: 'tars_rules',   
+    label: 'Rules', 
+    sublabel: 'Prime time, ESD, STR days',
+    Icon: Settings,    
+    section: 'tars',
+  },
+  { 
+    key: 'tars_squads',   
+    label: 'Squads', 
+    sublabel: 'Team roster & hours',
+    Icon: Layers,    
+    section: 'tars',
+  },
+  { 
+    key: 'tars_blocks',   
+    label: 'Squad Blocks', 
+    sublabel: 'Structural calendar',
+    Icon: CalendarClock,    
+    section: 'tars',
   },
   // EARN — what happened, what it's worth
   { 
@@ -67,7 +106,6 @@ const NAV_ITEMS: NavItem[] = [
     sublabel: 'Cascades · stats · trends',
     Icon: TrendingUp,       
     section: 'earn',
-    gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)'
   },
   // GROW — North Star
   { 
@@ -76,32 +114,38 @@ const NAV_ITEMS: NavItem[] = [
     sublabel: 'North Star',
     Icon: LayoutDashboard,
     section: 'grow',
-    gradient: 'linear-gradient(135deg, #EC4899 0%, #DB2777 100%)'
   },
   // SYSTEM — set once, not checked daily
   { key: 'users',      label: 'Users',    Icon: Users,    section: 'system' },
   { key: 'import',     label: 'Import',   Icon: Upload,   section: 'system' },
-  { key: 'settings',   label: 'TARS OS',  Icon: Settings, section: 'system' },
 ]
 
 const PAGE_TITLES: Record<PageKey, string> = {
-  operations: 'CCO',
-  planning:   'Planning',
-  analysis:   'Analysis',
-  command:    'Command Center',
-  users:      'Users',
-  import:     'Import',
-  settings:   'TARS OS',
+  operations:       'CCO',
+  plan_week:        'Week',
+  plan_predispatch: 'Pre-dispatch',
+  plan_field:       'Field',
+  tars_rules:       'TARS OS — Rules',
+  tars_squads:      'TARS OS — Squads',
+  tars_blocks:      'TARS OS — Squad Blocks',
+  analysis:         'Analysis',
+  command:          'Command Center',
+  users:            'Users',
+  import:           'Import',
 }
 
 const PAGE_SUBTITLES: Record<PageKey, string> = {
-  operations: 'Operations control center',
-  planning:   'Week launch, pre-dispatch & field',
-  analysis:   'Cascades, productivity & trends',
-  command:    'North Star & executive KPIs',
-  users:      'User management',
-  import:     'Turno · Guesty · Hospitable',
-  settings:   'Capacity, revenue & routing rules',
+  operations:       'Operations control center',
+  plan_week:        'Launch the week & assign squads',
+  plan_predispatch: 'Staff, equipment & warnings — night before',
+  plan_field:       'Clock in/out & day-of execution',
+  tars_rules:       'Prime time, STR-only days, ESD calibration',
+  tars_squads:      'Team roster, hours & capacity',
+  tars_blocks:      'Structural capacity calendar',
+  analysis:         'Cascades, productivity & trends',
+  command:          'North Star & executive KPIs',
+  users:            'User management',
+  import:           'Turno · Guesty · Hospitable',
 }
 
 interface Props {
@@ -118,6 +162,11 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
   const [mobileOpen, setMobileOpen] = useState(false)
   const [hoveredItem, setHoveredItem] = useState<PageKey | null>(null)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    operate: true, plan: true, tars: true, earn: true, grow: true, system: true,
+  })
+
+  const toggleSection = (key: string) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }))
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768)
@@ -133,6 +182,7 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
 
   const operateItems = NAV_ITEMS.filter(i => i.section === 'operate')
   const planItems     = NAV_ITEMS.filter(i => i.section === 'plan')
+  const tarsItems     = NAV_ITEMS.filter(i => i.section === 'tars')
   const earnItems     = NAV_ITEMS.filter(i => i.section === 'earn')
   const growItems     = NAV_ITEMS.filter(i => i.section === 'grow')
   const systemItems   = NAV_ITEMS.filter(i => i.section === 'system')
@@ -242,46 +292,66 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
         {/* Nav */}
         <div style={{ flex: 1, padding: '12px 10px', overflowY: 'auto' }}>
           
-          {/* Section renderer */}
+          {/* Section renderer — collapsible, Booking Koala style */}
           {[
-            { label: 'Operate', items: operateItems },
-            { label: 'Plan',    items: planItems },
-            { label: 'Earn',    items: earnItems },
-            { label: 'Grow',    items: growItems },
-            { label: 'System',  items: systemItems },
+            { key: 'operate', label: 'Operate', items: operateItems, sectionIcon: null as any },
+            { key: 'plan',    label: 'Plan',    items: planItems,    sectionIcon: null as any },
+            { key: 'tars',    label: 'TARS OS', items: tarsItems,    sectionIcon: Rocket },
+            { key: 'earn',    label: 'Earn',    items: earnItems,    sectionIcon: null as any },
+            { key: 'grow',    label: 'Grow',    items: growItems,    sectionIcon: null as any },
+            { key: 'system',  label: 'System',  items: systemItems,  sectionIcon: null as any },
           ].map((group, gi) => group.items.length > 0 && (
-            <div key={group.label}>
+            <div key={group.key}>
               {gi > 0 && (
-                <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '12px 10px' }} />
+                <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '10px 10px' }} />
               )}
-              {!collapsed && (
-                <p style={{ 
-                  fontSize: 10, 
-                  fontWeight: 600, 
-                  letterSpacing: '0.07em', 
-                  color: 'rgba(255,255,255,0.28)', 
-                  textTransform: 'uppercase', 
-                  padding: '0 12px', 
-                  marginBottom: 6,
-                  marginTop: gi > 0 ? 2 : 0,
-                }}>
-                  {group.label}
-                </p>
+              {!collapsed ? (
+                <button
+                  onClick={() => toggleSection(group.key)}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '4px 12px', marginBottom: 6, background: 'none', border: 'none', cursor: 'pointer',
+                  }}
+                >
+                  {group.sectionIcon && (
+                    <group.sectionIcon style={{ width: 12, height: 12, color: '#A5ADFB', flexShrink: 0 }} />
+                  )}
+                  <span style={{
+                    fontSize: 10, fontWeight: 600, letterSpacing: '0.07em',
+                    color: group.sectionIcon ? '#A5ADFB' : 'rgba(255,255,255,0.28)',
+                    textTransform: 'uppercase', flex: 1, textAlign: 'left',
+                  }}>
+                    {group.label}
+                  </span>
+                  <ChevronDown style={{
+                    width: 12, height: 12, color: 'rgba(255,255,255,0.3)',
+                    transform: openSections[group.key] ? 'rotate(0deg)' : 'rotate(-90deg)',
+                    transition: 'transform 0.15s ease',
+                  }} />
+                </button>
+              ) : (
+                group.sectionIcon && (
+                  <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0', marginBottom: 4 }}>
+                    <group.sectionIcon style={{ width: 14, height: 14, color: '#A5ADFB' }} />
+                  </div>
+                )
               )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 2 }}>
-                {group.items.map(item => (
-                  <NavBtn 
-                    key={item.key} 
-                    item={item} 
-                    active={page === item.key} 
-                    collapsed={collapsed} 
-                    badge={badges[item.key]}
-                    hovered={hoveredItem === item.key}
-                    onHover={setHoveredItem}
-                    onClick={() => handleNavigate(item.key)} 
-                  />
-                ))}
-              </div>
+              {(collapsed || openSections[group.key]) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 2 }}>
+                  {group.items.map(item => (
+                    <NavBtn 
+                      key={item.key} 
+                      item={item} 
+                      active={page === item.key} 
+                      collapsed={collapsed} 
+                      badge={badges[item.key]}
+                      hovered={hoveredItem === item.key}
+                      onHover={setHoveredItem}
+                      onClick={() => handleNavigate(item.key)} 
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
