@@ -11,8 +11,6 @@ const C = {
   teal: '#14B8A6',
 }
 
-const DAY_SHORT = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
-
 interface Squad { id: string; name: string; color: string; type: string; startHour: number; endHour: number }
 interface Block { id: string; squadId: string; date: string; startTime: string; endTime: string; type: string; notes: string }
 
