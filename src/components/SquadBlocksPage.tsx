@@ -13,6 +13,7 @@ const C = {
 
 interface Squad { id: string; name: string; color: string; type: string; startHour: number; endHour: number }
 interface Block { id: string; squadId: string; date: string; startTime: string; endTime: string; type: string; notes: string }
+interface Availability { date: string; available: boolean; residualHours: number; reason: string | null }
 
 function getMonday(d: Date) {
   const dow = (d.getDay() + 6) % 7
@@ -28,6 +29,8 @@ export default function SquadBlocksPage() {
   const [blocks, setBlocks] = useState<Block[]>([])
   const [strOnlyDays, setStrOnlyDays] = useState<number[]>([])
   const [strOnlyDates, setStrOnlyDates] = useState<string[]>([])
+  const [availability, setAvailability] = useState<Record<string, Availability>>({})
+  const [loadingAvail, setLoadingAvail] = useState(false)
   const [weekStart, setWeekStart] = useState(getMonday(new Date()).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }))
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -66,6 +69,26 @@ export default function SquadBlocksPage() {
 
   useEffect(() => { load() }, [weekStart])
 
+  const loadAvailability = async () => {
+    setLoadingAvail(true)
+    try {
+      const results = await Promise.all(
+        dates.map(date =>
+          fetch(`/api/getReports?type=availability&date=${date}&durationHours=2.5`)
+            .then(r => r.ok ? r.json() : null)
+            .catch(() => null)
+        )
+      )
+      const map: Record<string, Availability> = {}
+      results.forEach((r, i) => {
+        if (r) map[dates[i]] = r
+      })
+      setAvailability(map)
+    } finally { setLoadingAvail(false) }
+  }
+
+  useEffect(() => { loadAvailability() }, [weekStart])
+
   const shiftWeek = (dir: number) => {
     const d = new Date(weekStart + 'T12:00:00')
     d.setDate(d.getDate() + dir * 7)
@@ -96,6 +119,7 @@ export default function SquadBlocksPage() {
       showToast('Block created')
       setShowForm(false)
       load()
+      loadAvailability()
     } catch { showToast('Error creating block', 'err') }
     finally { setSaving(false) }
   }
@@ -109,6 +133,7 @@ export default function SquadBlocksPage() {
       })
       setBlocks(prev => prev.filter(b => b.id !== blockId))
       showToast('Block deleted')
+      loadAvailability()
     } catch { showToast('Error deleting', 'err') }
   }
 
@@ -178,6 +203,34 @@ export default function SquadBlocksPage() {
                 <div key={date} style={{ padding: '10px 8px', textAlign: 'center', background: structural ? C.amberLight : C.bg }}>
                   <p style={{ fontSize: 10, fontWeight: 700, color: structural ? C.amber : C.muted, textTransform: 'uppercase', margin: 0 }}>{short}</p>
                   <p style={{ fontSize: 14, fontWeight: 700, color: C.ink, margin: '2px 0 0' }}>{num}</p>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Availability row — live from getAvailability, shows residual hours per day */}
+          <div style={{ display: 'grid', gridTemplateColumns: '140px repeat(7, 1fr)', borderBottom: `2px solid ${C.border}`, background: C.bg }}>
+            <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center' }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: C.slate, margin: 0 }}>Disponibilidad</p>
+            </div>
+            {dates.map(date => {
+              const avail = availability[date]
+              if (loadingAvail && !avail) {
+                return <div key={date} style={{ padding: '10px 8px', textAlign: 'center', borderLeft: `1px solid ${C.border}` }}>
+                  <p style={{ fontSize: 10, color: C.muted, margin: 0 }}>…</p>
+                </div>
+              }
+              if (!avail) {
+                return <div key={date} style={{ padding: '10px 8px', textAlign: 'center', borderLeft: `1px solid ${C.border}` }} />
+              }
+              return (
+                <div key={date} style={{ padding: '8px 6px', textAlign: 'center', borderLeft: `1px solid ${C.border}` }}>
+                  <p style={{ fontSize: 11, fontWeight: 800, margin: 0, color: avail.available ? C.green : C.red }}>
+                    {avail.available ? `${avail.residualHours}h libre` : 'Lleno'}
+                  </p>
+                  {!avail.available && avail.reason && (
+                    <p style={{ fontSize: 8.5, color: C.muted, margin: '2px 0 0', lineHeight: 1.2 }}>{avail.reason}</p>
+                  )}
                 </div>
               )
             })}
