@@ -13,6 +13,7 @@ import RulesPage from './components/RulesPage'
 import SquadBlocksPage from './components/SquadBlocksPage'
 import HomePage from './components/HomePage'
 import SquadsPage from './components/SquadsPage'
+import PreDispatchPage from './components/PreDispatchPage'
 
 export default function App() {
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -75,7 +76,7 @@ export default function App() {
       {page === 'cco_incidents'    && <OperationsPage profile={profile} initialTab="incidents" />}
       {page === 'cco_ruptures'     && <OperationsPage profile={profile} initialTab="inventory" />}
       {page === 'plan_week'        && <PlanningPage />}
-      {page === 'plan_predispatch' && <ComingSoon title="Pre-dispatch" />}
+      {page === 'plan_predispatch' && <PreDispatchPage />}
       {page === 'plan_field'       && <ComingSoon title="Field" />}
       {page === 'tars_rules'       && <RulesPage />}
       {page === 'system_settings' && <SettingsPage />}
