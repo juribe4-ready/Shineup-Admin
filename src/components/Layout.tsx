@@ -176,12 +176,12 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
 
         {/* Header */}
         <div style={{ 
-          padding: collapsed ? '20px 16px' : '20px 20px', 
+          padding: collapsed ? '16px 16px' : '16px 18px', 
           display: 'flex', 
           alignItems: 'center', 
           gap: '12px', 
           borderBottom: '1px solid rgba(255,255,255,0.06)',
-          minHeight: 72
+          minHeight: 60
         }}>
           {!collapsed && (
             <div style={{ 
@@ -240,7 +240,7 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
         </div>
 
         {/* Nav */}
-        <div style={{ flex: 1, padding: '16px 12px', overflowY: 'auto' }}>
+        <div style={{ flex: 1, padding: '12px 10px', overflowY: 'auto' }}>
           
           {/* Section renderer */}
           {[
@@ -252,23 +252,23 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
           ].map((group, gi) => group.items.length > 0 && (
             <div key={group.label}>
               {gi > 0 && (
-                <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '16px 8px' }} />
+                <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '12px 10px' }} />
               )}
               {!collapsed && (
                 <p style={{ 
                   fontSize: 10, 
                   fontWeight: 600, 
-                  letterSpacing: '0.08em', 
-                  color: 'rgba(255,255,255,0.3)', 
+                  letterSpacing: '0.07em', 
+                  color: 'rgba(255,255,255,0.28)', 
                   textTransform: 'uppercase', 
-                  padding: '0 8px', 
-                  marginBottom: 12,
-                  marginTop: gi > 0 ? 4 : 0,
+                  padding: '0 12px', 
+                  marginBottom: 6,
+                  marginTop: gi > 0 ? 2 : 0,
                 }}>
                   {group.label}
                 </p>
               )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 4 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 2 }}>
                 {group.items.map(item => (
                   <NavBtn 
                     key={item.key} 
@@ -461,8 +461,6 @@ interface NavBtnProps {
 }
 
 function NavBtn({ item, active, collapsed, badge, hovered, onHover, onClick }: NavBtnProps) {
-  const showGradient = active && item.gradient
-  
   return (
     <button 
       onClick={onClick}
@@ -472,62 +470,52 @@ function NavBtn({ item, active, collapsed, badge, hovered, onHover, onClick }: N
         width: '100%', 
         display: 'flex', 
         alignItems: 'center', 
-        gap: 12, 
-        padding: collapsed ? '12px 8px' : '12px 14px',
-        borderRadius: 12, 
+        gap: 11, 
+        padding: collapsed ? '10px 8px' : '9px 12px',
+        paddingLeft: collapsed ? 8 : 9,
+        borderRadius: 8, 
         cursor: 'pointer', 
         border: 'none', 
         textAlign: 'left',
-        background: showGradient 
-          ? item.gradient 
-          : active 
-            ? C.primary 
-            : hovered 
-              ? 'rgba(255,255,255,0.06)' 
-              : 'transparent',
-        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+        background: active 
+          ? 'rgba(99, 102, 241, 0.14)' 
+          : hovered 
+            ? 'rgba(255,255,255,0.04)' 
+            : 'transparent',
+        borderLeft: active ? `2.5px solid ${C.primary}` : '2.5px solid transparent',
+        transition: 'background 0.15s ease',
         justifyContent: collapsed ? 'center' : 'flex-start',
-        boxShadow: active ? '0 4px 12px rgba(99, 102, 241, 0.25)' : 'none',
         position: 'relative',
-        overflow: 'hidden'
       }}
     >
-      {/* Icon container */}
-      <div style={{
-        width: 32,
-        height: 32,
-        borderRadius: 8,
-        background: active ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+      <item.Icon style={{ 
+        width: 16.5, 
+        height: 16.5, 
+        color: active ? '#A5ADFB' : 'rgba(255,255,255,0.45)', 
         flexShrink: 0,
-        transition: 'all 0.2s'
-      }}>
-        <item.Icon style={{ 
-          width: 18, 
-          height: 18, 
-          color: active ? 'white' : 'rgba(255,255,255,0.6)', 
-        }} />
-      </div>
+      }} />
       
       {!collapsed && (
         <div style={{ flex: 1, minWidth: 0 }}>
           <span style={{ 
-            fontSize: 13, 
-            fontWeight: 600, 
-            color: active ? 'white' : 'rgba(255,255,255,0.8)', 
+            fontSize: 12.5, 
+            fontWeight: active ? 600 : 500, 
+            color: active ? 'white' : 'rgba(255,255,255,0.75)', 
             display: 'block',
-            whiteSpace: 'nowrap' 
+            whiteSpace: 'nowrap',
+            letterSpacing: '-0.01em',
           }}>
             {item.label}
           </span>
           {item.sublabel && (
             <span style={{ 
               fontSize: 10, 
-              color: active ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.4)', 
+              color: 'rgba(255,255,255,0.35)', 
               display: 'block',
-              marginTop: 1
+              marginTop: 0.5,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
             }}>
               {item.sublabel}
             </span>
@@ -541,9 +529,9 @@ function NavBtn({ item, active, collapsed, badge, hovered, onHover, onClick }: N
           color: 'white', 
           fontSize: 10, 
           fontWeight: 700, 
-          padding: '2px 8px', 
-          borderRadius: 10,
-          boxShadow: '0 2px 6px rgba(239, 68, 68, 0.4)'
+          padding: '1px 7px', 
+          borderRadius: 9,
+          flexShrink: 0,
         }}>
           {badge}
         </span>
