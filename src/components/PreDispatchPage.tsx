@@ -10,9 +10,19 @@ const C = {
   red: '#EF4444',
 }
 
+// Distinct color per cleaning type, so pills are visually distinguishable at a glance
+const TYPE_COLORS: Record<string, { bg: string; border: string; text: string }> = {
+  'Standard STR Turnover': { bg: '#ECFDF5', border: '#10B981', text: '#047857' },
+  'Residential Cleaning':  { bg: '#EFF6FF', border: '#3B82F6', text: '#1D4ED8' },
+  'Deep Clean':            { bg: '#FEF3C7', border: '#F59E0B', text: '#92400E' },
+  'Move Out/In':           { bg: '#FCE7F3', border: '#EC4899', text: '#BE185D' },
+}
+const DEFAULT_TYPE_COLOR = { bg: '#F1F5F9', border: '#94A3B8', text: '#475569' }
+const colorForType = (type: string | null) => (type && TYPE_COLORS[type]) || DEFAULT_TYPE_COLOR
+
 interface Squad { id: string; name: string; color: string; type: string; startHour: number; endHour: number }
 interface Block { id: string; squadId: string; date: string; startTime: string; endTime: string; type: string; cleaningId: string | null; notes: string }
-interface Cleaning { id: string; date: string; scheduledTime: string | null; status: string; propertyText: string; assignedStaff: string[]; appointmentCode: string | null; appointmentRecordId: string | null }
+interface Cleaning { id: string; date: string; scheduledTime: string | null; status: string; propertyText: string; assignedStaff: string[]; appointmentCode: string | null; appointmentRecordId: string | null; cleaningType: string | null }
 
 function getMonday(d: Date) {
   const dow = (d.getDay() + 6) % 7
@@ -30,9 +40,12 @@ function addDaysToISO(iso: string, days: number): string {
 }
 
 function timeFromScheduled(scheduledTime: string | null): string {
-  if (!scheduledTime) return '--:--'
-  const t = scheduledTime.split('T')[1]
-  return t ? t.substring(0, 5) : '--:--'
+  if (!scheduledTime) return ''
+  // Airtable returns this as a UTC ISO string. Convert to Eastern Time (Columbus, OH)
+  // instead of reading the raw UTC digits, which were off by the UTC↔Eastern offset.
+  const d = new Date(scheduledTime)
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/New_York' })
 }
 
 export default function PreDispatchPage() {
@@ -131,8 +144,8 @@ export default function PreDispatchPage() {
   }
 
   const assignCleaning = async (squad: Squad, date: string, cleaning: Cleaning) => {
-    const startTime = timeFromScheduled(cleaning.scheduledTime)
-    const validStart = startTime !== '--:--' ? startTime : `${String(squad.startHour).padStart(2, '0')}:00`
+    const realStartTime = timeFromScheduled(cleaning.scheduledTime)
+    const validStart = realStartTime || `${String(squad.startHour).padStart(2, '0')}:00`
     const [h, m] = validStart.split(':').map(Number)
     const endMinTotal = h * 60 + m + 120 // default 2h block; refine once real duration field exists
     const endTime = `${String(Math.floor(endMinTotal / 60)).padStart(2, '0')}:${String(endMinTotal % 60).padStart(2, '0')}`
@@ -221,6 +234,16 @@ export default function PreDispatchPage() {
         </p>
       </div>
 
+      {/* Color legend by cleaning type */}
+      <div className="flex flex-wrap gap-3">
+        {Object.entries(TYPE_COLORS).map(([type, tc]) => (
+          <span key={type} className="flex items-center gap-1.5 text-[11px]" style={{ color: C.muted }}>
+            <span className="w-2.5 h-2.5 rounded shrink-0" style={{ background: tc.border }} />
+            {type}
+          </span>
+        ))}
+      </div>
+
       {/* Grid */}
       <div className="rounded-3xl overflow-hidden shadow-sm" style={{ background: C.white, border: `1px solid ${C.border}` }}>
 
@@ -251,6 +274,7 @@ export default function PreDispatchPage() {
                 <div key={date} className="border-l p-1.5 overflow-y-auto" style={{ borderColor: C.border, maxHeight: 220, minHeight: 60 }}>
                   {dayUnassigned.map(c => {
                     const isPending = pendingCleaningIds.has(c.id)
+                    const tc = colorForType(c.cleaningType)
                     return (
                       <div key={c.id}
                         draggable={!isPending}
@@ -258,13 +282,13 @@ export default function PreDispatchPage() {
                         onDragEnd={() => setDraggedCleaningId(null)}
                         className="rounded-xl px-2 py-1 mb-1 transition-opacity"
                         style={{
-                          background: isPending ? '#F1F5F9' : '#FEF3C7',
-                          border: `1px solid ${isPending ? C.border : '#FDE68A'}`,
+                          background: isPending ? '#F1F5F9' : tc.bg,
+                          border: `1px solid ${isPending ? C.border : tc.border}40`,
                           opacity: isPending ? 0.5 : (draggedCleaningId === c.id ? 0.4 : 1),
                           cursor: isPending ? 'not-allowed' : 'grab',
                         }}>
-                        <p className="text-[9px] font-black truncate" style={{ color: isPending ? C.muted : '#92400E' }}>
-                          {timeFromScheduled(c.scheduledTime)} · {c.propertyText}{isPending ? ' · asignando…' : ''}
+                        <p className="text-[9px] font-black truncate" style={{ color: isPending ? C.muted : tc.text }}>
+                          {timeFromScheduled(c.scheduledTime) ? `${timeFromScheduled(c.scheduledTime)} · ` : ''}{c.propertyText}{isPending ? ' · asignando…' : ''}
                         </p>
                       </div>
                     )
@@ -316,17 +340,22 @@ export default function PreDispatchPage() {
                         onDrop={() => draggedCleaningId && isRelevant && handleDropCleaning(squad.id, date, draggedCleaningId)}
                         className="border-l p-1.5 min-h-[60px]"
                         style={{ borderColor: C.border, background: isRelevant ? C.white : C.bg, opacity: isRelevant ? 1 : 0.4 }}>
-                        {dayBlocks.map(b => (
-                          <div key={b.id} className="rounded-xl px-2 py-1 mb-1 flex items-center justify-between gap-1" style={{ background: C.greenLight, border: `1px solid ${C.green}30` }}>
-                            <div className="min-w-0">
-                              <p className="text-[9px] font-black truncate" style={{ color: C.green }}>{b.startTime}–{b.endTime}</p>
-                              {b.notes && <p className="text-[8.5px] truncate" style={{ color: C.muted }}>{b.notes}</p>}
+                        {dayBlocks.map(b => {
+                          const relatedCleaning = cleanings.find(c => c.id === b.cleaningId)
+                          const tc = colorForType(relatedCleaning?.cleaningType || null)
+                          const hasRealTime = relatedCleaning ? !!timeFromScheduled(relatedCleaning.scheduledTime) : true
+                          return (
+                            <div key={b.id} className="rounded-xl px-2 py-1 mb-1 flex items-center justify-between gap-1" style={{ background: tc.bg, border: `1px solid ${tc.border}40` }}>
+                              <div className="min-w-0">
+                                {hasRealTime && <p className="text-[9px] font-black truncate" style={{ color: tc.text }}>{b.startTime}–{b.endTime}</p>}
+                                {b.notes && <p className="text-[8.5px] truncate" style={{ color: hasRealTime ? C.muted : tc.text, fontWeight: hasRealTime ? 400 : 700 }}>{b.notes}</p>}
+                              </div>
+                              <button onClick={() => handleDeleteBlock(b.id)} className="shrink-0 flex" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                                <X className="w-2.5 h-2.5" style={{ color: C.muted }} />
+                              </button>
                             </div>
-                            <button onClick={() => handleDeleteBlock(b.id)} className="shrink-0 flex" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                              <X className="w-2.5 h-2.5" style={{ color: C.muted }} />
-                            </button>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     )
                   })}
