@@ -7,6 +7,8 @@ const INV_TABLE      = 'tblppdLDDnyT0eye9'
 const CLEANINGS_TABLE= 'tblabOdNknnjrYUU1'
 const APPOINTMENTS_TABLE = 'tblXlpg7MuYWA8Ocn'
 const CLIENTS_TABLE      = 'Clients'
+const SQUADS_TABLE       = 'tbl6CaYpYaZe1PY0s'
+const BLOCKS_TABLE       = 'tblR9T67eyBrIi5Ny'
 
 async function buildMaps(headers) {
   const staffMap = {}, propMap = {}
@@ -228,6 +230,7 @@ export default async function handler(req, res) {
     if (type === 'importMatch' && req.method === 'GET')  return res.status(200).json(await getImportMatch(headers, req.query))
     if (type === 'tarsConfig' && req.method === 'GET')  return res.status(200).json(await getTARSConfig(headers))
     if (type === 'tarsConfig' && req.method === 'POST') return res.status(200).json(await saveTARSConfig(headers, req.body))
+    if (type === 'availability') return res.status(200).json(await getAvailability(headers, req.query))
     if (type === 'cleaningTypes') {
       const ct = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Cleaning%20Type?fields[]=Cleaning%20Type%20Name`, { headers })
       const ctData = await ct.json()
@@ -372,5 +375,122 @@ async function saveTARSConfig(headers, body) {
   } catch(e) {
     console.error('[saveTARSConfig] Exception:', e.message)
     return { ok: false, error: e.message }
+  }
+}
+
+function timeToMinAvail(t) {
+  const [h, m] = (t || '0:0').split(':').map(Number)
+  return h * 60 + m
+}
+
+async function getAvailability(headers, query) {
+  const { date, durationHours } = query
+  if (!date) return { error: 'date requerido (YYYY-MM-DD)' }
+  const duration = parseFloat(durationHours) || 2.5
+
+  // 1. Load TARS config (the single source of truth for rules)
+  const configResult = await getTARSConfig(headers)
+  const config = configResult.config || {
+    primeStart: '10:00', primeEnd: '16:00', routeBufferPct: 25,
+    minRatePrimeTime: 50, minRateFlex: 35, strOnlyDays: [6], strOnlyDates: [],
+  }
+
+  const dow = (new Date(date + 'T12:00:00').getDay() + 6) % 7 // 0=Mon..6=Sun
+  const isStructuralSTR = (config.strOnlyDays || []).includes(dow) || (config.strOnlyDates || []).includes(date)
+
+  if (isStructuralSTR) {
+    return {
+      date, available: false, reason: 'STR-only day — fully reserved for short-term rental turnovers',
+      suggestedPrice: null,
+    }
+  }
+
+  // 2. Load active squads for this day-of-week
+  const squadsRes = await fetch(
+    `https://api.airtable.com/v0/${AIRTABLE_BASE}/${SQUADS_TABLE}?fields[]=Name&fields[]=Type&fields[]=Active&fields[]=StartHour&fields[]=EndHour`,
+    { headers }
+  )
+  const squadsData = await squadsRes.json()
+  const isWeekend = dow >= 5
+  const activeSquads = (squadsData.records || [])
+    .filter(r => r.fields?.Active)
+    .filter(r => {
+      const t = r.fields?.Type
+      return t === 'Flexible' || (isWeekend ? t === 'Weekend' : t === 'Weekday')
+    })
+    .map(r => ({ id: r.id, startMin: (r.fields?.StartHour ?? 8) * 60, endMin: (r.fields?.EndHour ?? 18) * 60 }))
+
+  if (activeSquads.length === 0) {
+    return { date, available: false, reason: 'No active squads scheduled this day', suggestedPrice: null }
+  }
+
+  // 3. Load existing Squad Blocks for that date (assigned commitments per squad)
+  const blockFormula = encodeURIComponent(`{Date}='${date}'`)
+  const blocksRes = await fetch(
+    `https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}?filterByFormula=${blockFormula}&fields[]=Squads&fields[]=StartTime&fields[]=EndTime`,
+    { headers }
+  )
+  const blocksData = await blocksRes.json()
+  const blocksBySquad = {}
+  for (const r of (blocksData.records || [])) {
+    const sId = Array.isArray(r.fields?.Squads) ? r.fields.Squads[0] : r.fields?.Squads
+    if (!sId) continue
+    const s = timeToMinAvail(r.fields?.StartTime)
+    const e = timeToMinAvail(r.fields?.EndTime)
+    if (e <= s) continue
+    if (!blocksBySquad[sId]) blocksBySquad[sId] = []
+    blocksBySquad[sId].push([s, e])
+  }
+
+  // 4. Load Confirmed appointments for that date NOT YET assigned to a squad block
+  //    These are committed demand (e.g. from Turno) even before a human drags them onto a squad.
+  const dayStart = `${date}T00:00:00.000Z`
+  const dayEnd = `${date}T23:59:59.000Z`
+  const apptFormula = encodeURIComponent(
+    `AND({Status}='Confirmed', IS_AFTER({Requested Date & Time},'${dayStart}'), IS_BEFORE({Requested Date & Time},'${dayEnd}'))`
+  )
+  const apptRes = await fetch(
+    `https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}?filterByFormula=${apptFormula}&fields[]=Requested Date & Time&fields[]=Estimated Duration`,
+    { headers }
+  )
+  const apptData = await apptRes.json()
+  const assignedApptIds = new Set() // we don't have block->appointment link fetched here; treat all confirmed as unassigned-demand pool
+  const unassignedApptHours = (apptData.records || [])
+    .filter(r => !assignedApptIds.has(r.id))
+    .reduce((sum, r) => sum + ((r.fields?.['Estimated Duration'] || 90) / 60), 0)
+
+  // 5. Compute the largest free contiguous gap across all squads (simple per-squad scan)
+  let bestGapHours = 0
+  for (const sq of activeSquads) {
+    const busy = (blocksBySquad[sq.id] || []).sort((a, b) => a[0] - b[0])
+    let cursor = sq.startMin
+    for (const [s, e] of busy) {
+      if (s > cursor) bestGapHours = Math.max(bestGapHours, (s - cursor) / 60)
+      cursor = Math.max(cursor, e)
+    }
+    if (sq.endMin > cursor) bestGapHours = Math.max(bestGapHours, (sq.endMin - cursor) / 60)
+  }
+
+  // 6. Apply route buffer, then subtract unassigned confirmed STR demand from the day's total slack
+  const bufferPct = (config.routeBufferPct || 0) / 100
+  const totalCapacityHours = activeSquads.reduce((sum, s) => sum + (s.endMin - s.startMin) / 60, 0)
+  const totalBusyHours = Object.values(blocksBySquad).flat().reduce((sum, [s, e]) => sum + (e - s) / 60, 0)
+  const rawResidual = totalCapacityHours - totalBusyHours - unassignedApptHours
+  const residualHours = Math.max(0, Math.min(bestGapHours, rawResidual)) * (1 - bufferPct)
+
+  const available = residualHours >= duration
+
+  // 7. Suggested price — flex rate (residential jobs are scheduled outside prime time by policy)
+  const rate = config.minRateFlex || 35
+  const suggestedPrice = available ? Math.round(rate * duration) : null
+
+  return {
+    date,
+    available,
+    residualHours: Math.round(residualHours * 10) / 10,
+    requestedHours: duration,
+    suggestedPrice,
+    ratePerHour: rate,
+    reason: available ? null : 'Not enough contiguous free capacity that day',
   }
 }
