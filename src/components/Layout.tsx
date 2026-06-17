@@ -3,7 +3,7 @@ import { Profile } from '../supabase'
 import {
   CalendarDays, Users, LogOut, ChevronLeft, 
   TrendingUp, Settings, Home, ChevronRight, Radio, LayoutDashboard, Menu, X as XIcon, Upload,
-  ChevronDown, HardHat, ListChecks, Layers, CalendarClock, AlertTriangle, Package, DollarSign
+  ChevronDown, HardHat, ListChecks, Layers, CalendarClock, AlertTriangle, Package, DollarSign, Sparkles
 } from 'lucide-react'
 
 function AstronautIcon({ style }: { style?: any }) {
@@ -313,7 +313,7 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
               boxShadow: '0 0 0 1px rgba(255,255,255,0.1) inset, 0 6px 16px rgba(99, 102, 241, 0.45)',
               flexShrink: 0,
             }}>
-              <Home className="w-[18px] h-[18px] text-white" strokeWidth={2.5} />
+              <Sparkles className="w-[18px] h-[18px] text-white" strokeWidth={2.5} />
             </div>
           )}
           {!collapsed && (

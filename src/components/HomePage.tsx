@@ -122,7 +122,7 @@ export default function HomePage({ profile, onNavigate }: Props) {
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 8 }}>
         <div>
           <p style={{ fontSize: 13, color: C.muted, margin: '0 0 2px' }}>{todayLabel}</p>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.ink, margin: 0 }}>Good day, {firstName}</h1>
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: C.ink, margin: 0, letterSpacing: '-0.01em' }}>Good day, {firstName}</h1>
         </div>
         <button onClick={load} disabled={loading}
           style={{ display: 'flex', alignItems: 'center', gap: 6, height: 34, padding: '0 12px', borderRadius: 9, border: `1.5px solid ${C.border}`, background: C.white, color: C.muted, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
@@ -131,7 +131,8 @@ export default function HomePage({ profile, onNavigate }: Props) {
       </div>
 
       {/* Today metrics */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
+      <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>Today</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 24 }}>
         <MetricCard label="Cleanings today" value={stats.total} />
         <MetricCard label="In progress" value={stats.inProgress} color={C.blue} />
         <MetricCard label="Open incidents" value={incidentCount} color={incidentCount > 0 ? C.amber : undefined} />
@@ -139,19 +140,20 @@ export default function HomePage({ profile, onNavigate }: Props) {
       </div>
 
       {/* Billing snapshot */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 20 }}>
+      <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>Billing</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 24 }}>
         <BillingCard label="Unpaid" amount={billing?.unpaidAmount || 0} count={billing?.unpaidCount || 0} color={C.amber} bg={C.amberLight} />
         <BillingCard label="Invoiced" amount={billing?.invoicedAmount || 0} count={billing?.invoicedCount || 0} color={C.ink} bg={C.bg} />
         <BillingCard label="Collected today" amount={billing?.paidAmount || 0} count={billing?.paidCount || 0} color={C.green} bg={C.greenLight} />
         <BillingCard label="Total generated" amount={billing?.totalRevenue || 0} count={billing?.total || 0} color={C.primary} bg={C.primaryLight} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, marginBottom: 24 }}>
         {/* Today's schedule */}
-        <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 16, padding: '16px 18px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <p style={{ fontSize: 14, fontWeight: 700, color: C.ink, margin: 0 }}>Today's schedule</p>
-            <button onClick={() => onNavigate('cco_monitoring')} style={{ fontSize: 12, color: C.primary, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+        <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 16, padding: '18px 20px', boxShadow: '0 1px 2px rgba(15,23,42,0.04)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <p style={{ fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>Today's schedule</p>
+            <button onClick={() => onNavigate('cco_monitoring')} style={{ fontSize: 12, color: C.primary, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>
               View all →
             </button>
           </div>
@@ -166,7 +168,7 @@ export default function HomePage({ profile, onNavigate }: Props) {
                 const Icon = c.status === 'In Progress' ? Clock : isWarn ? AlertTriangle : CheckCircle2
                 const iconColor = c.status === 'In Progress' ? C.blue : isWarn ? C.amber : C.green
                 return (
-                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 10, background: C.bg }}>
+                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px', borderRadius: 10, background: C.bg, border: `1px solid ${C.border}` }}>
                     <Icon style={{ width: 16, height: 16, color: iconColor, flexShrink: 0 }} />
                     <p style={{ fontSize: 13, color: C.ink, margin: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {c.propertyText || 'Unnamed property'} {c.staffListText ? `— ${c.staffListText}` : ''}
@@ -180,8 +182,8 @@ export default function HomePage({ profile, onNavigate }: Props) {
         </div>
 
         {/* This week */}
-        <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 16, padding: '16px 18px' }}>
-          <p style={{ fontSize: 14, fontWeight: 700, color: C.ink, margin: '0 0 12px' }}>This week</p>
+        <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 16, padding: '18px 20px', boxShadow: '0 1px 2px rgba(15,23,42,0.04)' }}>
+          <p style={{ fontSize: 15, fontWeight: 700, color: C.ink, margin: '0 0 14px' }}>This week</p>
           <div style={{ marginBottom: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
               <span style={{ fontSize: 12, color: C.muted }}>Capacity used</span>
@@ -215,19 +217,19 @@ export default function HomePage({ profile, onNavigate }: Props) {
 
 function MetricCard({ label, value, color }: { label: string; value: number; color?: string }) {
   return (
-    <div style={{ background: C.bg, borderRadius: 12, padding: '12px 14px' }}>
-      <p style={{ fontSize: 12, color: C.muted, margin: '0 0 4px' }}>{label}</p>
-      <p style={{ fontSize: 22, fontWeight: 700, color: color || C.ink, margin: 0 }}>{value}</p>
+    <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 12, padding: '14px 16px', boxShadow: '0 1px 2px rgba(15,23,42,0.04)' }}>
+      <p style={{ fontSize: 10.5, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>{label}</p>
+      <p style={{ fontSize: 24, fontWeight: 800, color: color || C.ink, margin: 0, letterSpacing: '-0.01em' }}>{value}</p>
     </div>
   )
 }
 
 function BillingCard({ label, amount, count, color, bg }: { label: string; amount: number; count: number; color: string; bg: string }) {
   return (
-    <div style={{ background: bg, borderRadius: 12, padding: '10px 14px' }}>
-      <p style={{ fontSize: 11, color: C.muted, margin: '0 0 3px' }}>{label}</p>
-      <p style={{ fontSize: 18, fontWeight: 700, color, margin: 0 }}>${(amount || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}</p>
-      <p style={{ fontSize: 10.5, color: C.muted, margin: '2px 0 0' }}>{count} cleanings</p>
+    <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 12, padding: '14px 16px', boxShadow: '0 1px 2px rgba(15,23,42,0.04)' }}>
+      <p style={{ fontSize: 10.5, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>{label}</p>
+      <p style={{ fontSize: 21, fontWeight: 800, color, margin: 0, letterSpacing: '-0.01em' }}>${(amount || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}</p>
+      <p style={{ fontSize: 11, color: C.muted, margin: '4px 0 0', fontWeight: 500 }}>{count} cleanings</p>
     </div>
   )
 }
