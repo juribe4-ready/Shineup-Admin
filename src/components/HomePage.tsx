@@ -142,10 +142,10 @@ export default function HomePage({ profile, onNavigate }: Props) {
       {/* Billing snapshot */}
       <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>Billing</p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 24 }}>
-        <BillingCard label="Unpaid" amount={billing?.unpaidAmount || 0} count={billing?.unpaidCount || 0} color={C.amber} bg={C.amberLight} />
-        <BillingCard label="Invoiced" amount={billing?.invoicedAmount || 0} count={billing?.invoicedCount || 0} color={C.ink} bg={C.bg} />
-        <BillingCard label="Collected today" amount={billing?.paidAmount || 0} count={billing?.paidCount || 0} color={C.green} bg={C.greenLight} />
-        <BillingCard label="Total generated" amount={billing?.totalRevenue || 0} count={billing?.total || 0} color={C.primary} bg={C.primaryLight} />
+        <BillingCard label="Unpaid" amount={billing?.unpaidAmount || 0} count={billing?.unpaidCount || 0} color={C.amber} />
+        <BillingCard label="Invoiced" amount={billing?.invoicedAmount || 0} count={billing?.invoicedCount || 0} color={C.ink} />
+        <BillingCard label="Collected today" amount={billing?.paidAmount || 0} count={billing?.paidCount || 0} color={C.green} />
+        <BillingCard label="Total generated" amount={billing?.totalRevenue || 0} count={billing?.total || 0} color={C.primary} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, marginBottom: 24 }}>
@@ -224,7 +224,7 @@ function MetricCard({ label, value, color }: { label: string; value: number; col
   )
 }
 
-function BillingCard({ label, amount, count, color, bg }: { label: string; amount: number; count: number; color: string; bg: string }) {
+function BillingCard({ label, amount, count, color }: { label: string; amount: number; count: number; color: string }) {
   return (
     <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 12, padding: '14px 16px', boxShadow: '0 1px 2px rgba(15,23,42,0.04)' }}>
       <p style={{ fontSize: 10.5, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>{label}</p>
