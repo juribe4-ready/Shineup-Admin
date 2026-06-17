@@ -30,6 +30,29 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'squadId, date, startTime, endTime requeridos' })
     }
 
+    // HARD GUARD: if this Cleaning or Appointment is already assigned to ANY squad block
+    // (any date, any squad), reject outright. This is enforced server-side so it can't be
+    // bypassed by frontend timing issues, double-clicks, or stale UI state.
+    if (cleaningId || appointmentId) {
+      const dupChecks = []
+      if (cleaningId) dupChecks.push(`FIND('${cleaningId}', ARRAYJOIN(Cleaning))`)
+      if (appointmentId) dupChecks.push(`FIND('${appointmentId}', ARRAYJOIN(Appointment))`)
+      const dupFormula = encodeURIComponent(`OR(${dupChecks.join(',')})`)
+      const dupRes = await fetch(
+        `https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}?filterByFormula=${dupFormula}`,
+        { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
+      )
+      if (dupRes.ok) {
+        const dupData = await dupRes.json()
+        if ((dupData.records || []).length > 0) {
+          const existing = dupData.records[0]
+          return res.status(409).json({
+            error: `Esta limpieza ya está asignada a un squad (bloque existente del ${existing.fields?.Date || '?'}). Bórralo primero si quieres reasignar.`
+          })
+        }
+      }
+    }
+
     // Check for overlapping blocks on same squad + date
     const formula = encodeURIComponent(`AND({Date}='${date}', FIND('${squadId}', ARRAYJOIN(Squads)))`)
     const existingRes = await fetch(
@@ -64,7 +87,7 @@ export default async function handler(req, res) {
     if (appointmentId) fields.Appointment = [appointmentId]
     if (cleaningId) fields.Cleaning = [cleaningId]
 
-    const doCreate = async (fieldsToSend) => fetch(
+    const airtableRes = await fetch(
       `https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}`,
       {
         method: 'POST',
@@ -72,22 +95,10 @@ export default async function handler(req, res) {
           Authorization: `Bearer ${AIRTABLE_TOKEN}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ fields: fieldsToSend })
+        body: JSON.stringify({ fields })
       }
     )
-
-    let airtableRes = await doCreate(fields)
-    let data = await airtableRes.json()
-
-    // If the Cleaning field doesn't exist yet in Airtable, retry without it
-    // so the block is still created — the link can be added later once the field exists.
-    if (!airtableRes.ok && data.error?.type === 'UNKNOWN_FIELD_NAME' && fields.Cleaning) {
-      console.warn('[createSquadBlock] Cleaning field not found in Airtable, retrying without it')
-      const { Cleaning, ...fieldsWithoutCleaning } = fields
-      airtableRes = await doCreate(fieldsWithoutCleaning)
-      data = await airtableRes.json()
-    }
-
+    const data = await airtableRes.json()
     if (!airtableRes.ok) throw new Error(JSON.stringify(data))
 
     return res.status(200).json({ success: true, id: data.id })
