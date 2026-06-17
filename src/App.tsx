@@ -9,11 +9,12 @@ import AnalysisPage from './components/AnalysisPage'
 import CommandCenterPage from './components/CommandCenterPage'
 import ImportPage from './components/ImportPage'
 import SettingsPage from './components/SettingsPage'
+import HomePage from './components/HomePage'
 
 export default function App() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState<PageKey>('cco_monitoring')
+  const [page, setPage] = useState<PageKey>('home')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -66,6 +67,7 @@ export default function App() {
 
   return (
     <Layout profile={profile} page={page} onNavigate={setPage} onSignOut={handleSignOut}>
+      {page === 'home'              && <HomePage profile={profile} onNavigate={setPage} />}
       {page === 'cco_monitoring'   && <OperationsPage profile={profile} initialTab="live" />}
       {page === 'cco_incidents'    && <OperationsPage profile={profile} initialTab="incidents" />}
       {page === 'cco_ruptures'     && <OperationsPage profile={profile} initialTab="inventory" />}
