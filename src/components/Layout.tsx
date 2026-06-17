@@ -35,15 +35,16 @@ const C = {
 
 // Nueva estructura de páginas - De operativo a estratégico
 export type PageKey = 
-  | 'cco_monitoring'    // CCO — live monitoring
-  | 'cco_incidents'     // CCO — incidents
-  | 'cco_ruptures'      // CCO — inventory ruptures
+  | 'home'              // Home — snapshot + quick links
+  | 'cco_monitoring'    // OCC — live monitoring
+  | 'cco_incidents'     // OCC — incidents
+  | 'cco_ruptures'      // OCC — inventory ruptures
   | 'plan_week'         // Plan → Week
   | 'plan_predispatch'  // Plan → Pre-dispatch
   | 'plan_field'        // Plan → Field
-  | 'tars_rules'        // TARS OS → Rules
-  | 'tars_squads'       // TARS OS → Squads
-  | 'tars_blocks'       // TARS OS → Squad Blocks
+  | 'tars_rules'        // TARS Core → Rules
+  | 'tars_squads'       // TARS Core → Squads
+  | 'tars_blocks'       // TARS Core → Squad Blocks
   | 'earn_cascade'      // Earn → Weekly cascade
   | 'earn_stats'        // Earn → Stats
   | 'earn_billing'      // Earn → Billing
@@ -56,12 +57,20 @@ interface NavItem {
   label: string
   sublabel?: string
   Icon: any
-  section: 'operate' | 'plan' | 'tars' | 'earn' | 'grow' | 'system'
+  section: 'home' | 'operate' | 'plan' | 'tars' | 'earn' | 'grow' | 'system'
   badge?: number
   gradient?: string
 }
 
 const NAV_ITEMS: NavItem[] = [
+  // HOME — entry point
+  {
+    key: 'home',
+    label: 'Home',
+    sublabel: 'Snapshot & quick links',
+    Icon: Home,
+    section: 'home',
+  },
   // OPERATE — live, right now, three real pages
   { 
     key: 'cco_monitoring', 
@@ -164,15 +173,16 @@ const NAV_ITEMS: NavItem[] = [
 ]
 
 const PAGE_TITLES: Record<PageKey, string> = {
+  home:              'Home',
   cco_monitoring:    'Monitoring',
   cco_incidents:     'Incidents',
   cco_ruptures:      'Ruptures',
   plan_week:         'Week',
   plan_predispatch:  'Pre-dispatch',
   plan_field:        'Field',
-  tars_rules:        'TARS OS — Rules',
-  tars_squads:       'TARS OS — Squads',
-  tars_blocks:       'TARS OS — Squad Blocks',
+  tars_rules:        'TARS Core — Rules',
+  tars_squads:       'TARS Core — Squads',
+  tars_blocks:       'TARS Core — Squad Blocks',
   earn_cascade:      'Weekly Cascade',
   earn_stats:        'Stats',
   earn_billing:      'Billing',
@@ -182,6 +192,7 @@ const PAGE_TITLES: Record<PageKey, string> = {
 }
 
 const PAGE_SUBTITLES: Record<PageKey, string> = {
+  home:              'Today at a glance',
   cco_monitoring:    'Live cleanings map & status',
   cco_incidents:     'Reported issues today',
   cco_ruptures:      'Inventory breaks today',
@@ -236,6 +247,7 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
     setMobileOpen(false)
   }
 
+  const homeItems    = NAV_ITEMS.filter(i => i.section === 'home')
   const operateItems = NAV_ITEMS.filter(i => i.section === 'operate')
   const planItems     = NAV_ITEMS.filter(i => i.section === 'plan')
   const tarsItems     = NAV_ITEMS.filter(i => i.section === 'tars')
@@ -286,36 +298,38 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
           display: 'flex', 
           alignItems: 'center', 
           gap: '12px', 
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
-          minHeight: 60
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          minHeight: 64
         }}>
           {!collapsed && (
             <div style={{ 
-              width: 36, 
-              height: 36, 
-              borderRadius: 10, 
-              background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+              width: 38, 
+              height: 38, 
+              borderRadius: 11, 
+              background: 'linear-gradient(135deg, #818CF8 0%, #6366F1 50%, #A855F7 100%)',
               display: 'flex', 
               alignItems: 'center', 
               justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+              boxShadow: '0 0 0 1px rgba(255,255,255,0.1) inset, 0 6px 16px rgba(99, 102, 241, 0.45)',
+              flexShrink: 0,
             }}>
-              <Home className="w-5 h-5 text-white" strokeWidth={2.5} />
+              <Home className="w-[18px] h-[18px] text-white" strokeWidth={2.5} />
             </div>
           )}
           {!collapsed && (
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <span style={{ 
                 color: 'white', 
-                fontSize: 20, 
+                fontSize: 19, 
                 fontWeight: 800, 
                 letterSpacing: '-0.02em',
-                display: 'block'
+                display: 'block',
+                lineHeight: 1.15,
               }}>
                 Shine<span style={{ color: '#FBBF24' }}>UP</span>
               </span>
-              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>
-                Admin Dashboard
+              <span style={{ fontSize: 10.5, color: '#A5ADFB', fontWeight: 600, letterSpacing: '0.02em' }}>
+                Operating System
               </span>
             </div>
           )}
@@ -347,15 +361,32 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
 
         {/* Nav */}
         <div style={{ flex: 1, padding: '12px 10px', overflowY: 'auto' }}>
+
+          {/* Home — fixed, not collapsible */}
+          <div style={{ marginBottom: 8 }}>
+            {homeItems.map(item => (
+              <NavBtn 
+                key={item.key} 
+                item={item} 
+                active={page === item.key} 
+                collapsed={collapsed} 
+                badge={badges[item.key]}
+                hovered={hoveredItem === item.key}
+                onHover={setHoveredItem}
+                onClick={() => handleNavigate(item.key)} 
+              />
+            ))}
+          </div>
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '4px 10px 10px' }} />
           
           {/* Section renderer — collapsible, Booking Koala style */}
           {[
-            { key: 'operate', label: 'Operate', items: operateItems, sectionIcon: null as any },
-            { key: 'plan',    label: 'Plan',    items: planItems,    sectionIcon: null as any },
-            { key: 'tars',    label: 'TARS OS', items: tarsItems,    sectionIcon: AstronautIcon },
-            { key: 'earn',    label: 'Earn',    items: earnItems,    sectionIcon: null as any },
-            { key: 'grow',    label: 'Grow',    items: growItems,    sectionIcon: null as any },
-            { key: 'system',  label: 'System',  items: systemItems,  sectionIcon: null as any },
+            { key: 'operate', label: 'Operate',  items: operateItems, sectionIcon: null as any },
+            { key: 'plan',    label: 'Plan',      items: planItems,    sectionIcon: null as any },
+            { key: 'tars',    label: 'TARS Core', items: tarsItems,    sectionIcon: AstronautIcon },
+            { key: 'earn',    label: 'Earn',      items: earnItems,    sectionIcon: null as any },
+            { key: 'grow',    label: 'Grow',      items: growItems,    sectionIcon: null as any },
+            { key: 'system',  label: 'System',    items: systemItems,  sectionIcon: null as any },
           ].map((group, gi) => group.items.length > 0 && (
             <div key={group.key}>
               {gi > 0 && (
