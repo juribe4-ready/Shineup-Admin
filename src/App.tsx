@@ -9,6 +9,8 @@ import AnalysisPage from './components/AnalysisPage'
 import CommandCenterPage from './components/CommandCenterPage'
 import ImportPage from './components/ImportPage'
 import SettingsPage from './components/SettingsPage'
+import RulesPage from './components/RulesPage'
+import SquadBlocksPage from './components/SquadBlocksPage'
 import HomePage from './components/HomePage'
 import SquadsPage from './components/SquadsPage'
 
@@ -75,9 +77,10 @@ export default function App() {
       {page === 'plan_week'        && <PlanningPage />}
       {page === 'plan_predispatch' && <ComingSoon title="Pre-dispatch" />}
       {page === 'plan_field'       && <ComingSoon title="Field" />}
-      {page === 'tars_rules'       && <SettingsPage />}
+      {page === 'tars_rules'       && <RulesPage />}
+      {page === 'system_settings' && <SettingsPage />}
       {page === 'tars_squads'      && <SquadsPage />}
-      {page === 'tars_blocks'      && <ComingSoon title="Squad Blocks" />}
+      {page === 'tars_blocks'      && <SquadBlocksPage />}
       {page === 'earn_cascade'     && <AnalysisPage initialTab="cascade" />}
       {page === 'earn_stats'       && <AnalysisPage initialTab="stats" />}
       {page === 'earn_billing'     && <AnalysisPage initialTab="billing" />}
