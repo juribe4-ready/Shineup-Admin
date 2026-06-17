@@ -446,7 +446,7 @@ export default function DashboardPage({ profile: _profile, externalDate }: Props
             ))}
           </div>
         </div>
-        <div ref={mapRef} style={{ height: '420px', background: C.bg }}>
+        <div ref={mapRef} style={{ height: '420px', background: C.bg, position: 'relative', zIndex: 0, isolation: 'isolate' }}>
           {!mapReady && (
             <div className="flex items-center justify-center h-full" style={{ color: C.muted }}>
               <div className="text-center">
@@ -456,6 +456,10 @@ export default function DashboardPage({ profile: _profile, externalDate }: Props
             </div>
           )}
         </div>
+        <style>{`
+          .leaflet-pane, .leaflet-top, .leaflet-bottom, .leaflet-control { z-index: 1 !important; }
+          .leaflet-control-container { z-index: 2 !important; }
+        `}</style>
       </div>
 
       {/* Stats cards */}

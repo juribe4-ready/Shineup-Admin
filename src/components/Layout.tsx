@@ -36,69 +36,72 @@ interface NavItem {
   label: string
   sublabel?: string
   Icon: any
-  section: 'main' | 'config'
+  section: 'operate' | 'plan' | 'earn' | 'grow' | 'system'
   badge?: number
   gradient?: string
 }
 
 const NAV_ITEMS: NavItem[] = [
-  // NIVEL OPERATIVO → ESTRATÉGICO
+  // OPERATE — live, right now
   { 
     key: 'operations', 
     label: 'CCO',
-    sublabel: 'Control de Operaciones',
+    sublabel: 'Live monitoring',
     Icon: Radio,        
-    section: 'main',
+    section: 'operate',
     gradient: 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
   },
+  // PLAN — three horizons live as tabs inside this one page
   { 
     key: 'planning',   
-    label: 'Planificación', 
-    sublabel: 'Semana',
+    label: 'Planning', 
+    sublabel: 'Week · Pre-dispatch · Field',
     Icon: CalendarDays,    
-    section: 'main',
+    section: 'plan',
     gradient: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)'
   },
+  // EARN — what happened, what it's worth
   { 
     key: 'analysis',     
-    label: 'Análisis',  
-    sublabel: 'Productividad',
+    label: 'Analysis',  
+    sublabel: 'Cascades · stats · trends',
     Icon: TrendingUp,       
-    section: 'main',
+    section: 'earn',
     gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)'
   },
+  // GROW — North Star
   { 
     key: 'command',
     label: 'Command Center',
     sublabel: 'North Star',
     Icon: LayoutDashboard,
-    section: 'main',
+    section: 'grow',
     gradient: 'linear-gradient(135deg, #EC4899 0%, #DB2777 100%)'
   },
-  // CONFIG
-  { key: 'users',      label: 'Usuarios',      Icon: Users,     section: 'config' },
-  { key: 'import',     label: 'Importar',      Icon: Upload,    section: 'config' },
-  { key: 'settings',   label: 'Configuración', Icon: Settings,  section: 'config' },
+  // SYSTEM — set once, not checked daily
+  { key: 'users',      label: 'Users',    Icon: Users,    section: 'system' },
+  { key: 'import',     label: 'Import',   Icon: Upload,   section: 'system' },
+  { key: 'settings',   label: 'TARS OS',  Icon: Settings, section: 'system' },
 ]
 
 const PAGE_TITLES: Record<PageKey, string> = {
   operations: 'CCO',
-  planning:   'Planificación',
-  analysis:   'Análisis',
+  planning:   'Planning',
+  analysis:   'Analysis',
   command:    'Command Center',
-  users:      'Gestión de Usuarios',
-  import:     'Importar Pagos',
-  settings:   'Configuración',
+  users:      'Users',
+  import:     'Import',
+  settings:   'TARS OS',
 }
 
 const PAGE_SUBTITLES: Record<PageKey, string> = {
-  operations: 'Centro de Control de Operaciones',
-  planning:   'Lanzador y calendario semanal',
-  analysis:   'Cascadas, productividad y tendencias',
-  command:    'North Star y KPIs ejecutivos',
-  users:      'Administración de usuarios',
+  operations: 'Operations control center',
+  planning:   'Week launch, pre-dispatch & field',
+  analysis:   'Cascades, productivity & trends',
+  command:    'North Star & executive KPIs',
+  users:      'User management',
   import:     'Turno · Guesty · Hospitable',
-  settings:   'Configuración del sistema',
+  settings:   'Capacity, revenue & routing rules',
 }
 
 interface Props {
@@ -128,8 +131,11 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
     setMobileOpen(false)
   }
 
-  const mainItems   = NAV_ITEMS.filter(i => i.section === 'main')
-  const configItems = NAV_ITEMS.filter(i => i.section === 'config')
+  const operateItems = NAV_ITEMS.filter(i => i.section === 'operate')
+  const planItems     = NAV_ITEMS.filter(i => i.section === 'plan')
+  const earnItems     = NAV_ITEMS.filter(i => i.section === 'earn')
+  const growItems     = NAV_ITEMS.filter(i => i.section === 'grow')
+  const systemItems   = NAV_ITEMS.filter(i => i.section === 'system')
 
   const sideW = isMobile ? '0' : collapsed ? '72px' : '240px'
 
@@ -236,68 +242,48 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
         {/* Nav */}
         <div style={{ flex: 1, padding: '16px 12px', overflowY: 'auto' }}>
           
-          {/* Main Navigation */}
-          {!collapsed && (
-            <p style={{ 
-              fontSize: 10, 
-              fontWeight: 600, 
-              letterSpacing: '0.08em', 
-              color: 'rgba(255,255,255,0.3)', 
-              textTransform: 'uppercase', 
-              padding: '0 8px', 
-              marginBottom: 12 
-            }}>
-              Navegación
-            </p>
-          )}
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {mainItems.map(item => (
-              <NavBtn 
-                key={item.key} 
-                item={item} 
-                active={page === item.key} 
-                collapsed={collapsed} 
-                badge={badges[item.key]}
-                hovered={hoveredItem === item.key}
-                onHover={setHoveredItem}
-                onClick={() => handleNavigate(item.key)} 
-              />
-            ))}
-          </div>
-
-          {/* Divider */}
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '20px 8px' }} />
-
-          {/* Config */}
-          {!collapsed && (
-            <p style={{ 
-              fontSize: 10, 
-              fontWeight: 600, 
-              letterSpacing: '0.08em', 
-              color: 'rgba(255,255,255,0.3)', 
-              textTransform: 'uppercase', 
-              padding: '0 8px', 
-              marginBottom: 12 
-            }}>
-              Configuración
-            </p>
-          )}
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {configItems.map(item => (
-              <NavBtn 
-                key={item.key} 
-                item={item} 
-                active={page === item.key} 
-                collapsed={collapsed} 
-                badge={badges[item.key]}
-                hovered={hoveredItem === item.key}
-                onHover={setHoveredItem}
-                onClick={() => handleNavigate(item.key)} 
-              />
-            ))}
-          </div>
+          {/* Section renderer */}
+          {[
+            { label: 'Operate', items: operateItems },
+            { label: 'Plan',    items: planItems },
+            { label: 'Earn',    items: earnItems },
+            { label: 'Grow',    items: growItems },
+            { label: 'System',  items: systemItems },
+          ].map((group, gi) => group.items.length > 0 && (
+            <div key={group.label}>
+              {gi > 0 && (
+                <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '16px 8px' }} />
+              )}
+              {!collapsed && (
+                <p style={{ 
+                  fontSize: 10, 
+                  fontWeight: 600, 
+                  letterSpacing: '0.08em', 
+                  color: 'rgba(255,255,255,0.3)', 
+                  textTransform: 'uppercase', 
+                  padding: '0 8px', 
+                  marginBottom: 12,
+                  marginTop: gi > 0 ? 4 : 0,
+                }}>
+                  {group.label}
+                </p>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 4 }}>
+                {group.items.map(item => (
+                  <NavBtn 
+                    key={item.key} 
+                    item={item} 
+                    active={page === item.key} 
+                    collapsed={collapsed} 
+                    badge={badges[item.key]}
+                    hovered={hoveredItem === item.key}
+                    onHover={setHoveredItem}
+                    onClick={() => handleNavigate(item.key)} 
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* Footer - User Profile */}
