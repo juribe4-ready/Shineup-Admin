@@ -41,11 +41,12 @@ function addDaysToISO(iso: string, days: number): string {
 
 function timeFromScheduled(scheduledTime: string | null): string {
   if (!scheduledTime) return ''
-  // Airtable returns this as a UTC ISO string. Convert to Eastern Time (Columbus, OH)
-  // instead of reading the raw UTC digits, which were off by the UTC↔Eastern offset.
-  const d = new Date(scheduledTime)
-  if (isNaN(d.getTime())) return ''
-  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/New_York' })
+  // This Airtable field has no fixed timezone (collaborators see it in their own local zone,
+  // and the value was typed as a literal time, e.g. "09:30" means 9:30am, period).
+  // Reading it through Date/toLocaleTimeString re-interprets it as UTC and shifts it —
+  // so instead we read the HH:MM digits straight out of the ISO string, no conversion.
+  const t = scheduledTime.split('T')[1]
+  return t ? t.substring(0, 5) : ''
 }
 
 export default function PreDispatchPage() {
