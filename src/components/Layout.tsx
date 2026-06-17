@@ -3,7 +3,7 @@ import { Profile } from '../supabase'
 import {
   CalendarDays, Users, LogOut, ChevronLeft, 
   TrendingUp, Settings, Home, ChevronRight, Radio, LayoutDashboard, Menu, X as XIcon, Upload,
-  Rocket, ChevronDown, Moon, HardHat, ListChecks, Layers, CalendarClock
+  Rocket, ChevronDown, HardHat, ListChecks, Layers, CalendarClock
 } from 'lucide-react'
 
 const C = {
