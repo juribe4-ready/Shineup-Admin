@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { ChevronLeft, ChevronRight, RefreshCw, Users, X } from 'lucide-react'
 
 const C = {
@@ -91,33 +91,46 @@ export default function PreDispatchPage() {
     return [...weekdaySquads, ...flexibleSquads]
   }
 
-  // Cleanings already launched, scheduled, but with no squad block linked yet,
-  // minus any currently mid-assignment (prevents double-drop before the refresh completes)
+  // Cleanings already launched, scheduled, but with no squad block linked yet.
+  // Pending ones (mid-assignment) stay visible but grayed out — not removed —
+  // so the user sees immediate feedback instead of the pill vanishing abruptly.
   const [pendingCleaningIds, setPendingCleaningIds] = useState<Set<string>>(new Set())
+  const inFlightRef = useRef<Set<string>>(new Set())
   const assignedCleaningIds = new Set(blocks.map(b => b.cleaningId).filter(Boolean))
-  const unassignedCleanings = cleanings.filter(c => !assignedCleaningIds.has(c.id) && !pendingCleaningIds.has(c.id))
+  const unassignedCleanings = cleanings.filter(c => !assignedCleaningIds.has(c.id))
 
   // Drag and drop: assign a launched Cleaning to a squad on a given date
-  const handleDropCleaning = async (squadId: string, date: string, cleaningId: string) => {
+  const handleDropCleaning = (squadId: string, date: string, cleaningId: string) => {
     setDraggedCleaningId(null)
 
-    // Guard: this cleaning is already being assigned (double-drop protection)
-    if (pendingCleaningIds.has(cleaningId)) return
-    // Guard: this cleaning already has a squad block (stale UI before refresh caught up)
-    if (assignedCleaningIds.has(cleaningId)) { showToast('Esta limpieza ya tiene squad asignado', 'err'); return }
+    // Guard: this cleaning is already mid-assignment (sync ref, immune to render timing),
+    // or already has a confirmed block (stale UI before refresh caught up)
+    if (inFlightRef.current.has(cleaningId) || assignedCleaningIds.has(cleaningId)) return
+    inFlightRef.current.add(cleaningId)
 
     const cleaning = cleanings.find(c => c.id === cleaningId)
     const squad = squads.find(s => s.id === squadId)
-    if (!cleaning || !squad) return
+    if (!cleaning || !squad) { inFlightRef.current.delete(cleaningId); return }
 
-    const dateMismatch = cleaning.date !== date
-    const confirmMsg = dateMismatch
-      ? `Esta limpieza es del ${cleaning.date}, pero la estás asignando el ${date}. ¿Confirmas el cambio de fecha y la asignación a ${squad.name}?`
-      : `¿Asignar esta limpieza a ${squad.name}?`
-    if (!window.confirm(confirmMsg)) return
-
+    // Mark as pending IMMEDIATELY so the pill grays out right away in the UI
     setPendingCleaningIds(prev => new Set(prev).add(cleaningId))
 
+    // Only ask for confirmation when the drop date doesn't match the cleaning's real date —
+    // same-day assignment proceeds immediately, no popup, to keep the workflow fast.
+    const dateMismatch = cleaning.date !== date
+    if (dateMismatch) {
+      const ok = window.confirm(`Esta limpieza es del ${cleaning.date}, la estás moviendo al ${date}. ¿Confirmas?`)
+      if (!ok) {
+        inFlightRef.current.delete(cleaningId)
+        setPendingCleaningIds(prev => { const next = new Set(prev); next.delete(cleaningId); return next })
+        return
+      }
+    }
+
+    assignCleaning(squad, date, cleaning)
+  }
+
+  const assignCleaning = async (squad: Squad, date: string, cleaning: Cleaning) => {
     const startTime = timeFromScheduled(cleaning.scheduledTime)
     const validStart = startTime !== '--:--' ? startTime : `${String(squad.startHour).padStart(2, '0')}:00`
     const [h, m] = validStart.split(':').map(Number)
@@ -130,8 +143,8 @@ export default function PreDispatchPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          squadId, date, startTime: validStart, endTime,
-          type: 'Appointment', cleaningId,
+          squadId: squad.id, date, startTime: validStart, endTime,
+          type: 'Appointment', cleaningId: cleaning.id,
           notes: cleaning.propertyText || '',
         })
       })
@@ -142,7 +155,8 @@ export default function PreDispatchPage() {
     } catch { showToast('Error al asignar', 'err') }
     finally {
       setSaving(false)
-      setPendingCleaningIds(prev => { const next = new Set(prev); next.delete(cleaningId); return next })
+      setPendingCleaningIds(prev => { const next = new Set(prev); next.delete(cleaning.id); return next })
+      inFlightRef.current.delete(cleaning.id)
     }
   }
 
@@ -235,16 +249,26 @@ export default function PreDispatchPage() {
               const dayUnassigned = unassignedCleanings.filter(c => c.date === date)
               return (
                 <div key={date} className="border-l p-1.5 overflow-y-auto" style={{ borderColor: C.border, maxHeight: 220, minHeight: 60 }}>
-                  {dayUnassigned.map(c => (
-                    <div key={c.id}
-                      draggable
-                      onDragStart={() => setDraggedCleaningId(c.id)}
-                      onDragEnd={() => setDraggedCleaningId(null)}
-                      className="rounded-xl px-2 py-1 mb-1 cursor-grab active:cursor-grabbing transition-opacity"
-                      style={{ background: '#FEF3C7', border: '1px solid #FDE68A', opacity: draggedCleaningId === c.id ? 0.4 : 1 }}>
-                      <p className="text-[9px] font-black truncate" style={{ color: '#92400E' }}>{timeFromScheduled(c.scheduledTime)} · {c.propertyText}</p>
-                    </div>
-                  ))}
+                  {dayUnassigned.map(c => {
+                    const isPending = pendingCleaningIds.has(c.id)
+                    return (
+                      <div key={c.id}
+                        draggable={!isPending}
+                        onDragStart={() => !isPending && setDraggedCleaningId(c.id)}
+                        onDragEnd={() => setDraggedCleaningId(null)}
+                        className="rounded-xl px-2 py-1 mb-1 transition-opacity"
+                        style={{
+                          background: isPending ? '#F1F5F9' : '#FEF3C7',
+                          border: `1px solid ${isPending ? C.border : '#FDE68A'}`,
+                          opacity: isPending ? 0.5 : (draggedCleaningId === c.id ? 0.4 : 1),
+                          cursor: isPending ? 'not-allowed' : 'grab',
+                        }}>
+                        <p className="text-[9px] font-black truncate" style={{ color: isPending ? C.muted : '#92400E' }}>
+                          {timeFromScheduled(c.scheduledTime)} · {c.propertyText}{isPending ? ' · asignando…' : ''}
+                        </p>
+                      </div>
+                    )
+                  })}
                 </div>
               )
             })}
