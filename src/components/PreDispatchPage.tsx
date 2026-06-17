@@ -41,12 +41,16 @@ function addDaysToISO(iso: string, days: number): string {
 
 function timeFromScheduled(scheduledTime: string | null): string {
   if (!scheduledTime) return ''
-  // This Airtable field has no fixed timezone (collaborators see it in their own local zone,
-  // and the value was typed as a literal time, e.g. "09:30" means 9:30am, period).
-  // Reading it through Date/toLocaleTimeString re-interprets it as UTC and shifts it —
-  // so instead we read the HH:MM digits straight out of the ISO string, no conversion.
-  const t = scheduledTime.split('T')[1]
-  return t ? t.substring(0, 5) : ''
+  // Confirmed with real data (5318 Hyde Park Dr: API returns "...T15:30:00.000Z",
+  // user confirmed the real time is 9:30am Columbus = exactly 6 hours earlier).
+  // This field has no fixed timezone configured in Airtable, and testing shows the API
+  // serializes it with a CONSTANT -6h offset that does NOT shift with daylight saving —
+  // unlike Eastern Time, which would be -4h in summer and -5h in winter. So we subtract
+  // a fixed 6 hours rather than using a named IANA timezone (which would reintroduce DST).
+  const d = new Date(scheduledTime)
+  if (isNaN(d.getTime())) return ''
+  d.setUTCHours(d.getUTCHours() - 6)
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`
 }
 
 export default function PreDispatchPage() {
@@ -242,14 +246,6 @@ export default function PreDispatchPage() {
             <span className="w-2.5 h-2.5 rounded shrink-0" style={{ background: tc.border }} />
             {type}
           </span>
-        ))}
-      </div>
-
-      {/* TEMP DEBUG — remove after diagnosing */}
-      <div style={{ background: '#1E1B4B', color: '#A5B4FC', padding: 14, borderRadius: 12, fontSize: 10.5, fontFamily: 'monospace', lineHeight: 1.6, wordBreak: 'break-all' }}>
-        <p style={{ color: 'white', fontWeight: 700, marginBottom: 6 }}>DEBUG — quitar después</p>
-        {cleanings.map(c => (
-          <p key={c.id}>{c.propertyText}: raw="{c.scheduledTime}" → parsed="{timeFromScheduled(c.scheduledTime)}"</p>
         ))}
       </div>
 
