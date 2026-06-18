@@ -341,7 +341,10 @@ export default function SquadBlocksPage() {
                     }
                     return (
                       <div key={date} onClick={() => openCreate(squad.id, date)}
+                        className="group relative"
                         style={{ padding: '6px', minHeight: 56, borderLeft: `1px solid ${C.border}`, background: structural ? '#FFFBEB' : C.white, cursor: 'pointer' }}>
+                        <Plus className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-60 transition-opacity"
+                          style={{ width: 13, height: 13, color: C.primary }} />
                         {structural && dayBlocks.length === 0 && (
                           <div style={{ fontSize: 9.5, fontWeight: 700, color: C.amber, textAlign: 'center', padding: '4px 0' }}>STR-only</div>
                         )}
