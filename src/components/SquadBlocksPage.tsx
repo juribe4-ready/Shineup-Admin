@@ -23,8 +23,15 @@ const colorForType = (type: string | null) => (type && TYPE_COLORS[type]) || DEF
 
 interface Squad { id: string; name: string; color: string; type: string; startHour: number; endHour: number }
 interface Block { id: string; squadId: string; date: string; startTime: string; endTime: string; type: string; notes: string; cleaningId: string | null }
-interface Cleaning { id: string; cleaningType: string | null; price: number | null; laborMinutes: number | null }
-interface Availability { date: string; available: boolean; residualHours: number; reason: string | null }
+interface Cleaning { id: string; cleaningType: string | null; price: number | null; laborMinutes: number | null; status: string }
+interface Availability {
+  date: string; available: boolean; residualHours: number; reason: string | null
+  breakdown?: {
+    totalCapacityHours: number; totalFreeHours: number
+    unassignedApptCount: number; unassignedApptHours: number; bufferPct: number
+    perSquad: { squadId: string; capacityHours: number; freeHours: number; blockedCount: number }[]
+  }
+}
 
 function getMonday(d: Date) {
   const dow = (d.getDay() + 6) % 7
@@ -129,20 +136,29 @@ export default function SquadBlocksPage() {
   }
 
   // Weekly summary per squad: count of cleanings by type, total revenue, total effort hours.
-  // Only counts blocks of type 'Appointment' (real launched cleanings), not manual blocks.
+  // Deduplicates by cleaningId (in case more than one block ever pointed at the same cleaning,
+  // e.g. from before the duplicate-assignment guard existed) and only counts cleanings whose
+  // status matches what Cobranza counts as billable, so the two numbers are actually comparable.
+  const BILLABLE_STATUSES = ['Done', 'In Progress', 'Opened', 'Scheduled', 'Programmed']
   const summaryForSquad = (squadId: string) => {
     const squadBlocks = blocks.filter(b => b.squadId === squadId && b.type === 'Appointment' && dates.includes(b.date))
+    const seenCleaningIds = new Set<string>()
     const byType: Record<string, number> = {}
     let revenue = 0
     let effortMinutes = 0
+    let total = 0
     for (const b of squadBlocks) {
+      if (!b.cleaningId || seenCleaningIds.has(b.cleaningId)) continue
+      seenCleaningIds.add(b.cleaningId)
       const cleaning = cleanings.find(c => c.id === b.cleaningId)
-      const typeLabel = cleaning?.cleaningType || 'Otro'
+      if (!cleaning || !BILLABLE_STATUSES.includes(cleaning.status)) continue
+      total++
+      const typeLabel = cleaning.cleaningType || 'Otro'
       byType[typeLabel] = (byType[typeLabel] || 0) + 1
-      if (cleaning?.price) revenue += cleaning.price
-      if (cleaning?.laborMinutes) effortMinutes += cleaning.laborMinutes
+      if (cleaning.price) revenue += cleaning.price
+      if (cleaning.laborMinutes) effortMinutes += cleaning.laborMinutes
     }
-    return { byType, revenue, effortHours: Math.round((effortMinutes / 60) * 10) / 10, total: squadBlocks.length }
+    return { byType, revenue, effortHours: Math.round((effortMinutes / 60) * 10) / 10, total }
   }
 
   const handleSave = async () => {
@@ -219,11 +235,16 @@ export default function SquadBlocksPage() {
       {/* Weekly summary across all squads */}
       {(() => {
         const allBlocks = blocks.filter(b => b.type === 'Appointment' && dates.includes(b.date))
-        let revenue = 0, effortMinutes = 0
+        const seenCleaningIds = new Set<string>()
+        let revenue = 0, effortMinutes = 0, total = 0
         for (const b of allBlocks) {
+          if (!b.cleaningId || seenCleaningIds.has(b.cleaningId)) continue
+          seenCleaningIds.add(b.cleaningId)
           const cleaning = cleanings.find(c => c.id === b.cleaningId)
-          if (cleaning?.price) revenue += cleaning.price
-          if (cleaning?.laborMinutes) effortMinutes += cleaning.laborMinutes
+          if (!cleaning || !BILLABLE_STATUSES.includes(cleaning.status)) continue
+          total++
+          if (cleaning.price) revenue += cleaning.price
+          if (cleaning.laborMinutes) effortMinutes += cleaning.laborMinutes
         }
         const effortHours = Math.round((effortMinutes / 60) * 10) / 10
         return (
@@ -238,7 +259,7 @@ export default function SquadBlocksPage() {
             </div>
             <div>
               <p style={{ fontSize: 9.5, fontWeight: 700, color: C.primary, textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Limpiezas</p>
-              <p style={{ fontSize: 17, fontWeight: 800, color: C.ink, margin: '2px 0 0' }}>{allBlocks.length}</p>
+              <p style={{ fontSize: 17, fontWeight: 800, color: C.ink, margin: '2px 0 0' }}>{total}</p>
             </div>
           </div>
         )
@@ -292,10 +313,16 @@ export default function SquadBlocksPage() {
                 return <div key={date} style={{ padding: '10px 8px', textAlign: 'center', borderLeft: `1px solid ${C.border}` }} />
               }
               return (
-                <div key={date} style={{ padding: '8px 6px', textAlign: 'center', borderLeft: `1px solid ${C.border}` }}>
+                <div key={date} style={{ padding: '8px 6px', textAlign: 'center', borderLeft: `1px solid ${C.border}` }}
+                  title={avail.breakdown ? `Capacidad total: ${avail.breakdown.totalCapacityHours}h\nLibre antes de buffer: ${avail.breakdown.totalFreeHours}h\nAppointments sin asignar: ${avail.breakdown.unassignedApptCount} (−${avail.breakdown.unassignedApptHours}h)\nBuffer de ruta: ${avail.breakdown.bufferPct}%\n\nPor squad:\n${avail.breakdown.perSquad.map(s => `  ${s.squadId.slice(-4)}: ${s.freeHours}h libres de ${s.capacityHours}h (${s.blockedCount} bloques)`).join('\n')}` : ''}>
                   <p style={{ fontSize: 11, fontWeight: 800, margin: 0, color: avail.available ? C.green : C.red }}>
                     {avail.available ? `${avail.residualHours}h libre` : 'Lleno'}
                   </p>
+                  {avail.breakdown && (
+                    <p style={{ fontSize: 8, color: C.muted, margin: '2px 0 0', lineHeight: 1.3 }}>
+                      {avail.breakdown.totalFreeHours}h crudo · −{avail.breakdown.unassignedApptHours}h appts · −{avail.breakdown.bufferPct}% buffer
+                    </p>
+                  )}
                   {!avail.available && avail.reason && (
                     <p style={{ fontSize: 8.5, color: C.muted, margin: '2px 0 0', lineHeight: 1.2 }}>{avail.reason}</p>
                   )}
