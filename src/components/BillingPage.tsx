@@ -167,6 +167,8 @@ export default function BillingPage() {
           const dow = (now.getDay() + 6) % 7 // 0=Mon
           const mon = new Date(now); mon.setDate(now.getDate() - dow)
           const monStr = mon.toLocaleDateString('en-CA', tz)
+          const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
+          const sunStr = sun.toLocaleDateString('en-CA', tz)
           const weekNum = (() => {
             const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
             const dayNum = d.getUTCDay() || 7
@@ -178,12 +180,15 @@ export default function BillingPage() {
           const ytdStart = `${now.getFullYear()}-01-01`
 
           return [
-            { label: 'Today',           from: today,    to: today,   active: dateFrom===today && dateTo===today },
-            { label: `W${weekNum}`,     from: monStr,   to: today,   active: dateFrom===monStr && dateTo===today },
-            { label: 'MTD',             from: mtdStart, to: today,   active: dateFrom===mtdStart && dateTo===today },
-            { label: 'YTD',             from: ytdStart, to: today,   active: dateFrom===ytdStart && dateTo===today },
+            { label: 'Today',           from: today,    to: today,   active: dateFrom===today && dateTo===today, title: undefined },
+            { label: `W${weekNum} (a la fecha)`, from: monStr, to: today, active: dateFrom===monStr && dateTo===today,
+              title: 'Lunes a hoy — solo lo que ya pasó. No incluye limpiezas programadas para el resto de la semana.' },
+            { label: `W${weekNum} completa`, from: monStr, to: sunStr, active: dateFrom===monStr && dateTo===sunStr,
+              title: 'Lunes a domingo completos — incluye limpiezas programadas a futuro. Comparable con "Ingresos semana" en Squad Blocks.' },
+            { label: 'MTD',             from: mtdStart, to: today,   active: dateFrom===mtdStart && dateTo===today, title: undefined },
+            { label: 'YTD',             from: ytdStart, to: today,   active: dateFrom===ytdStart && dateTo===today, title: undefined },
           ].map(b => (
-            <button key={b.label} onClick={() => { setDateFrom(b.from); setDateTo(b.to) }}
+            <button key={b.label} onClick={() => { setDateFrom(b.from); setDateTo(b.to) }} title={b.title}
               style={{ height:38, padding:'0 12px', borderRadius:10, fontSize:12, fontWeight:700, cursor:'pointer', transition:'all 0.15s',
                 border:`1.5px solid ${b.active ? C.primary : C.border}`,
                 background: b.active ? C.primaryLight : C.white,

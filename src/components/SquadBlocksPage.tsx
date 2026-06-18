@@ -27,7 +27,7 @@ interface Cleaning { id: string; cleaningType: string | null; price: number | nu
 interface Availability {
   date: string; available: boolean; residualHours: number; reason: string | null
   breakdown?: {
-    totalCapacityHours: number; totalFreeHours: number
+    totalCapacityHours: number; usedHours: number; totalFreeHours: number
     unassignedApptCount: number; unassignedApptHours: number; bufferPct: number
     perSquad: { squadId: string; capacityHours: number; freeHours: number; blockedCount: number }[]
   }
@@ -249,8 +249,8 @@ export default function SquadBlocksPage() {
         const effortHours = Math.round((effortMinutes / 60) * 10) / 10
         return (
           <div style={{ display: 'flex', gap: 20, marginBottom: 16, padding: '12px 16px', borderRadius: 14, background: C.primaryLight, flexWrap: 'wrap' }}>
-            <div>
-              <p style={{ fontSize: 9.5, fontWeight: 700, color: C.primary, textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Ingresos semana</p>
+            <div title="Incluye limpiezas Done, In Progress, Opened, Scheduled y Programmed de toda la semana (lunes–domingo), incluyendo las que aún no han pasado. Para comparar con Cobranza, usa el filtro 'Semana completa' ahí.">
+              <p style={{ fontSize: 9.5, fontWeight: 700, color: C.primary, textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Ingresos semana (programado)</p>
               <p style={{ fontSize: 17, fontWeight: 800, color: C.ink, margin: '2px 0 0' }}>${revenue}</p>
             </div>
             <div>
@@ -314,13 +314,13 @@ export default function SquadBlocksPage() {
               }
               return (
                 <div key={date} style={{ padding: '8px 6px', textAlign: 'center', borderLeft: `1px solid ${C.border}` }}
-                  title={avail.breakdown ? `Capacidad total: ${avail.breakdown.totalCapacityHours}h\nLibre antes de buffer: ${avail.breakdown.totalFreeHours}h\nAppointments sin asignar: ${avail.breakdown.unassignedApptCount} (−${avail.breakdown.unassignedApptHours}h)\nBuffer de ruta: ${avail.breakdown.bufferPct}%\n\nPor squad:\n${avail.breakdown.perSquad.map(s => `  ${s.squadId.slice(-4)}: ${s.freeHours}h libres de ${s.capacityHours}h (${s.blockedCount} bloques)`).join('\n')}` : ''}>
+                  title={avail.breakdown ? `Capacidad total: ${avail.breakdown.totalCapacityHours}h\nOcupado por squads (bloqueos + limpiezas ya asignadas): −${avail.breakdown.usedHours}h\nLibre en calendario: ${avail.breakdown.totalFreeHours}h\nConfirmadas sin asignar a squad: ${avail.breakdown.unassignedApptCount} (−${avail.breakdown.unassignedApptHours}h)\nBuffer de ruta: −${avail.breakdown.bufferPct}%\n\nPor squad:\n${avail.breakdown.perSquad.map(s => `  ${s.squadId.slice(-4)}: ${s.freeHours}h libres de ${s.capacityHours}h (${s.blockedCount} bloques)`).join('\n')}` : ''}>
                   <p style={{ fontSize: 11, fontWeight: 800, margin: 0, color: avail.available ? C.green : C.red }}>
                     {avail.available ? `${avail.residualHours}h libre` : 'Lleno'}
                   </p>
                   {avail.breakdown && (
                     <p style={{ fontSize: 8, color: C.muted, margin: '2px 0 0', lineHeight: 1.3 }}>
-                      {avail.breakdown.totalFreeHours}h crudo · −{avail.breakdown.unassignedApptHours}h appts · −{avail.breakdown.bufferPct}% buffer
+                      {avail.breakdown.totalCapacityHours}h cap → {avail.breakdown.totalFreeHours}h libre · −{avail.breakdown.unassignedApptHours}h pend · −{avail.breakdown.bufferPct}% buf
                     </p>
                   )}
                   {!avail.available && avail.reason && (
