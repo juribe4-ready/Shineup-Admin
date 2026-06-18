@@ -11,8 +11,19 @@ const C = {
   teal: '#14B8A6',
 }
 
+// Same palette as Pre-dispatch, so a cleaning type reads the same color everywhere
+const TYPE_COLORS: Record<string, { bg: string; border: string; text: string }> = {
+  'Standard STR Turnover': { bg: '#ECFDF5', border: '#10B981', text: '#047857' },
+  'Residential Cleaning':  { bg: '#EFF6FF', border: '#3B82F6', text: '#1D4ED8' },
+  'Deep Clean':            { bg: '#FEF3C7', border: '#F59E0B', text: '#92400E' },
+  'Move Out/In':           { bg: '#FCE7F3', border: '#EC4899', text: '#BE185D' },
+}
+const DEFAULT_TYPE_COLOR = { bg: '#F1F5F9', border: '#94A3B8', text: '#475569' }
+const colorForType = (type: string | null) => (type && TYPE_COLORS[type]) || DEFAULT_TYPE_COLOR
+
 interface Squad { id: string; name: string; color: string; type: string; startHour: number; endHour: number }
-interface Block { id: string; squadId: string; date: string; startTime: string; endTime: string; type: string; notes: string }
+interface Block { id: string; squadId: string; date: string; startTime: string; endTime: string; type: string; notes: string; cleaningId: string | null }
+interface Cleaning { id: string; cleaningType: string | null; price: number | null; laborMinutes: number | null }
 interface Availability { date: string; available: boolean; residualHours: number; reason: string | null }
 
 function getMonday(d: Date) {
@@ -27,6 +38,7 @@ const emptyForm = { squadId: '', date: '', startTime: '08:00', endTime: '18:00',
 export default function SquadBlocksPage() {
   const [squads, setSquads] = useState<Squad[]>([])
   const [blocks, setBlocks] = useState<Block[]>([])
+  const [cleanings, setCleanings] = useState<Cleaning[]>([])
   const [strOnlyDays, setStrOnlyDays] = useState<number[]>([])
   const [strOnlyDates, setStrOnlyDates] = useState<string[]>([])
   const [availability, setAvailability] = useState<Record<string, Availability>>({})
@@ -57,6 +69,7 @@ export default function SquadBlocksPage() {
         const d = await squadRes.json()
         setSquads(d.squads || [])
         setBlocks(d.blocks || [])
+        setCleanings(d.cleanings || [])
       }
       if (configRes.ok) {
         const c = await configRes.json()
@@ -113,6 +126,23 @@ export default function SquadBlocksPage() {
   const openCreate = (squadId?: string, date?: string) => {
     setForm({ ...emptyForm, squadId: squadId || squads[0]?.id || '', date: date || dates[0] })
     setShowForm(true)
+  }
+
+  // Weekly summary per squad: count of cleanings by type, total revenue, total effort hours.
+  // Only counts blocks of type 'Appointment' (real launched cleanings), not manual blocks.
+  const summaryForSquad = (squadId: string) => {
+    const squadBlocks = blocks.filter(b => b.squadId === squadId && b.type === 'Appointment' && dates.includes(b.date))
+    const byType: Record<string, number> = {}
+    let revenue = 0
+    let effortMinutes = 0
+    for (const b of squadBlocks) {
+      const cleaning = cleanings.find(c => c.id === b.cleaningId)
+      const typeLabel = cleaning?.cleaningType || 'Otro'
+      byType[typeLabel] = (byType[typeLabel] || 0) + 1
+      if (cleaning?.price) revenue += cleaning.price
+      if (cleaning?.laborMinutes) effortMinutes += cleaning.laborMinutes
+    }
+    return { byType, revenue, effortHours: Math.round((effortMinutes / 60) * 10) / 10, total: squadBlocks.length }
   }
 
   const handleSave = async () => {
@@ -181,10 +211,38 @@ export default function SquadBlocksPage() {
           </button>
           <button onClick={() => openCreate()}
             style={{ display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', borderRadius: 9, border: 'none', background: `linear-gradient(135deg, ${C.primary} 0%, #4F46E5 100%)`, color: 'white', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
-            <Plus style={{ width: 14, height: 14 }} /> Block
+            <Plus style={{ width: 15, height: 15 }} /> Bloqueo manual
           </button>
         </div>
       </div>
+
+      {/* Weekly summary across all squads */}
+      {(() => {
+        const allBlocks = blocks.filter(b => b.type === 'Appointment' && dates.includes(b.date))
+        let revenue = 0, effortMinutes = 0
+        for (const b of allBlocks) {
+          const cleaning = cleanings.find(c => c.id === b.cleaningId)
+          if (cleaning?.price) revenue += cleaning.price
+          if (cleaning?.laborMinutes) effortMinutes += cleaning.laborMinutes
+        }
+        const effortHours = Math.round((effortMinutes / 60) * 10) / 10
+        return (
+          <div style={{ display: 'flex', gap: 20, marginBottom: 16, padding: '12px 16px', borderRadius: 14, background: C.primaryLight, flexWrap: 'wrap' }}>
+            <div>
+              <p style={{ fontSize: 9.5, fontWeight: 700, color: C.primary, textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Ingresos semana</p>
+              <p style={{ fontSize: 17, fontWeight: 800, color: C.ink, margin: '2px 0 0' }}>${revenue}</p>
+            </div>
+            <div>
+              <p style={{ fontSize: 9.5, fontWeight: 700, color: C.primary, textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Esfuerzo total</p>
+              <p style={{ fontSize: 17, fontWeight: 800, color: C.ink, margin: '2px 0 0' }}>{effortHours}h</p>
+            </div>
+            <div>
+              <p style={{ fontSize: 9.5, fontWeight: 700, color: C.primary, textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Limpiezas</p>
+              <p style={{ fontSize: 17, fontWeight: 800, color: C.ink, margin: '2px 0 0' }}>{allBlocks.length}</p>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Legend */}
       <div style={{ display: 'flex', gap: 14, marginBottom: 14, fontSize: 11.5, color: C.muted }}>
@@ -258,28 +316,53 @@ export default function SquadBlocksPage() {
                     <div style={{ minWidth: 0 }}>
                       <p style={{ fontSize: 12.5, fontWeight: 700, color: C.ink, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{squad.name}</p>
                       <p style={{ fontSize: 10, color: C.muted, margin: 0 }}>{squad.type}</p>
+                      {(() => {
+                        const s = summaryForSquad(squad.id)
+                        if (s.total === 0) return null
+                        return (
+                          <p style={{ fontSize: 9.5, fontWeight: 700, color: C.primary, margin: '2px 0 0' }}>
+                            ${s.revenue} · {s.effortHours}h
+                          </p>
+                        )
+                      })()}
                     </div>
                   </div>
                   {dates.map(date => {
                     const structural = isStructuralSTR(date)
                     const dayBlocks = blocks.filter(b => b.squadId === squad.id && b.date === date)
+                    const dayManualBlocks = dayBlocks.filter(b => b.type !== 'Appointment')
+                    const dayCleaningBlocks = dayBlocks.filter(b => b.type === 'Appointment')
+                    // Group cleaning blocks by type for a compact summary chip instead of one pill per job
+                    const byType: Record<string, number> = {}
+                    for (const b of dayCleaningBlocks) {
+                      const cleaning = cleanings.find(c => c.id === b.cleaningId)
+                      const typeLabel = cleaning?.cleaningType || 'Otro'
+                      byType[typeLabel] = (byType[typeLabel] || 0) + 1
+                    }
                     return (
                       <div key={date} onClick={() => openCreate(squad.id, date)}
                         style={{ padding: '6px', minHeight: 56, borderLeft: `1px solid ${C.border}`, background: structural ? '#FFFBEB' : C.white, cursor: 'pointer' }}>
                         {structural && dayBlocks.length === 0 && (
                           <div style={{ fontSize: 9.5, fontWeight: 700, color: C.amber, textAlign: 'center', padding: '4px 0' }}>STR-only</div>
                         )}
-                        {dayBlocks.map(b => (
+                        {Object.entries(byType).map(([type, count]) => {
+                          const tc = colorForType(type)
+                          return (
+                            <div key={type} onClick={e => e.stopPropagation()}
+                              style={{ background: tc.bg, border: `1px solid ${tc.border}40`, borderRadius: 7, padding: '3px 6px', marginBottom: 3 }}>
+                              <span style={{ fontSize: 9.5, fontWeight: 700, color: tc.text }}>{count}× {type}</span>
+                            </div>
+                          )
+                        })}
+                        {dayManualBlocks.map(b => (
                           <div key={b.id} onClick={e => e.stopPropagation()}
-                            style={{ background: b.type === 'Appointment' ? C.greenLight : C.bg, border: `1px solid ${b.type === 'Appointment' ? C.green : C.teal}30`, borderRadius: 7, padding: '3px 6px', marginBottom: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
-                            <span style={{ fontSize: 9.5, fontWeight: 700, color: b.type === 'Appointment' ? C.green : C.teal, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {b.startTime}–{b.endTime}
+                            style={{ background: C.bg, border: `1px solid ${C.teal}30`, borderRadius: 7, padding: '3px 6px', marginBottom: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+                            <span style={{ fontSize: 9.5, fontWeight: 700, color: C.teal, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {b.type} {b.startTime}–{b.endTime}
                             </span>
-                            {b.type !== 'Appointment' && (
-                              <button onClick={() => handleDelete(b.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
-                                <X style={{ width: 9, height: 9, color: C.muted }} />
-                              </button>
-                            )}
+                            <button onClick={() => handleDelete(b.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+                              <X style={{ width: 9, height: 9, color: C.muted }} />
+                            </button>
                           </div>
                         ))}
                       </div>
