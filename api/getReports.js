@@ -425,14 +425,23 @@ async function getAvailability(headers, query) {
   }
 
   // 3. Load existing Squad Blocks for that date (assigned commitments per squad)
-  const blockFormula = encodeURIComponent(`{Date}='${date}'`)
+  // NOTE: exact equality `{Date}='...'` on Airtable Date fields is unreliable — it compares
+  // against the field's full underlying value (which can include a time component depending
+  // on field config), not just the date portion, so it can silently return zero matches even
+  // when blocks exist for that date. Range comparison (proven in getSquads.js for this same
+  // table) is the reliable way to pin to a single day.
+  const blockFormula = encodeURIComponent(`AND({Date}>='${date}', {Date}<='${date}')`)
   const blocksRes = await fetch(
-    `https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}?filterByFormula=${blockFormula}&fields[]=Squads&fields[]=StartTime&fields[]=EndTime`,
+    `https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}?filterByFormula=${blockFormula}&fields[]=Squads&fields[]=StartTime&fields[]=EndTime&fields[]=Date`,
     { headers }
   )
   const blocksData = await blocksRes.json()
   const blocksBySquad = {}
   for (const r of (blocksData.records || [])) {
+    // Belt-and-suspenders: also confirm the exact date string in JS, since this is the same
+    // defensive pattern used elsewhere in this file (getBilling, getImportMatch) to avoid
+    // ever trusting Airtable's date-equality formula behavior alone.
+    if (r.fields?.Date !== date) continue
     const sId = Array.isArray(r.fields?.Squads) ? r.fields.Squads[0] : r.fields?.Squads
     if (!sId) continue
     const s = timeToMinAvail(r.fields?.StartTime)
