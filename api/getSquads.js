@@ -143,6 +143,8 @@ export default async function handler(req, res) {
       assignedStaff: r.fields?.['Assigned Staff'] || [],
       appointmentCode: cleaningIdToApptCode[r.id] || null,
       appointmentRecordId: cleaningIdToApptRecordId[r.id] || null,
+      price: typeof r.fields?.Price === 'number' ? r.fields.Price : null,
+      laborMinutes: typeof r.fields?.Labor === 'number' ? r.fields.Labor : null,
       cleaningType: r.fields?.['Cleaning Type Text'] || (Array.isArray(r.fields?.['Cleaning Type']) ? null : r.fields?.['Cleaning Type']) || null,
     }))
 
