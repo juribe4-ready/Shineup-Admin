@@ -511,5 +511,19 @@ async function getAvailability(headers, query) {
     suggestedPrice,
     ratePerHour: rate,
     reason: available ? null : 'Not enough free capacity that day',
+    // Breakdown so the UI can show exactly how this number was calculated
+    breakdown: {
+      totalCapacityHours: Math.round(activeSquads.reduce((sum, s) => sum + (s.endMin - s.startMin) / 60, 0) * 10) / 10,
+      totalFreeHours: Math.round(totalFreeHours * 10) / 10,
+      unassignedApptCount,
+      unassignedApptHours: Math.round(unassignedApptHours * 10) / 10,
+      bufferPct: config.routeBufferPct || 0,
+      perSquad: perSquadDebug.map(s => ({
+        squadId: s.squadId,
+        capacityHours: Math.round((s.endMin - s.startMin) / 60 * 10) / 10,
+        freeHours: Math.round(s.squadFree * 10) / 10,
+        blockedCount: s.busy.length,
+      })),
+    },
   }
 }
