@@ -463,6 +463,7 @@ async function getAvailability(headers, query) {
   //    then SUM across all relevant squads for that day — this reflects total real capacity,
   //    not just whichever single squad happens to be most free.
   let totalFreeHours = 0
+  const perSquadDebug = []
   for (const sq of activeSquads) {
     const busy = (blocksBySquad[sq.id] || []).sort((a, b) => a[0] - b[0])
     let cursor = sq.startMin
@@ -473,6 +474,23 @@ async function getAvailability(headers, query) {
     }
     if (sq.endMin > cursor) squadFree += (sq.endMin - cursor) / 60
     totalFreeHours += squadFree
+    perSquadDebug.push({ squadId: sq.id, startMin: sq.startMin, endMin: sq.endMin, busy, squadFree })
+  }
+
+  if (query.debug === '1') {
+    return {
+      debug: true,
+      date,
+      activeSquadsCount: activeSquads.length,
+      activeSquadIds: activeSquads.map(s => s.id),
+      blocksRawCount: (blocksData.records || []).length,
+      blocksRaw: (blocksData.records || []).map(r => ({ squads: r.fields?.Squads, start: r.fields?.StartTime, end: r.fields?.EndTime, date: r.fields?.Date })),
+      blocksBySquad,
+      perSquadDebug,
+      totalFreeHours,
+      unassignedApptCount,
+      unassignedApptHours,
+    }
   }
 
   // 6. Apply route buffer, then subtract unassigned confirmed STR demand from total free capacity
