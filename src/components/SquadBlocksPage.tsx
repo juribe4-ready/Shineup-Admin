@@ -120,6 +120,21 @@ export default function SquadBlocksPage() {
     return strOnlyDays.includes(dow) || strOnlyDates.includes(date)
   }
 
+  // Sat/Sun, same convention used by the backend (getAvailability): dow 0=Mon..6=Sun, weekend = 5 or 6
+  const isWeekendDate = (date: string) => {
+    const dow = (new Date(date + 'T12:00:00').getDay() + 6) % 7
+    return dow >= 5
+  }
+
+  // Weekend squads can't be assigned Mon-Fri, and Weekday squads can't be assigned Sat/Sun.
+  // Flexible squads have no restriction — they're built to cover either side.
+  const squadBlockedOnDate = (squad: Squad, date: string) => {
+    const weekend = isWeekendDate(date)
+    if (squad.type === 'Weekend' || squad.type === 'Weekend/Holiday') return !weekend
+    if (squad.type === 'Weekday') return weekend
+    return false
+  }
+
   // Group squads the same way Pre-dispatch does: Weekend, Weekday, Flexible — alphabetical within each
   const weekendSquads = squads.filter(s => s.type === 'Weekend' || s.type === 'Weekend/Holiday').sort((a, b) => a.name.localeCompare(b.name))
   const weekdaySquads = squads.filter(s => s.type === 'Weekday').sort((a, b) => a.name.localeCompare(b.name))
@@ -163,6 +178,11 @@ export default function SquadBlocksPage() {
 
   const handleSave = async () => {
     if (!form.squadId || !form.date) { showToast('Squad and date required', 'err'); return }
+    const squad = squads.find(s => s.id === form.squadId)
+    if (squad && squadBlockedOnDate(squad, form.date)) {
+      showToast(`${squad.name} es squad de ${squad.type === 'Weekday' ? 'weekday' : 'weekend'} — no se puede asignar ese día`, 'err')
+      return
+    }
     setSaving(true)
     try {
       const r = await fetch('/api/createSquadBlock', {
@@ -266,10 +286,14 @@ export default function SquadBlocksPage() {
       })()}
 
       {/* Legend */}
-      <div style={{ display: 'flex', gap: 14, marginBottom: 14, fontSize: 11.5, color: C.muted }}>
+      <div style={{ display: 'flex', gap: 14, marginBottom: 14, fontSize: 11.5, color: C.muted, flexWrap: 'wrap' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 9, height: 9, borderRadius: 3, background: C.amber, display: 'inline-block' }} /> STR-only (from Rules)</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 9, height: 9, borderRadius: 3, background: C.teal, display: 'inline-block' }} /> Manual block</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 9, height: 9, borderRadius: 3, background: C.green, display: 'inline-block' }} /> Appointment</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ width: 9, height: 9, borderRadius: 3, display: 'inline-block', background: `repeating-linear-gradient(135deg, ${C.bg} 0px, ${C.bg} 3px, ${C.border} 3px, ${C.border} 6px)` }} />
+          No disponible (squad de otro tipo de día)
+        </span>
       </div>
 
       {/* Empty squads state */}
@@ -356,6 +380,7 @@ export default function SquadBlocksPage() {
                   </div>
                   {dates.map(date => {
                     const structural = isStructuralSTR(date)
+                    const blocked = squadBlockedOnDate(squad, date)
                     const dayBlocks = blocks.filter(b => b.squadId === squad.id && b.date === date)
                     const dayManualBlocks = dayBlocks.filter(b => b.type !== 'Appointment')
                     const dayCleaningBlocks = dayBlocks.filter(b => b.type === 'Appointment')
@@ -367,11 +392,24 @@ export default function SquadBlocksPage() {
                       byType[typeLabel] = (byType[typeLabel] || 0) + 1
                     }
                     return (
-                      <div key={date} onClick={() => openCreate(squad.id, date)}
+                      <div key={date}
+                        onClick={() => {
+                          if (blocked) { showToast(`${squad.name} es squad de ${squad.type === 'Weekday' ? 'weekday' : 'weekend'} — no se puede asignar ese día`, 'err'); return }
+                          openCreate(squad.id, date)
+                        }}
                         className="group relative"
-                        style={{ padding: '6px', minHeight: 56, borderLeft: `1px solid ${C.border}`, background: structural ? '#FFFBEB' : C.white, cursor: 'pointer' }}>
-                        <Plus className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-60 transition-opacity"
-                          style={{ width: 13, height: 13, color: C.primary }} />
+                        title={blocked ? `${squad.name} (${squad.type}) no opera ese día` : undefined}
+                        style={{
+                          padding: '6px', minHeight: 56, borderLeft: `1px solid ${C.border}`,
+                          background: blocked
+                            ? `repeating-linear-gradient(135deg, ${C.bg} 0px, ${C.bg} 6px, ${C.border} 6px, ${C.border} 12px)`
+                            : (structural ? '#FFFBEB' : C.white),
+                          cursor: blocked ? 'not-allowed' : 'pointer',
+                        }}>
+                        {!blocked && (
+                          <Plus className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-60 transition-opacity"
+                            style={{ width: 13, height: 13, color: C.primary }} />
+                        )}
                         {structural && dayBlocks.length === 0 && (
                           <div style={{ fontSize: 9.5, fontWeight: 700, color: C.amber, textAlign: 'center', padding: '4px 0' }}>STR-only</div>
                         )}
