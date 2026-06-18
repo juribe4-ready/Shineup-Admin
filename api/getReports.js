@@ -478,6 +478,7 @@ async function getAvailability(headers, query) {
   }
 
   if (query.debug === '1') {
+    const rawTotalCapacityHoursDbg = activeSquads.reduce((sum, s) => sum + (s.endMin - s.startMin) / 60, 0)
     return {
       debug: true,
       date,
@@ -487,6 +488,8 @@ async function getAvailability(headers, query) {
       blocksRaw: (blocksData.records || []).map(r => ({ squads: r.fields?.Squads, start: r.fields?.StartTime, end: r.fields?.EndTime, date: r.fields?.Date })),
       blocksBySquad,
       perSquadDebug,
+      totalCapacityHours: Math.round(rawTotalCapacityHoursDbg * 10) / 10,
+      usedHours: Math.round(Math.max(0, rawTotalCapacityHoursDbg - totalFreeHours) * 10) / 10,
       totalFreeHours,
       unassignedApptCount,
       unassignedApptHours,
@@ -503,6 +506,14 @@ async function getAvailability(headers, query) {
   const rate = config.minRateFlex || 35
   const suggestedPrice = available ? Math.round(rate * duration) : null
 
+  // totalFreeHours already nets out every squad block for the day (manual blocks AND
+  // cleanings/appointments already dispatched to a squad) — it is NOT a "raw" number.
+  // usedHours makes that subtraction visible instead of implicit, so the breakdown reads
+  // as capacity → occupied → free, rather than looking like appointments were ignored.
+  const rawTotalCapacityHours = activeSquads.reduce((sum, s) => sum + (s.endMin - s.startMin) / 60, 0)
+  const totalCapacityHours = Math.round(rawTotalCapacityHours * 10) / 10
+  const usedHours = Math.round(Math.max(0, rawTotalCapacityHours - totalFreeHours) * 10) / 10
+
   return {
     date,
     available,
@@ -511,9 +522,15 @@ async function getAvailability(headers, query) {
     suggestedPrice,
     ratePerHour: rate,
     reason: available ? null : 'Not enough free capacity that day',
-    // Breakdown so the UI can show exactly how this number was calculated
+    // Breakdown so the UI can show exactly how this number was calculated.
+    // Reading order: totalCapacityHours (squad hours scheduled that day)
+    //   − usedHours (already booked: manual blocks + cleanings/appointments dispatched to a squad)
+    //   = totalFreeHours (open slots left in squads' calendars)
+    //   − unassignedApptHours (Confirmed appointments NOT yet dispatched to any squad — future demand)
+    //   × (1 − bufferPct) = residualHours
     breakdown: {
-      totalCapacityHours: Math.round(activeSquads.reduce((sum, s) => sum + (s.endMin - s.startMin) / 60, 0) * 10) / 10,
+      totalCapacityHours,
+      usedHours,
       totalFreeHours: Math.round(totalFreeHours * 10) / 10,
       unassignedApptCount,
       unassignedApptHours: Math.round(unassignedApptHours * 10) / 10,
