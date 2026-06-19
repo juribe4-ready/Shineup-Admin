@@ -166,11 +166,12 @@ export default function PreDispatchPage() {
           notes: cleaning.appointmentCode ? `${cleaning.propertyText} (${cleaning.appointmentCode})` : (cleaning.propertyText || ''),
         })
       })
-      const data = await res.json()
-      if (!res.ok) { showToast(data.error || 'Conflicto de horario', 'err'); return }
+      let data: any = null
+      try { data = await res.json() } catch { /* response wasn't valid JSON — handled below */ }
+      if (!res.ok || !data) { showToast(data?.error || `Error del servidor (${res.status})`, 'err'); return }
       showToast(`Asignado a ${squad.name} ✓`)
       loadData()
-    } catch { showToast('Error al asignar', 'err') }
+    } catch (e: any) { showToast('Error de red: ' + (e?.message || 'desconocido'), 'err') }
     finally {
       setSaving(false)
       setPendingCleaningIds(prev => { const next = new Set(prev); next.delete(cleaning.id); return next })
