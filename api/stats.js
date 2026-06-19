@@ -1,192 +1,298 @@
-const AIRTABLE_BASE = 'appBwnoxgyIXILe6M'
-const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN
-const SQUADS_TABLE = 'tbl6CaYpYaZe1PY0s'
-const BLOCKS_TABLE = 'tblR9T67eyBrIi5Ny'
-const CLEANINGS_TABLE = 'tblabOdNknnjrYUU1'
+const AIRTABLE_BASE = 'appBwnoxgyIXILe6M';
+const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN;
+import { resolveRating } from './_lib/duration.js'
 
-// 'Day Overrides' is a Long Text field on the EXISTING Squads table (no new table needed) that
-// holds a JSON object keyed by date: { "2026-06-17": { "staffIds": ["recA","recB"], "notes": "" } }.
-// Only days with an actual roster exception get an entry, so it stays small per squad.
-function parseDayOverrides(raw) {
-  if (!raw) return {}
-  try { const obj = JSON.parse(raw); return (obj && typeof obj === 'object') ? obj : {} }
-  catch { return {} }
+function getDateRange(period) {
+  const now = new Date();
+  const today = new Date(now.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }));
+  let from;
+  
+  if (period === '7d') {
+    from = new Date(today);
+    from.setDate(from.getDate() - 7);
+  } else if (period === '30d') {
+    from = new Date(today);
+    from.setDate(from.getDate() - 30);
+  } else if (period === 'ytd') {
+    from = new Date(today.getFullYear(), 0, 1);
+  } else {
+    from = new Date(today);
+    from.setDate(from.getDate() - 7);
+  }
+  
+  return {
+    from: from.toISOString().slice(0, 10),
+    to: today.toISOString().slice(0, 10),
+  };
 }
 
-async function fetchAllSquads(includeInactive) {
-  const squadsRes = await fetch(
-    `https://api.airtable.com/v0/${AIRTABLE_BASE}/${SQUADS_TABLE}?fields[]=Name&fields[]=Color&fields[]=Type&fields[]=Active&fields[]=StartHour&fields[]=EndHour&fields[]=${encodeURIComponent('Default Members')}&fields[]=${encodeURIComponent('Day Overrides')}`,
-    { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
-  )
-  const squadsData = await squadsRes.json()
-  return (squadsData.records || [])
-    .filter(r => includeInactive || r.fields?.Active)
-    .map(r => ({
-      id: r.id,
-      name: r.fields?.Name || '',
-      color: r.fields?.Color || '#94A3B8',
-      type: r.fields?.Type || 'Weekday',
-      active: r.fields?.Active !== false,
-      startHour: r.fields?.StartHour ?? 8,
-      endHour: r.fields?.EndHour ?? 18,
-      defaultMemberIds: Array.isArray(r.fields?.['Default Members']) ? r.fields['Default Members'] : [],
-      dayOverrides: parseDayOverrides(r.fields?.['Day Overrides']),
-    }))
+async function fetchAllRecords(table, formula = null) {
+  const headers = { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` };
+  let all = [];
+  let offset = null;
+  
+  do {
+    let url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${table}?pageSize=100`;
+    if (formula) url += `&filterByFormula=${encodeURIComponent(formula)}`;
+    if (offset) url += `&offset=${offset}`;
+    
+    const res = await fetch(url, { headers });
+    if (!res.ok) break;
+    
+    const data = await res.json();
+    all = all.concat(data.records || []);
+    offset = data.offset || null;
+  } while (offset);
+  
+  return all;
+}
+
+async function handleGetStats(req, res) {
+  try {
+    const { period = '7d' } = req.query;
+    const { from, to } = getDateRange(period);
+    
+    console.log(`[stats] GET period: ${period}, from: ${from}, to: ${to}`);
+
+    // Fetch cleanings in date range
+    const formula = `AND({Date}>='${from}',{Date}<='${to}')`;
+    const records = await fetchAllRecords('tblabOdNknnjrYUU1', formula);
+    
+    // Fetch all staff to get roles - SAME AS getDashboard.js
+    const staffRecords = await fetchAllRecords('tblgHwN1wX6u3ZtNY');
+    const staffMap = {};
+    staffRecords.forEach(r => {
+      staffMap[r.id] = {
+        id: r.id,
+        name: r.fields['Name'] || '',
+        role: r.fields['Role'] || '',
+        initials: r.fields['Initials'] || '',
+      };
+    });
+    
+    // Log staff roles for debugging
+    console.log('[stats] Staff roles:', staffRecords.slice(0, 5).map(r => ({ 
+      name: r.fields['Name'], 
+      role: r.fields['Role'] 
+    })));
+    
+    // Fetch properties for Labor data
+    const propRecords = await fetchAllRecords('tbl1iETmcFP460oWN');
+    const propDataMap = {};
+    propRecords.forEach(r => {
+      propDataMap[r.id] = {
+        labor: Number(r.fields['Labor'] || 0),
+      };
+    });
+    
+    // Fetch incidents and inventory
+    const incidentRecords = await fetchAllRecords('Incidents');
+    const inventoryRecords = await fetchAllRecords('tblppdLDDnyT0eye9');
+
+    // Process cleanings - SAME LOGIC AS getDashboard.js
+    const cleanings = records.map(r => {
+      const f = r.fields;
+
+      // USE 'Assigned Staff' - SAME AS getDashboard.js line 119
+      const staffIds = Array.isArray(f['Assigned Staff']) ? f['Assigned Staff'] : [];
+      const staffList = staffIds.map(id => staffMap[id]).filter(Boolean);
+      
+      // Filter to cleaners only (role contains 'cleaner') - SAME AS getDashboard.js line 154-157
+      const cleanerIds = staffIds.filter(id => {
+        const s = staffMap[id];
+        return s && (s.role || '').toLowerCase().includes('cleaner');
+      });
+      const cleanerCount = cleanerIds.length;
+      
+      const cleanerNames = staffList
+        .filter(s => (s.role || '').toLowerCase().includes('cleaner'))
+        .map(s => s.name)
+        .join(', ');
+      
+      // Get labor from Property
+      const propId = Array.isArray(f['Property']) ? f['Property'][0] : (f['Property'] || '');
+      const propData = propDataMap[propId] || {};
+      const labor = propData.labor || 0;
+      
+      const ratingVal = resolveRating(f['Rating']);
+      
+      // Calculate estimated end time - SAME AS getDashboard.js
+      let estimatedEndTime = f['Estimated End Time'] || null;
+      if (!estimatedEndTime && f['Scheduled Time'] && labor > 0) {
+        const effectiveCleaners = Math.max(cleanerCount, 1);
+        const minutesRaw = labor / effectiveCleaners;
+        const minutesRounded = Math.ceil(minutesRaw / 15) * 15;
+        const ratingAdj = ratingVal === 1 ? 30 : ratingVal === 3 ? -30 : 0;
+        const totalMinutes = Math.max(minutesRounded + ratingAdj, 45);
+        estimatedEndTime = new Date(new Date(f['Scheduled Time']).getTime() + totalMinutes * 60000).toISOString();
+      }
+      
+      return {
+        id: r.id,
+        cleaningId: f['Cleaning ID'] || '',
+        propertyText: f['Property Text'] || '',
+        propertyId: propId,
+        date: f['Date'] || '',
+        status: f['Status'] || 'Programmed',
+        scheduledTime: f['Scheduled Time'] || null,
+        startTime: f['Start Time'] || null,
+        endTime: f['End Time'] || null,
+        estimatedEndTime,
+        rating: ratingVal,
+        staffListText: f['staffList'] || '',
+        cleanerNames,
+        cleanerCount,
+        cleanerIds,
+        labor,
+      };
+    }).sort((a, b) => b.date.localeCompare(a.date));
+
+    // Calculate summary
+    const doneCleanings = cleanings.filter(c => c.status === 'Done');
+    
+    const ratings = doneCleanings.filter(c => c.rating).map(c => c.rating);
+    const avgRating = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null;
+    
+    const durations = doneCleanings.filter(c => c.startTime && c.endTime).map(c => {
+      return (new Date(c.endTime).getTime() - new Date(c.startTime).getTime()) / 60000;
+    });
+    const avgDurationMin = durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : null;
+    const totalDurationMin = durations.reduce((a, b) => a + b, 0);
+    
+    const onTimeChecks = doneCleanings.filter(c => c.scheduledTime && c.startTime);
+    const onTimeCount = onTimeChecks.filter(c => {
+      const diff = Math.abs(new Date(c.startTime).getTime() - new Date(c.scheduledTime).getTime());
+      return diff <= 15 * 60000;
+    }).length;
+    const onTimeRate = onTimeChecks.length > 0 ? Math.round((onTimeCount / onTimeChecks.length) * 100) : null;
+    
+    const lateCleanings = onTimeChecks.filter(c => {
+      return (new Date(c.startTime).getTime() - new Date(c.scheduledTime).getTime()) > 15 * 60000;
+    });
+    const lateStarts = lateCleanings.length;
+    const totalLateMinutes = lateCleanings.reduce((sum, c) => {
+      return sum + (new Date(c.startTime).getTime() - new Date(c.scheduledTime).getTime()) / 60000;
+    }, 0);
+
+    // By Property
+    const propGroups = {};
+    cleanings.forEach(c => {
+      if (!c.propertyText) return;
+      if (!propGroups[c.propertyText]) {
+        propGroups[c.propertyText] = { cleanings: [], propertyId: c.propertyId };
+      }
+      propGroups[c.propertyText].cleanings.push(c);
+    });
+    
+    const byProperty = Object.entries(propGroups).map(([propertyText, data]) => {
+      const items = data.cleanings;
+      const done = items.filter(i => i.status === 'Done');
+      const propRatings = done.filter(i => i.rating).map(i => i.rating);
+      const propDurations = done.filter(i => i.startTime && i.endTime).map(i => {
+        return (new Date(i.endTime).getTime() - new Date(i.startTime).getTime()) / 60000;
+      });
+      
+      const propIncidents = incidentRecords.filter(r => {
+        const propIds = r.fields['Property'] || [];
+        return propIds.includes(data.propertyId);
+      }).length;
+      
+      const propInventory = inventoryRecords.filter(r => {
+        const propIds = r.fields['Property'] || [];
+        return propIds.includes(data.propertyId) && r.fields['Status'] !== 'Optimal';
+      }).length;
+      
+      return {
+        propertyText,
+        propertyId: data.propertyId,
+        total: items.length,
+        avgRating: propRatings.length > 0 ? propRatings.reduce((a, b) => a + b, 0) / propRatings.length : null,
+        avgDurationMin: propDurations.length > 0 ? Math.round(propDurations.reduce((a, b) => a + b, 0) / propDurations.length) : null,
+        incidents: propIncidents,
+        inventory: propInventory,
+      };
+    }).sort((a, b) => b.total - a.total);
+
+    // Incidents summary
+    const incidentCounts = {
+      total: incidentRecords.length,
+      open: incidentRecords.filter(r => r.fields['Status'] !== 'Closed').length,
+      closed: incidentRecords.filter(r => r.fields['Status'] === 'Closed').length,
+    };
+
+    // Inventory summary
+    const inventoryCounts = {
+      total: inventoryRecords.length,
+      low: inventoryRecords.filter(r => r.fields['Status'] === 'Low').length,
+      outOfStock: inventoryRecords.filter(r => r.fields['Status'] === 'Out of Stock').length,
+      optimal: inventoryRecords.filter(r => r.fields['Status'] === 'Optimal').length,
+    };
+
+    return res.status(200).json({
+      cleanings,
+      summary: {
+        total: cleanings.length,
+        done: doneCleanings.length,
+        avgRating,
+        avgDurationMin,
+        totalDurationMin: Math.round(totalDurationMin),
+        onTimeRate,
+        lateStarts,
+        totalLateMinutes: Math.round(totalLateMinutes),
+      },
+      byProperty,
+      incidents: incidentCounts,
+      inventory: inventoryCounts,
+    });
+
+  } catch (err) {
+    console.error('[stats] GET Error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+}
+
+async function handleUpdateReport(req, res) {
+  try {
+    const { type, recordId, status, closeComment } = req.body;
+
+    if (!type || !recordId || !status) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    let tableId = type === 'incident' ? 'Incidents' : 'tblppdLDDnyT0eye9';
+    const fields = { Status: status };
+    if (closeComment) fields.CloseComment = closeComment;
+
+    const response = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${tableId}/${recordId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ fields }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      return res.status(response.status).json({ error: errorData.error?.message || 'Failed' });
+    }
+
+    const updated = await response.json();
+    return res.status(200).json({ success: true, record: { id: updated.id, status: updated.fields.Status } });
+
+  } catch (err) {
+    console.error('[stats] POST Error:', err);
+    return res.status(500).json({ error: err.message });
+  }
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-  if (req.method === 'OPTIONS') return res.status(200).end()
-
-  const headers = { Authorization: `Bearer ${AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' }
-
-  try {
-    // POST — create, update, or deactivate a squad
-    if (req.method === 'POST') {
-      const { action, squadId, name, color, type, startHour, endHour, active } = req.body || {}
-
-      if (action === 'delete' || action === 'deactivate') {
-        if (!squadId) return res.status(400).json({ error: 'squadId requerido' })
-        await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${SQUADS_TABLE}/${squadId}`, {
-          method: 'PATCH', headers, body: JSON.stringify({ fields: { Active: false } })
-        })
-        return res.status(200).json({ ok: true })
-      }
-
-      const fields = {
-        ...(name !== undefined ? { Name: name } : {}),
-        ...(color !== undefined ? { Color: color } : {}),
-        ...(type !== undefined ? { Type: type } : {}),
-        ...(startHour !== undefined ? { StartHour: startHour } : {}),
-        ...(endHour !== undefined ? { EndHour: endHour } : {}),
-        ...(active !== undefined ? { Active: active } : {}),
-      }
-
-      if (squadId) {
-        const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${SQUADS_TABLE}/${squadId}`, {
-          method: 'PATCH', headers, body: JSON.stringify({ fields })
-        })
-        if (!r.ok) return res.status(500).json({ error: await r.text() })
-        return res.status(200).json({ ok: true })
-      } else {
-        if (!name) return res.status(400).json({ error: 'name requerido' })
-        const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${SQUADS_TABLE}`, {
-          method: 'POST', headers,
-          body: JSON.stringify({ fields: { Name: name, Color: color || '#6366F1', Type: type || 'Weekday', StartHour: startHour ?? 8, EndHour: endHour ?? 18, Active: true } })
-        })
-        if (!r.ok) return res.status(500).json({ error: await r.text() })
-        const created = await r.json()
-        return res.status(200).json({ ok: true, id: created.id })
-      }
-    }
-
-    // GET — list squads, optionally with week blocks
-    const { weekStart, includeInactive } = req.query
-
-    if (!weekStart) {
-      const squads = await fetchAllSquads(includeInactive === 'true')
-      return res.status(200).json({ squads })
-    }
-
-    const squads = await fetchAllSquads(false)
-
-    const start = new Date(weekStart)
-    const dates = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(start)
-      d.setDate(start.getDate() + i)
-      return d.toISOString().split('T')[0]
-    })
-
-    const weekEnd = dates[6]
-    const formula = encodeURIComponent(`AND({Date}>='${dates[0]}', {Date}<='${weekEnd}')`)
-    const blocksRes = await fetch(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}?filterByFormula=${formula}`,
-      { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
-    )
-    const blocksData = await blocksRes.json()
-
-    const blocks = (blocksData.records || []).map(r => ({
-      id: r.id,
-      squadId: Array.isArray(r.fields?.Squads) ? r.fields.Squads[0] : (r.fields?.Squads || null),
-      date: r.fields?.Date || '',
-      startTime: r.fields?.StartTime || '',
-      endTime: r.fields?.EndTime || '',
-      type: r.fields?.Type || 'Manual Block',
-      appointmentId: Array.isArray(r.fields?.Appointment) ? r.fields.Appointment[0] : null,
-      cleaningId: Array.isArray(r.fields?.Cleaning) ? r.fields.Cleaning[0] : (r.fields?.Cleaning || null),
-      notes: r.fields?.Notes || '',
-    }))
-
-    // Fetch Cleanings for this week — these are the real launched jobs that need a squad assigned
-    const cleaningsFormula = encodeURIComponent(`AND({Date}>='${dates[0]}', {Date}<='${weekEnd}')`)
-    const cleaningsRes = await fetch(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}?filterByFormula=${cleaningsFormula}`,
-      { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
-    )
-    const cleaningsData = await cleaningsRes.json()
-
-    // Reverse-lookup: each Cleaning doesn't store its origin Appointment, but each
-    // Appointment stores 'Related Cleaning Job' pointing TO its Cleaning. Fetch appointments
-    // for this week and build a Cleaning ID -> Appointment Code map for full traceability.
-    // NOTE: previously filtered by {Date} here, but the Appointments table has no such field
-    // (it's 'Requested Date & Time') — Airtable returned an error and this map was always
-    // empty, which is why Squad Blocks never got an Appointment link. Filter instead on
-    // "has a Related Cleaning Job" (same proven pattern as getBilling) and match in JS against
-    // this week's cleaning IDs, with pagination since Appointments can be a large table.
-    const cleaningIdSet = new Set((cleaningsData.records || []).map(r => r.id))
-    const cleaningIdToApptCode = {}
-    const cleaningIdToApptRecordId = {}
-    try {
-      const apptLookupFormula = encodeURIComponent(`NOT({Related Cleaning Job} = BLANK())`)
-      let apptOffset = null, apptPage = 0
-      do {
-        apptPage++
-        if (apptPage > 20) break // safety limit
-        const apptLookupRes = await fetch(
-          `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblXlpg7MuYWA8Ocn?filterByFormula=${apptLookupFormula}&pageSize=100${apptOffset ? `&offset=${apptOffset}` : ''}`,
-          { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
-        )
-        if (!apptLookupRes.ok) { console.error('[getSquads] appt lookup failed:', apptLookupRes.status); break }
-        const apptLookupData = await apptLookupRes.json()
-        if (apptLookupData.error) { console.error('[getSquads] appt lookup error:', apptLookupData.error); break }
-        for (const r of (apptLookupData.records || [])) {
-          const relatedCleaningId = Array.isArray(r.fields?.['Related Cleaning Job']) ? r.fields['Related Cleaning Job'][0] : null
-          if (!relatedCleaningId || !cleaningIdSet.has(relatedCleaningId)) continue
-          cleaningIdToApptCode[relatedCleaningId] = r.fields?.['Appointment ID'] || null
-          cleaningIdToApptRecordId[relatedCleaningId] = r.id
-        }
-        apptOffset = apptLookupData.offset || null
-      } while (apptOffset)
-    } catch (e) { console.error('[getSquads] appt lookup exception:', e.message) }
-
-    const cleanings = (cleaningsData.records || []).map(r => ({
-      id: r.id,
-      date: r.fields?.Date || '',
-      scheduledTime: r.fields?.['Scheduled Time'] || null,
-      status: r.fields?.Status || 'Scheduled',
-      propertyText: r.fields?.['Property Text'] || 'Sin propiedad',
-      assignedStaff: r.fields?.['Assigned Staff'] || [],
-      appointmentCode: cleaningIdToApptCode[r.id] || null,
-      appointmentRecordId: cleaningIdToApptRecordId[r.id] || null,
-      price: typeof r.fields?.Price === 'number' ? r.fields.Price : null,
-      laborMinutes: typeof r.fields?.Labor === 'number' ? r.fields.Labor : null,
-      cleaningType: r.fields?.['Cleaning Type Text'] || (Array.isArray(r.fields?.['Cleaning Type']) ? null : r.fields?.['Cleaning Type']) || null,
-    }))
-
-    // Day-specific roster overrides for this week — derived from each squad's own
-    // 'Day Overrides' JSON field (already fetched above with the squad, no extra API call).
-    const rosterOverrides = []
-    for (const squad of squads) {
-      for (const d of dates) {
-        const entry = squad.dayOverrides?.[d]
-        if (entry) rosterOverrides.push({ squadId: squad.id, date: d, staffIds: Array.isArray(entry.staffIds) ? entry.staffIds : [], notes: entry.notes || '' })
-      }
-    }
-
-    return res.status(200).json({ squads, blocks, cleanings, dates, rosterOverrides })
-  } catch (err) {
-    console.error('[getSquads] Error:', err)
-    return res.status(500).json({ error: err.message })
-  }
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method === 'GET') return handleGetStats(req, res);
+  if (req.method === 'POST') return handleUpdateReport(req, res);
+  return res.status(405).json({ error: 'Method not allowed' });
 }
