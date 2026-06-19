@@ -11,6 +11,116 @@ const C = {
 const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
 const DAY_SHORT = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 
+interface RecalcPreview {
+  coefficients: { laborMinutesPerBed: number; laborMinutesPerBathroom: number; laborMinutesPerSqFt: number }
+  band: { min: number; max: number }
+  totalProperties: number
+  changedCount: number
+  outOfBandCount: number
+  sample: { id: string; name: string; beds: number; bathrooms: number; sqft: number; factor: number; factorOutOfBand: boolean; currentLaborBase: number; newLaborBase: number; currentLabor: number; newLabor: number; changed: boolean }[]
+}
+
+// Preview-then-apply flow for the Labor recalculation — never writes to Airtable on the
+// first click. Shows exactly what would change (count + sample before/after) and only
+// applies after Juan explicitly confirms.
+function RecalcLaborButton() {
+  const [preview, setPreview] = useState<RecalcPreview | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [applying, setApplying] = useState(false)
+  const [result, setResult] = useState<string | null>(null)
+
+  const loadPreview = async () => {
+    setLoading(true); setResult(null)
+    try {
+      const r = await fetch('/api/getReports?type=recalcLabor')
+      const d = await r.json()
+      setPreview(d)
+    } catch { setResult('Error cargando vista previa') }
+    finally { setLoading(false) }
+  }
+
+  const apply = async () => {
+    setApplying(true)
+    try {
+      const r = await fetch('/api/getReports?type=recalcLabor', { method: 'POST' })
+      const d = await r.json()
+      if (!d.ok) { setResult(d.error || 'Error aplicando cambios'); return }
+      setResult(`Listo — ${d.updated}/${d.totalProperties} propiedades actualizadas.`)
+      setPreview(null)
+    } catch { setResult('Error aplicando cambios') }
+    finally { setApplying(false) }
+  }
+
+  return (
+    <div>
+      {!preview && (
+        <button onClick={loadPreview} disabled={loading}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38, padding: '0 16px', borderRadius: 10, border: '1.5px solid #6366F1', background: '#EEF2FF', color: '#6366F1', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+          {loading ? <RefreshCw style={{ width: 14, height: 14 }} className="animate-spin" /> : null}
+          Ver vista previa de Recalcular Labor
+        </button>
+      )}
+
+      {preview && (
+        <div style={{ border: '1.5px solid #E2E8F0', borderRadius: 12, padding: 14 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', margin: '0 0 4px' }}>
+            {preview.changedCount} de {preview.totalProperties} propiedades van a cambiar
+          </p>
+          <p style={{ fontSize: 11.5, color: '#94A3B8', margin: '0 0 4px' }}>
+            Labor Base con {preview.coefficients.laborMinutesPerBed}×Beds + {preview.coefficients.laborMinutesPerBathroom}×Bathrooms + {preview.coefficients.laborMinutesPerSqFt}×SqFt, corregido por el Factor de cada propiedad
+          </p>
+          {preview.outOfBandCount > 0 && (
+            <p style={{ fontSize: 11.5, color: '#92400E', margin: '0 0 10px', fontWeight: 700 }}>
+              ⚠️ {preview.outOfBandCount} propiedad(es) con Factor fuera del rango esperado ({preview.band.min}–{preview.band.max}) — revisalas, marcadas abajo
+            </p>
+          )}
+          {preview.sample.length > 0 && (
+            <div style={{ maxHeight: 260, overflowY: 'auto', marginBottom: 12, border: '1px solid #E2E8F0', borderRadius: 8 }}>
+              <table style={{ width: '100%', fontSize: 11.5, borderCollapse: 'collapse' }}>
+                <thead><tr style={{ background: '#F8FAFC' }}>
+                  <th style={{ textAlign: 'left', padding: '6px 8px' }}>Propiedad</th>
+                  <th style={{ textAlign: 'right', padding: '6px 8px' }}>Labor Base</th>
+                  <th style={{ textAlign: 'right', padding: '6px 8px' }}>Factor</th>
+                  <th style={{ textAlign: 'right', padding: '6px 8px' }}>Labor actual</th>
+                  <th style={{ textAlign: 'right', padding: '6px 8px' }}>Labor nuevo</th>
+                </tr></thead>
+                <tbody>
+                  {preview.sample.map(s => (
+                    <tr key={s.id} style={{ borderTop: '1px solid #E2E8F0', background: s.factorOutOfBand ? '#FEF2F2' : (s.changed ? '#FFFBEB' : 'transparent') }}>
+                      <td style={{ padding: '6px 8px' }}>{s.name}</td>
+                      <td style={{ textAlign: 'right', padding: '6px 8px', color: '#94A3B8' }}>{s.newLaborBase}</td>
+                      <td style={{ textAlign: 'right', padding: '6px 8px', fontWeight: s.factorOutOfBand ? 800 : 400, color: s.factorOutOfBand ? '#DC2626' : '#475569' }}>{s.factor}{s.factorOutOfBand ? ' ⚠️' : ''}</td>
+                      <td style={{ textAlign: 'right', padding: '6px 8px', color: '#94A3B8' }}>{s.currentLabor}</td>
+                      <td style={{ textAlign: 'right', padding: '6px 8px', fontWeight: 700, color: s.changed ? '#92400E' : '#0F172A' }}>{s.newLabor}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {preview.totalProperties === 0 && (
+            <p style={{ fontSize: 12, color: '#94A3B8', marginBottom: 12 }}>No se encontraron propiedades con campos Beds/Bathrooms/SqFt.</p>
+          )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => setPreview(null)} style={{ height: 36, padding: '0 14px', borderRadius: 9, border: '1.5px solid #E2E8F0', background: '#FFFFFF', color: '#475569', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+              Cancelar
+            </button>
+            <button onClick={apply} disabled={applying || preview.changedCount === 0}
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 36, borderRadius: 9, border: 'none', background: preview.changedCount === 0 ? '#94A3B8' : 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)', color: 'white', fontSize: 12.5, fontWeight: 700, cursor: preview.changedCount === 0 ? 'not-allowed' : 'pointer' }}>
+              {applying ? <RefreshCw style={{ width: 13, height: 13 }} className="animate-spin" /> : null}
+              Aplicar a {preview.changedCount} propiedades
+            </button>
+          </div>
+        </div>
+      )}
+
+      {result && (
+        <p style={{ fontSize: 12, color: result.startsWith('Listo') ? '#047857' : '#DC2626', marginTop: 10, lineHeight: 1.5 }}>{result}</p>
+      )}
+    </div>
+  )
+}
+
 interface TARSConfig {
   primeStart: string
   primeEnd: string
@@ -22,6 +132,20 @@ interface TARSConfig {
   dynamicBufferThreshold: number
   strOnlyDays: number[]
   strOnlyDates: string[]
+  // Duration-estimation formula (shared by Ops "Fin estimado", Dashboard, and Pre-dispatch
+  // sequencing — see api/_lib/duration.js). Editable here so nothing is hardcoded in code.
+  roundToMinutes: number
+  minDurationMinutes: number
+  ratingAdjustBadMinutes: number
+  ratingAdjustGoodMinutes: number
+  travelBufferMinutes: number
+  // Labor formula (Properties.Labor Base = a×Beds + b×Bathrooms + c×SqFt) — see api/_lib/duration.js
+  laborMinutesPerBed: number
+  laborMinutesPerBathroom: number
+  laborMinutesPerSqFt: number
+  // Single ± percentage tolerance around 1.0 for Properties."Labor Correction Factor" —
+  // just a reference for the recalc preview's warning, not enforced.
+  laborFactorAlertPct: number
 }
 
 const DEFAULT_CONFIG: TARSConfig = {
@@ -35,6 +159,15 @@ const DEFAULT_CONFIG: TARSConfig = {
   dynamicBufferThreshold: 80,
   strOnlyDays: [6],
   strOnlyDates: [],
+  roundToMinutes: 15,
+  minDurationMinutes: 45,
+  ratingAdjustBadMinutes: 30,
+  ratingAdjustGoodMinutes: 30,
+  travelBufferMinutes: 20,
+  laborMinutesPerBed: 18,
+  laborMinutesPerBathroom: 23,
+  laborMinutesPerSqFt: 0.05,
+  laborFactorAlertPct: 25,
 }
 
 export default function RulesPage() {
@@ -158,6 +291,48 @@ export default function RulesPage() {
         </div>
       </div>
 
+      {/* Duration formula — used by Ops "Fin estimado", Dashboard, and Pre-dispatch sequencing.
+          Same numbers everywhere, all editable here instead of hardcoded in code. */}
+      <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 16, padding: '20px 20px', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <Clock style={{ width: 16, height: 16, color: C.primary }} />
+          <p style={{ fontSize: 14, fontWeight: 700, color: C.ink, margin: 0 }}>Duración de limpiezas</p>
+        </div>
+        <p style={{ fontSize: 12, color: C.muted, margin: '0 0 16px' }}>
+          Esta fórmula calcula cuánto dura cada limpieza (Ops "Fin estimado", Dashboard, y la secuencia de Pre-dispatch). Un solo lugar para ajustarla.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 14 }}>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Redondeo (min)</p>
+            <input type="number" min={5} max={60} value={config.roundToMinutes} onChange={e => set('roundToMinutes', +e.target.value)}
+              style={{ width: '100%', height: 38, padding: '0 10px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, fontWeight: 600, color: C.ink, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mínimo (min)</p>
+            <input type="number" min={0} max={120} value={config.minDurationMinutes} onChange={e => set('minDurationMinutes', +e.target.value)}
+              style={{ width: '100%', height: 38, padding: '0 10px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, fontWeight: 600, color: C.ink, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ajuste si "Malo" (+min)</p>
+            <input type="number" min={0} max={120} value={config.ratingAdjustBadMinutes} onChange={e => set('ratingAdjustBadMinutes', +e.target.value)}
+              style={{ width: '100%', height: 38, padding: '0 10px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, fontWeight: 600, color: C.ink, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ajuste si "Bueno" (−min)</p>
+            <input type="number" min={0} max={120} value={config.ratingAdjustGoodMinutes} onChange={e => set('ratingAdjustGoodMinutes', +e.target.value)}
+              style={{ width: '100%', height: 38, padding: '0 10px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, fontWeight: 600, color: C.ink, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Buffer de viaje (min)</p>
+            <input type="number" min={0} max={120} value={config.travelBufferMinutes} onChange={e => set('travelBufferMinutes', +e.target.value)}
+              style={{ width: '100%', height: 38, padding: '0 10px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, fontWeight: 600, color: C.ink, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+        </div>
+        <div style={{ marginTop: 14, padding: '10px 12px', background: '#EEEDFE', borderRadius: 10, fontSize: 12, color: '#534AB7', lineHeight: 1.5 }}>
+          Ejemplo: Labor=180min ÷ 3 cleaners = 60min → redondeado a {config.roundToMinutes}min → con rating "Normal" (+0) → mínimo {config.minDurationMinutes}min → dura <strong>60min</strong>. Entre esa casa y la siguiente del mismo squad se reservan <strong>{config.travelBufferMinutes}min</strong> de viaje.
+        </div>
+      </div>
+
       {/* STR-only days */}
       <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 16, padding: '20px 20px', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
@@ -204,6 +379,44 @@ export default function RulesPage() {
         )}
       </div>
 
+      {/* Labor formula — drives Properties.Labor, which everything downstream reads
+          (pricing, HH Programadas, Pre-dispatch sequencing). See api/_lib/duration.js. */}
+      <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 16, padding: '20px 20px', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <TrendingUp style={{ width: 16, height: 16, color: C.primary }} />
+          <p style={{ fontSize: 14, fontWeight: 700, color: C.ink, margin: 0 }}>Fórmula de Labor</p>
+        </div>
+        <p style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>
+          <strong style={{ color: C.ink }}>Labor Base</strong> = <code style={{ background: C.bg, padding: '1px 6px', borderRadius: 4, fontSize: 12, color: C.ink }}>{config.laborMinutesPerBed}×Beds + {config.laborMinutesPerBathroom}×Bathrooms + {config.laborMinutesPerSqFt}×SqFt</code>. El número final que usa todo el sistema es <strong style={{ color: C.ink }}>Labor</strong> = Labor Base × <em>Labor Correction Factor</em> (el factor de cada propiedad, editable en Airtable). Cambiar estos números acá NO actualiza Properties automáticamente — hay que apretar "Recalcular" abajo.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 14, marginBottom: 16 }}>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Min por Bed</p>
+            <input type="number" step="0.01" value={config.laborMinutesPerBed} onChange={e => set('laborMinutesPerBed', +e.target.value)}
+              style={{ width: '100%', height: 38, padding: '0 10px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, fontWeight: 600, color: C.ink, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Min por Bathroom</p>
+            <input type="number" step="0.01" value={config.laborMinutesPerBathroom} onChange={e => set('laborMinutesPerBathroom', +e.target.value)}
+              style={{ width: '100%', height: 38, padding: '0 10px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, fontWeight: 600, color: C.ink, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Min por SqFt</p>
+            <input type="number" step="0.001" value={config.laborMinutesPerSqFt} onChange={e => set('laborMinutesPerSqFt', +e.target.value)}
+              style={{ width: '100%', height: 38, padding: '0 10px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, fontWeight: 600, color: C.ink, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rango de alerta del Factor (±%)</p>
+            <input type="number" min={0} max={100} step="1" value={config.laborFactorAlertPct} onChange={e => set('laborFactorAlertPct', +e.target.value)}
+              style={{ width: '100%', height: 38, padding: '0 10px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, fontWeight: 600, color: C.ink, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+        </div>
+        <p style={{ fontSize: 11.5, color: C.muted, marginBottom: 16, lineHeight: 1.5 }}>
+          Con {config.laborFactorAlertPct}% el rango esperado es {Math.round((1 - config.laborFactorAlertPct / 100) * 100) / 100}–{Math.round((1 + config.laborFactorAlertPct / 100) * 100) / 100}. Es solo de referencia — si una propiedad tiene un <code style={{ background: C.bg, padding: '1px 4px', borderRadius: 4 }}>Labor Correction Factor</code> fuera de ese rango, la vista previa de Recalcular lo marca para que lo revises, pero no lo corrige solo.
+        </p>
+        <RecalcLaborButton />
+      </div>
+
       {/* ESD calibration */}
       <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 16, padding: '20px 20px', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
@@ -211,7 +424,7 @@ export default function RulesPage() {
           <p style={{ fontSize: 14, fontWeight: 700, color: C.ink, margin: 0 }}>ESD calibration — Estimated Service Duration</p>
         </div>
         <p style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>
-          Base formula: <code style={{ background: C.bg, padding: '1px 6px', borderRadius: 4, fontSize: 12, color: C.ink }}>18×Beds + 23×Bathrooms + 0.05×SqFt</code> minutes — then corrected by historical actuals per property.
+          Próximo paso (todavía no activo): comparar la Fórmula de Labor de arriba contra los minutos reales históricos de cada propiedad, y aplicar un factor de corrección automático. Los campos de abajo quedan listos para cuando lo construyamos.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
           <div>

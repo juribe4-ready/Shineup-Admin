@@ -21,9 +21,11 @@ const TYPE_COLORS: Record<string, { bg: string; border: string; text: string }> 
 const DEFAULT_TYPE_COLOR = { bg: '#F1F5F9', border: '#94A3B8', text: '#475569' }
 const colorForType = (type: string | null) => (type && TYPE_COLORS[type]) || DEFAULT_TYPE_COLOR
 
-interface Squad { id: string; name: string; color: string; type: string; startHour: number; endHour: number }
+interface Squad { id: string; name: string; color: string; type: string; startHour: number; endHour: number; defaultMemberIds: string[] }
 interface Block { id: string; squadId: string; date: string; startTime: string; endTime: string; type: string; notes: string; cleaningId: string | null }
 interface Cleaning { id: string; cleaningType: string | null; price: number | null; laborMinutes: number | null; status: string }
+interface RosterOverride { id: string; squadId: string; date: string; staffIds: string[]; notes: string }
+interface StaffMember { id: string; name: string; initials: string }
 interface Availability {
   date: string; available: boolean; residualHours: number; reason: string | null
   breakdown?: {
@@ -46,6 +48,11 @@ export default function SquadBlocksPage() {
   const [squads, setSquads] = useState<Squad[]>([])
   const [blocks, setBlocks] = useState<Block[]>([])
   const [cleanings, setCleanings] = useState<Cleaning[]>([])
+  const [rosterOverrides, setRosterOverrides] = useState<RosterOverride[]>([])
+  const [staffList, setStaffList] = useState<StaffMember[]>([])
+  const [rosterEditor, setRosterEditor] = useState<{ squadId: string; date: string } | null>(null)
+  const [rosterStaffIds, setRosterStaffIds] = useState<string[]>([])
+  const [rosterSaving, setRosterSaving] = useState(false)
   const [strOnlyDays, setStrOnlyDays] = useState<number[]>([])
   const [strOnlyDates, setStrOnlyDates] = useState<string[]>([])
   const [availability, setAvailability] = useState<Record<string, Availability>>({})
@@ -77,6 +84,7 @@ export default function SquadBlocksPage() {
         setSquads(d.squads || [])
         setBlocks(d.blocks || [])
         setCleanings(d.cleanings || [])
+        setRosterOverrides(d.rosterOverrides || [])
       }
       if (configRes.ok) {
         const c = await configRes.json()
@@ -88,6 +96,52 @@ export default function SquadBlocksPage() {
   }
 
   useEffect(() => { load() }, [weekStart])
+
+  // Staff list doesn't change per week — load once
+  useEffect(() => {
+    fetch('/api/getStaff').then(r => r.ok ? r.json() : []).then(d => setStaffList(Array.isArray(d) ? d : [])).catch(() => {})
+  }, [])
+
+  // Resolution order: day-specific override for this squad+date, else the squad's Default Members
+  const resolveRoster = (squadId: string, date: string) => {
+    const override = rosterOverrides.find(o => o.squadId === squadId && o.date === date)
+    if (override) return { staffIds: override.staffIds, isOverride: true }
+    const squad = squads.find(s => s.id === squadId)
+    return { staffIds: squad?.defaultMemberIds || [], isOverride: false }
+  }
+
+  const staffLabel = (ids: string[]) => {
+    if (ids.length === 0) return null
+    return ids.map(id => staffList.find(s => s.id === id)?.initials || staffList.find(s => s.id === id)?.name?.slice(0, 2).toUpperCase() || '?').join(', ')
+  }
+
+  const openRosterEditor = (squadId: string, date: string) => {
+    const { staffIds } = resolveRoster(squadId, date)
+    setRosterStaffIds(staffIds)
+    setRosterEditor({ squadId, date })
+  }
+
+  const toggleRosterStaff = (id: string) => {
+    setRosterStaffIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  const saveRoster = async () => {
+    if (!rosterEditor) return
+    setRosterSaving(true)
+    try {
+      const r = await fetch('/api/getReports?type=squadRoster', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ squadId: rosterEditor.squadId, date: rosterEditor.date, staffIds: rosterStaffIds }),
+      })
+      const d = await r.json()
+      if (!r.ok || !d.ok) { showToast(d.error || 'Error guardando roster', 'err'); return }
+      showToast(d.cleaningCount > 0 ? `Guardado · aplicado a ${d.updated}/${d.cleaningCount} limpiezas de ese día` : 'Guardado')
+      setRosterEditor(null)
+      load()
+    } catch { showToast('Error guardando roster', 'err') }
+    finally { setRosterSaving(false) }
+  }
 
   const loadAvailability = async () => {
     setLoadingAvail(true)
@@ -410,6 +464,20 @@ export default function SquadBlocksPage() {
                           <Plus className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-60 transition-opacity"
                             style={{ width: 13, height: 13, color: C.primary }} />
                         )}
+                        {!blocked && (() => {
+                          const { staffIds, isOverride } = resolveRoster(squad.id, date)
+                          const label = staffLabel(staffIds)
+                          return (
+                            <div onClick={e => { e.stopPropagation(); openRosterEditor(squad.id, date) }}
+                              title="Click para cambiar el personal de este squad ese día"
+                              style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: 4, cursor: 'pointer' }}>
+                              <span style={{ fontSize: 8.5, fontWeight: 700, color: isOverride ? C.primary : C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                👥 {label || 'Sin personal'}
+                              </span>
+                              {isOverride && <span style={{ fontSize: 7, fontWeight: 800, color: C.primary, background: C.primaryLight, borderRadius: 4, padding: '0 3px' }}>AJUSTE</span>}
+                            </div>
+                          )
+                        })()}
                         {structural && dayBlocks.length === 0 && (
                           <div style={{ fontSize: 9.5, fontWeight: 700, color: C.amber, textAlign: 'center', padding: '4px 0' }}>STR-only</div>
                         )}
@@ -499,6 +567,52 @@ export default function SquadBlocksPage() {
           </div>
         </div>
       )}
+
+      {/* Roster editor modal — set who's actually working a squad on a specific day.
+          Saving creates/updates ONE override row and cascades it to every cleaning already
+          dispatched to that squad that day, so nothing needs to be edited one-by-one. */}
+      {rosterEditor && (() => {
+        const squad = squads.find(s => s.id === rosterEditor.squadId)
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 90 }}>
+            <div style={{ background: C.white, borderRadius: 18, padding: 24, width: 360, maxWidth: '90vw' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <p style={{ fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>Personal del día</p>
+                <button onClick={() => setRosterEditor(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}>
+                  <X style={{ width: 18, height: 18, color: C.muted }} />
+                </button>
+              </div>
+              <p style={{ fontSize: 12, color: C.muted, margin: '0 0 18px' }}>
+                {squad?.name} · {rosterEditor.date}
+              </p>
+
+              <p style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Staff</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+                {staffList.map(s => {
+                  const selected = rosterStaffIds.includes(s.id)
+                  return (
+                    <button key={s.id} onClick={() => toggleRosterStaff(s.id)}
+                      style={{ height: 32, padding: '0 12px', borderRadius: 9, border: `1.5px solid ${selected ? C.primary : C.border}`, background: selected ? C.primaryLight : C.white, color: selected ? C.primary : C.slate, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                      {s.name}
+                    </button>
+                  )
+                })}
+                {staffList.length === 0 && <p style={{ fontSize: 12, color: C.muted }}>No hay staff cargado.</p>}
+              </div>
+
+              <p style={{ fontSize: 11.5, color: C.muted, margin: '0 0 18px', lineHeight: 1.4 }}>
+                Si {squad?.name} ya tiene limpiezas asignadas ese día, esto las actualiza automáticamente — no hace falta cambiarlas una por una.
+              </p>
+
+              <button onClick={saveRoster} disabled={rosterSaving}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 42, borderRadius: 10, border: 'none', background: `linear-gradient(135deg, ${C.primary} 0%, #4F46E5 100%)`, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                {rosterSaving ? <RefreshCw style={{ width: 14, height: 14 }} className="animate-spin" /> : null}
+                Guardar y aplicar
+              </button>
+            </div>
+          </div>
+        )
+      })()}
 
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}} .animate-spin{animation:spin 1s linear infinite}`}</style>
     </div>
