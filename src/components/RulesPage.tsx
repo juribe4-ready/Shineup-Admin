@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Component } from 'react'
+import type { ReactNode } from 'react'
 import { Clock, Calendar, TrendingUp, Plus, X, Save, RefreshCw } from 'lucide-react'
 
 const C = {
@@ -23,7 +24,7 @@ interface RecalcPreview {
 // Preview-then-apply flow for the Labor recalculation — never writes to Airtable on the
 // first click. Shows exactly what would change (count + sample before/after) and only
 // applies after Juan explicitly confirms.
-function RecalcLaborButton() {
+function RecalcLaborButton({ config }: { config: TARSConfig }) {
   const [preview, setPreview] = useState<RecalcPreview | null>(null)
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
@@ -32,22 +33,41 @@ function RecalcLaborButton() {
   const loadPreview = async () => {
     setLoading(true); setResult(null)
     try {
-      const r = await fetch('/api/getReports?type=recalcLabor')
+      const r = await fetch('/api/getReports?type=recalcLabor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config, dryRun: true }),
+      })
       const d = await r.json()
+      // The backend can fail (Airtable field missing, bad token, etc.) and return
+      // { error: "..." } instead of a real preview — never trust the shape blindly,
+      // or rendering preview.coefficients.X crashes the whole page.
+      if (!r.ok || d?.error) {
+        setResult(d?.error || `Error del servidor (${r.status}). Revisá los logs de Vercel para /api/getReports.`)
+        return
+      }
+      if (!d || typeof d.totalProperties !== 'number' || !Array.isArray(d.sample) || !d.coefficients) {
+        setResult('El servidor devolvió una respuesta inesperada. Esto suele pasar si en Airtable Properties todavía no existen los campos "Labor Base" o "Labor Correction Factor", o si Beds/Bathrooms/SqFt tienen otro nombre.')
+        return
+      }
       setPreview(d)
-    } catch { setResult('Error cargando vista previa') }
+    } catch (e: any) { setResult('Error cargando vista previa: ' + (e?.message || 'desconocido')) }
     finally { setLoading(false) }
   }
 
   const apply = async () => {
     setApplying(true)
     try {
-      const r = await fetch('/api/getReports?type=recalcLabor', { method: 'POST' })
+      const r = await fetch('/api/getReports?type=recalcLabor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config }),
+      })
       const d = await r.json()
-      if (!d.ok) { setResult(d.error || 'Error aplicando cambios'); return }
+      if (!d || !d.ok) { setResult(d?.error || `Error aplicando cambios (${r.status})`); return }
       setResult(`Listo — ${d.updated}/${d.totalProperties} propiedades actualizadas.`)
       setPreview(null)
-    } catch { setResult('Error aplicando cambios') }
+    } catch (e: any) { setResult('Error aplicando cambios: ' + (e?.message || 'desconocido')) }
     finally { setApplying(false) }
   }
 
@@ -64,17 +84,17 @@ function RecalcLaborButton() {
       {preview && (
         <div style={{ border: '1.5px solid #E2E8F0', borderRadius: 12, padding: 14 }}>
           <p style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', margin: '0 0 4px' }}>
-            {preview.changedCount} de {preview.totalProperties} propiedades van a cambiar
+            {preview.changedCount ?? 0} de {preview.totalProperties ?? 0} propiedades van a cambiar
           </p>
           <p style={{ fontSize: 11.5, color: '#94A3B8', margin: '0 0 4px' }}>
-            Labor Base con {preview.coefficients.laborMinutesPerBed}×Beds + {preview.coefficients.laborMinutesPerBathroom}×Bathrooms + {preview.coefficients.laborMinutesPerSqFt}×SqFt, corregido por el Factor de cada propiedad
+            Labor Base con {preview.coefficients?.laborMinutesPerBed}×Beds + {preview.coefficients?.laborMinutesPerBathroom}×Bathrooms + {preview.coefficients?.laborMinutesPerSqFt}×SqFt, corregido por el Factor de cada propiedad
           </p>
-          {preview.outOfBandCount > 0 && (
+          {(preview.outOfBandCount ?? 0) > 0 && (
             <p style={{ fontSize: 11.5, color: '#92400E', margin: '0 0 10px', fontWeight: 700 }}>
-              ⚠️ {preview.outOfBandCount} propiedad(es) con Factor fuera del rango esperado ({preview.band.min}–{preview.band.max}) — revisalas, marcadas abajo
+              ⚠️ {preview.outOfBandCount} propiedad(es) con Factor fuera del rango esperado ({preview.band?.min}–{preview.band?.max}) — revisalas, marcadas abajo
             </p>
           )}
-          {preview.sample.length > 0 && (
+          {(preview.sample?.length ?? 0) > 0 && (
             <div style={{ maxHeight: 260, overflowY: 'auto', marginBottom: 12, border: '1px solid #E2E8F0', borderRadius: 8 }}>
               <table style={{ width: '100%', fontSize: 11.5, borderCollapse: 'collapse' }}>
                 <thead><tr style={{ background: '#F8FAFC' }}>
@@ -85,7 +105,7 @@ function RecalcLaborButton() {
                   <th style={{ textAlign: 'right', padding: '6px 8px' }}>Labor nuevo</th>
                 </tr></thead>
                 <tbody>
-                  {preview.sample.map(s => (
+                  {(preview.sample ?? []).map(s => (
                     <tr key={s.id} style={{ borderTop: '1px solid #E2E8F0', background: s.factorOutOfBand ? '#FEF2F2' : (s.changed ? '#FFFBEB' : 'transparent') }}>
                       <td style={{ padding: '6px 8px' }}>{s.name}</td>
                       <td style={{ textAlign: 'right', padding: '6px 8px', color: '#94A3B8' }}>{s.newLaborBase}</td>
@@ -414,7 +434,7 @@ export default function RulesPage() {
         <p style={{ fontSize: 11.5, color: C.muted, marginBottom: 16, lineHeight: 1.5 }}>
           Con {config.laborFactorAlertPct}% el rango esperado es {Math.round((1 - config.laborFactorAlertPct / 100) * 100) / 100}–{Math.round((1 + config.laborFactorAlertPct / 100) * 100) / 100}. Es solo de referencia — si una propiedad tiene un <code style={{ background: C.bg, padding: '1px 4px', borderRadius: 4 }}>Labor Correction Factor</code> fuera de ese rango, la vista previa de Recalcular lo marca para que lo revises, pero no lo corrige solo.
         </p>
-        <RecalcLaborButton />
+        <RecalcLaborButton config={config} />
       </div>
 
       {/* ESD calibration */}
