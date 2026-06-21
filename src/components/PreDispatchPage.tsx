@@ -20,9 +20,20 @@ const TYPE_COLORS: Record<string, { bg: string; border: string; text: string }> 
 const DEFAULT_TYPE_COLOR = { bg: '#F1F5F9', border: '#94A3B8', text: '#475569' }
 const colorForType = (type: string | null) => (type && TYPE_COLORS[type]) || DEFAULT_TYPE_COLOR
 
+// Deterministic color per zipcode (same zip = same color every load), so pills from the
+// same area are visually groupable at a glance in the "Sin squad" row. Picked for mutual
+// contrast against each other and against the white pill background.
+const ZIP_PALETTE = ['#6366F1', '#10B981', '#F59E0B', '#EC4899', '#06B6D4', '#8B5CF6', '#EF4444', '#84CC16', '#F97316', '#14B8A6']
+function colorForZip(zip: string | null): string | null {
+  if (!zip) return null
+  let hash = 0
+  for (let i = 0; i < zip.length; i++) hash = (hash * 31 + zip.charCodeAt(i)) >>> 0
+  return ZIP_PALETTE[hash % ZIP_PALETTE.length]
+}
+
 interface Squad { id: string; name: string; color: string; type: string; startHour: number; endHour: number }
 interface Block { id: string; squadId: string; date: string; startTime: string; endTime: string; type: string; cleaningId: string | null; notes: string }
-interface Cleaning { id: string; date: string; scheduledTime: string | null; status: string; propertyText: string; assignedStaff: string[]; appointmentCode: string | null; appointmentRecordId: string | null; cleaningType: string | null }
+interface Cleaning { id: string; date: string; scheduledTime: string | null; status: string; propertyText: string; zip: string | null; assignedStaff: string[]; appointmentCode: string | null; appointmentRecordId: string | null; cleaningType: string | null }
 
 function getMonday(d: Date) {
   const dow = (d.getDay() + 6) % 7
@@ -315,27 +326,35 @@ export default function PreDispatchPage() {
               <p className="font-bold text-[11px]" style={{ color: C.amber }}>Sin squad</p>
             </div>
             {dates.map(date => {
-              const dayUnassigned = unassignedCleanings.filter(c => c.date === date)
+              const dayUnassigned = unassignedCleanings
+                .filter(c => c.date === date)
+                .sort((a, b) => (a.zip || '').localeCompare(b.zip || '') || a.propertyText.localeCompare(b.propertyText))
               return (
                 <div key={date} className="border-l p-1.5 overflow-y-auto" style={{ borderColor: C.border, maxHeight: 220, minHeight: 60 }}>
                   {dayUnassigned.map(c => {
                     const isPending = pendingCleaningIds.has(c.id)
                     const tc = colorForType(c.cleaningType)
+                    const zipColor = colorForZip(c.zip)
                     return (
                       <div key={c.id}
                         draggable={!isPending}
                         onDragStart={() => !isPending && setDraggedCleaningId(c.id)}
                         onDragEnd={() => setDraggedCleaningId(null)}
+                        title={c.zip ? `ZIP ${c.zip}` : undefined}
                         className="rounded-xl px-2 py-1 mb-1 transition-opacity"
                         style={{
                           background: isPending ? '#F1F5F9' : tc.bg,
                           border: `1px solid ${isPending ? C.border : tc.border}40`,
+                          borderLeft: zipColor && !isPending ? `4px solid ${zipColor}` : undefined,
                           opacity: isPending ? 0.5 : (draggedCleaningId === c.id ? 0.4 : 1),
                           cursor: isPending ? 'not-allowed' : 'grab',
                         }}>
                         <p className="text-[9px] font-black truncate" style={{ color: isPending ? C.muted : tc.text }}>
                           {timeFromScheduled(c.scheduledTime) ? `${timeFromScheduled(c.scheduledTime)} · ` : ''}{c.propertyText}{isPending ? ' · asignando…' : ''}
                         </p>
+                        {c.zip && !isPending && (
+                          <p className="text-[7.5px] font-bold truncate" style={{ color: zipColor || C.muted }}>{c.zip}</p>
+                        )}
                       </div>
                     )
                   })}
