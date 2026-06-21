@@ -251,13 +251,20 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
     setMobileOpen(false)
   }
 
-  const homeItems    = NAV_ITEMS.filter(i => i.section === 'home')
-  const operateItems = NAV_ITEMS.filter(i => i.section === 'operate')
-  const planItems     = NAV_ITEMS.filter(i => i.section === 'plan')
-  const tarsItems     = NAV_ITEMS.filter(i => i.section === 'tars')
-  const earnItems     = NAV_ITEMS.filter(i => i.section === 'earn')
-  const growItems     = NAV_ITEMS.filter(i => i.section === 'grow')
-  const systemItems   = NAV_ITEMS.filter(i => i.section === 'system')
+  // 'monitor' role (e.g. Jahir) only ever sees Monitoring — every other nav item is
+  // filtered out before splitting into sections, so the whole sidebar collapses down to
+  // just that one item with zero changes needed in the section-rendering logic below.
+  const visibleItems = profile.role === 'monitor'
+    ? NAV_ITEMS.filter(i => i.key === 'cco_monitoring')
+    : NAV_ITEMS
+
+  const homeItems    = visibleItems.filter(i => i.section === 'home')
+  const operateItems = visibleItems.filter(i => i.section === 'operate')
+  const planItems     = visibleItems.filter(i => i.section === 'plan')
+  const tarsItems     = visibleItems.filter(i => i.section === 'tars')
+  const earnItems     = visibleItems.filter(i => i.section === 'earn')
+  const growItems     = visibleItems.filter(i => i.section === 'grow')
+  const systemItems   = visibleItems.filter(i => i.section === 'system')
 
   const sideW = isMobile ? '0' : collapsed ? '72px' : '240px'
 
@@ -352,21 +359,25 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
         <div style={{ flex: 1, padding: '12px 10px', overflowY: 'auto' }}>
 
           {/* Home — fixed, not collapsible */}
-          <div style={{ marginBottom: 8 }}>
-            {homeItems.map(item => (
-              <NavBtn 
-                key={item.key} 
-                item={item} 
-                active={page === item.key} 
-                collapsed={collapsed} 
-                badge={badges[item.key]}
-                hovered={hoveredItem === item.key}
-                onHover={setHoveredItem}
-                onClick={() => handleNavigate(item.key)} 
-              />
-            ))}
-          </div>
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '4px 10px 10px' }} />
+          {homeItems.length > 0 && (
+            <>
+              <div style={{ marginBottom: 8 }}>
+                {homeItems.map(item => (
+                  <NavBtn 
+                    key={item.key} 
+                    item={item} 
+                    active={page === item.key} 
+                    collapsed={collapsed} 
+                    badge={badges[item.key]}
+                    hovered={hoveredItem === item.key}
+                    onHover={setHoveredItem}
+                    onClick={() => handleNavigate(item.key)} 
+                  />
+                ))}
+              </div>
+              <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '4px 10px 10px' }} />
+            </>
+          )}
           
           {/* Section renderer — collapsible, Booking Koala style */}
           {[

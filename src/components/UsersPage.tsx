@@ -24,10 +24,11 @@ const ROLE_COLORS: Record<string, { bg: string; color: string }> = {
   manager: { bg: '#DBEAFE', color: '#2563EB' },
   cleaner: { bg: '#ECFDF5', color: '#059669' },
   client:  { bg: '#FEF3C7', color: '#D97706' },
+  monitor: { bg: '#E0F2FE', color: '#0369A1' },
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  admin: 'Admin', manager: 'Manager', cleaner: 'Cleaner', client: 'Cliente'
+  admin: 'Admin', manager: 'Manager', cleaner: 'Cleaner', client: 'Cliente', monitor: 'Monitoring (solo lectura)'
 }
 
 interface StaffRecord {
@@ -230,6 +231,7 @@ export default function UsersPage({ profile: _profile, onSignOut: _onSignOut }: 
                         <option value="manager">Manager</option>
                         <option value="cleaner">Cleaner</option>
                         <option value="client">Cliente</option>
+                        <option value="monitor">Monitoring (solo lectura)</option>
                       </select>
                     </div>
                     <div className="col-span-3">
@@ -314,6 +316,7 @@ export default function UsersPage({ profile: _profile, onSignOut: _onSignOut }: 
                     <option value="manager">Manager</option>
                     <option value="cleaner">Cleaner</option>
                     <option value="client">Cliente</option>
+                    <option value="monitor">Monitoring (solo lectura)</option>
                   </select>
                   {linkedStaff ? (
                     <button onClick={() => setEditingUser(user)} className="flex items-center gap-1.5"

@@ -22,7 +22,9 @@ interface Props { profile: Profile; initialTab?: Tab }
 const todayDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
 
 export default function OperationsPage({ profile, initialTab = 'live' }: Props) {
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab)
+  const isMonitorOnly = profile.role === 'monitor'
+  const [activeTab, setActiveTabRaw] = useState<Tab>(isMonitorOnly ? 'live' : initialTab)
+  const setActiveTab = (t: Tab) => setActiveTabRaw(isMonitorOnly ? 'live' : t)
   useEffect(() => { setActiveTab(initialTab) }, [initialTab])
   const [date, setDate] = useState(todayDate())
   const [dateChanged, setDateChanged] = useState(false)
@@ -150,6 +152,7 @@ export default function OperationsPage({ profile, initialTab = 'live' }: Props) 
         </button>
 
         {/* INCIDENTES */}
+        {!isMonitorOnly && (
         <button
           onClick={() => setActiveTab('incidents')}
           style={{
@@ -174,8 +177,10 @@ export default function OperationsPage({ profile, initialTab = 'live' }: Props) 
             }}>{incidentCount}</span>
           )}
         </button>
+        )}
 
         {/* RUPTURAS */}
+        {!isMonitorOnly && (
         <button
           onClick={() => setActiveTab('inventory')}
           style={{
@@ -200,6 +205,7 @@ export default function OperationsPage({ profile, initialTab = 'live' }: Props) 
             }}>{inventoryCount}</span>
           )}
         </button>
+        )}
       </div>{/* end tabs pill */}
 
       {/* Date controls — derecha */}
