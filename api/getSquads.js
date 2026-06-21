@@ -199,12 +199,22 @@ export default async function handler(req, res) {
       } while (apptOffset)
     } catch (e) { console.error('[getSquads] appt lookup exception:', e.message) }
 
+    // Same as every other file in this codebase: Airtable can return a linked-record field
+    // as either an array OR a single bare string depending on how the record was written —
+    // this MUST handle both, or records end up silently treated as "no property linked" even
+    // when they clearly have one (confirmed live: this was exactly the bug).
+    const propIdOf = (fields) => {
+      const v = fields?.Property
+      if (Array.isArray(v)) return v[0] || null
+      return v || null
+    }
+
     // ZIP lookup for grouping unassigned pills by zipcode in Pre-dispatch. Only fetch the
     // properties actually referenced by this week's cleanings (not the whole table).
     const propIdSet = new Set()
     for (const r of cleaningsData.records || []) {
-      const propIds = Array.isArray(r.fields?.Property) ? r.fields.Property : []
-      for (const pid of propIds) propIdSet.add(pid)
+      const pid = propIdOf(r.fields)
+      if (pid) propIdSet.add(pid)
     }
     const zipByPropId = {}
     await Promise.all(Array.from(propIdSet).map(async propId => {
@@ -218,8 +228,8 @@ export default async function handler(req, res) {
     }))
 
     const cleanings = (cleaningsData.records || []).map(r => {
-      const propIds = Array.isArray(r.fields?.Property) ? r.fields.Property : []
-      const zip = propIds.length > 0 ? (zipByPropId[propIds[0]] || null) : null
+      const pid = propIdOf(r.fields)
+      const zip = pid ? (zipByPropId[pid] || null) : null
       return {
         id: r.id,
         date: r.fields?.Date || '',
