@@ -234,8 +234,10 @@ export default async function handler(req, res) {
     if (type === 'availability') return res.status(200).json(await getAvailability(headers, req.query))
     if (type === 'squadRoster' && req.method === 'GET')  return res.status(200).json(await getSquadRoster(headers, req.query))
     if (type === 'squadRoster' && req.method === 'POST') return res.status(200).json(await saveSquadRoster(headers, req.body))
-    if (type === 'recalcLabor' && req.method === 'GET')  return res.status(200).json(await previewRecalcLabor(headers))
-    if (type === 'recalcLabor' && req.method === 'POST') return res.status(200).json(await applyRecalcLabor(headers))
+    if (type === 'recalcLabor' && req.method === 'POST') {
+      const { config: configOverride, dryRun } = req.body || {}
+      return res.status(200).json(dryRun ? await previewRecalcLabor(headers, configOverride) : await applyRecalcLabor(headers, configOverride))
+    }
     if (type === 'resequence' && req.method === 'POST') return res.status(200).json(await resequenceSquadDay(headers, req.body))
     if (type === 'cleaningTypes') {
       const ct = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Cleaning%20Type?fields[]=Cleaning%20Type%20Name`, { headers })
@@ -534,9 +536,15 @@ function computeLaborDiff(r, cfg) {
   }
 }
 
-async function previewRecalcLabor(headers) {
-  const { config } = await getTARSConfig(headers)
-  const cfg = config || {}
+async function previewRecalcLabor(headers, configOverride) {
+  // configOverride lets the preview use exactly what's on screen in Reglas, even if the
+  // person hasn't clicked "Guardar" yet — without this, the preview silently used the LAST
+  // SAVED config, which looked like "nothing changed" even after editing the coefficients.
+  let cfg = configOverride
+  if (!cfg) {
+    const { config } = await getTARSConfig(headers)
+    cfg = config || {}
+  }
   const properties = await fetchPropertiesForLaborCalc(headers)
   const diffs = properties.map(r => computeLaborDiff(r, cfg))
   return {
@@ -553,9 +561,18 @@ async function previewRecalcLabor(headers) {
   }
 }
 
-async function applyRecalcLabor(headers) {
-  const { config } = await getTARSConfig(headers)
-  const cfg = config || {}
+async function applyRecalcLabor(headers, configOverride) {
+  let cfg
+  if (configOverride) {
+    // Aplicar always saves the config it's about to use, so Standards and Properties never
+    // drift apart — applying a recalculation with values that were never persisted would
+    // leave future previews comparing against stale saved numbers.
+    await saveTARSConfig(headers, { config: configOverride })
+    cfg = configOverride
+  } else {
+    const { config } = await getTARSConfig(headers)
+    cfg = config || {}
+  }
   const properties = await fetchPropertiesForLaborCalc(headers)
   const updates = properties.map(r => {
     const diff = computeLaborDiff(r, cfg)
