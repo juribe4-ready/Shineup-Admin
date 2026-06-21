@@ -209,23 +209,26 @@ export default async function handler(req, res) {
       return v || null
     }
 
-    // ZIP lookup for grouping unassigned pills by zipcode in Pre-dispatch. Only fetch the
-    // properties actually referenced by this week's cleanings (not the whole table).
-    const propIdSet = new Set()
-    for (const r of cleaningsData.records || []) {
-      const pid = propIdOf(r.fields)
-      if (pid) propIdSet.add(pid)
-    }
+    // ZIP lookup for grouping unassigned pills by zipcode in Pre-dispatch.
+    // NOTE: previously fetched each property individually in parallel (Promise.all of N
+    // single-record GETs) — with more than ~5 distinct properties in a week, that can exceed
+    // Airtable's 5-requests/second limit and some fetches silently fail (intermittent, not
+    // tied to any particular property — confirmed live). Fetching the whole table once,
+    // paginated, is both simpler and immune to this entirely.
+    let propRecords = [], propOffset = null
+    do {
+      const pr = await fetch(
+        `https://api.airtable.com/v0/${AIRTABLE_BASE}/${PROPS_TABLE}?pageSize=100${propOffset ? `&offset=${propOffset}` : ''}`,
+        { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
+      )
+      if (!pr.ok) { console.error('[getSquads] properties fetch failed:', pr.status); break }
+      const pd = await pr.json()
+      if (pd.error) { console.error('[getSquads] properties fetch error:', pd.error); break }
+      propRecords = propRecords.concat(pd.records || [])
+      propOffset = pd.offset || null
+    } while (propOffset)
     const zipByPropId = {}
-    await Promise.all(Array.from(propIdSet).map(async propId => {
-      try {
-        const pr = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${PROPS_TABLE}/${propId}`, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } })
-        if (pr.ok) {
-          const pd = await pr.json()
-          zipByPropId[propId] = pd.fields?.ZIP || null
-        }
-      } catch (e) { /* missing zip for one property shouldn't break the page */ }
-    }))
+    for (const p of propRecords) zipByPropId[p.id] = p.fields?.ZIP || null
 
     const cleanings = (cleaningsData.records || []).map(r => {
       const pid = propIdOf(r.fields)
