@@ -3,6 +3,7 @@ const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN
 const SQUADS_TABLE = 'tbl6CaYpYaZe1PY0s'
 const BLOCKS_TABLE = 'tblR9T67eyBrIi5Ny'
 const CLEANINGS_TABLE = 'tblabOdNknnjrYUU1'
+const PROPS_TABLE = 'tbl1iETmcFP460oWN'
 
 // 'Day Overrides' is a Long Text field on the EXISTING Squads table (no new table needed) that
 // holds a JSON object keyed by date: { "2026-06-17": { "staffIds": ["recA","recB"], "notes": "" } }.
@@ -198,19 +199,42 @@ export default async function handler(req, res) {
       } while (apptOffset)
     } catch (e) { console.error('[getSquads] appt lookup exception:', e.message) }
 
-    const cleanings = (cleaningsData.records || []).map(r => ({
-      id: r.id,
-      date: r.fields?.Date || '',
-      scheduledTime: r.fields?.['Scheduled Time'] || null,
-      status: r.fields?.Status || 'Scheduled',
-      propertyText: r.fields?.['Property Text'] || 'Sin propiedad',
-      assignedStaff: r.fields?.['Assigned Staff'] || [],
-      appointmentCode: cleaningIdToApptCode[r.id] || null,
-      appointmentRecordId: cleaningIdToApptRecordId[r.id] || null,
-      price: typeof r.fields?.Price === 'number' ? r.fields.Price : null,
-      laborMinutes: typeof r.fields?.Labor === 'number' ? r.fields.Labor : null,
-      cleaningType: r.fields?.['Cleaning Type Text'] || (Array.isArray(r.fields?.['Cleaning Type']) ? null : r.fields?.['Cleaning Type']) || null,
+    // ZIP lookup for grouping unassigned pills by zipcode in Pre-dispatch. Only fetch the
+    // properties actually referenced by this week's cleanings (not the whole table).
+    const propIdSet = new Set()
+    for (const r of cleaningsData.records || []) {
+      const propIds = Array.isArray(r.fields?.Property) ? r.fields.Property : []
+      for (const pid of propIds) propIdSet.add(pid)
+    }
+    const zipByPropId = {}
+    await Promise.all(Array.from(propIdSet).map(async propId => {
+      try {
+        const pr = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${PROPS_TABLE}/${propId}`, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } })
+        if (pr.ok) {
+          const pd = await pr.json()
+          zipByPropId[propId] = pd.fields?.ZIP || null
+        }
+      } catch (e) { /* missing zip for one property shouldn't break the page */ }
     }))
+
+    const cleanings = (cleaningsData.records || []).map(r => {
+      const propIds = Array.isArray(r.fields?.Property) ? r.fields.Property : []
+      const zip = propIds.length > 0 ? (zipByPropId[propIds[0]] || null) : null
+      return {
+        id: r.id,
+        date: r.fields?.Date || '',
+        scheduledTime: r.fields?.['Scheduled Time'] || null,
+        status: r.fields?.Status || 'Scheduled',
+        propertyText: r.fields?.['Property Text'] || 'Sin propiedad',
+        zip,
+        assignedStaff: r.fields?.['Assigned Staff'] || [],
+        appointmentCode: cleaningIdToApptCode[r.id] || null,
+        appointmentRecordId: cleaningIdToApptRecordId[r.id] || null,
+        price: typeof r.fields?.Price === 'number' ? r.fields.Price : null,
+        laborMinutes: typeof r.fields?.Labor === 'number' ? r.fields.Labor : null,
+        cleaningType: r.fields?.['Cleaning Type Text'] || (Array.isArray(r.fields?.['Cleaning Type']) ? null : r.fields?.['Cleaning Type']) || null,
+      }
+    })
 
     // Day-specific roster overrides for this week — derived from each squad's own
     // 'Day Overrides' JSON field (already fetched above with the squad, no extra API call).
