@@ -41,16 +41,14 @@ function addDaysToISO(iso: string, days: number): string {
 
 function timeFromScheduled(scheduledTime: string | null): string {
   if (!scheduledTime) return ''
-  // Confirmed with real data (5318 Hyde Park Dr: API returns "...T15:30:00.000Z",
-  // user confirmed the real time is 9:30am Columbus = exactly 6 hours earlier).
-  // This field has no fixed timezone configured in Airtable, and testing shows the API
-  // serializes it with a CONSTANT -6h offset that does NOT shift with daylight saving —
-  // unlike Eastern Time, which would be -4h in summer and -5h in winter. So we subtract
-  // a fixed 6 hours rather than using a named IANA timezone (which would reintroduce DST).
   const d = new Date(scheduledTime)
   if (isNaN(d.getTime())) return ''
-  d.setUTCHours(d.getUTCHours() - 6)
-  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`
+  // Format the absolute instant in Eastern time, letting Intl handle DST correctly.
+  // (Previously this subtracted a hardcoded 6 hours — a workaround for when the Airtable
+  // field's timezone was misconfigured to Pacific/Easter, which is UTC-6 year-round. That
+  // hardcoded offset broke once the field's timezone setting changed. This approach doesn't
+  // care what timezone the Airtable field is set to — it works off the real UTC instant.)
+  return d.toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
 export default function PreDispatchPage() {
@@ -62,6 +60,11 @@ export default function PreDispatchPage() {
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const [draggedCleaningId, setDraggedCleaningId] = useState<string | null>(null)
+  // Separate from draggedCleaningId — this is for reordering blocks ALREADY assigned to a
+  // squad within the same day cell (drag one pill over another to resequence their times).
+  const [draggedBlockId, setDraggedBlockId] = useState<string | null>(null)
+  const [dragOverBlockId, setDragOverBlockId] = useState<string | null>(null)
+  const [resequencing, setResequencing] = useState(false)
 
   const weekStartStr = weekStart.toISOString().split('T')[0]
   const dates = Array.from({ length: 7 }, (_, i) => addDaysToISO(weekStartStr, i))
@@ -192,6 +195,42 @@ export default function PreDispatchPage() {
     } catch { showToast('Error al eliminar', 'err') }
   }
 
+  // Drag one block pill onto another, within the same squad+day cell, to reorder them.
+  // The dropped-on pill's position becomes where the dragged one lands; everything from
+  // there forward gets its time recomputed: previous job's end + travel buffer = next start.
+  const handleReorderBlocks = async (squadId: string, date: string, fromBlockId: string, toBlockId: string) => {
+    setDraggedBlockId(null)
+    setDragOverBlockId(null)
+    if (fromBlockId === toBlockId) return
+
+    const dayBlocks = blocks
+      .filter(b => b.squadId === squadId && b.date === date)
+      .sort((a, b) => a.startTime.localeCompare(b.startTime))
+
+    const fromIdx = dayBlocks.findIndex(b => b.id === fromBlockId)
+    const toIdx = dayBlocks.findIndex(b => b.id === toBlockId)
+    if (fromIdx === -1 || toIdx === -1) return
+
+    const reordered = [...dayBlocks]
+    const [moved] = reordered.splice(fromIdx, 1)
+    reordered.splice(toIdx, 0, moved)
+    const orderedBlockIds = reordered.map(b => b.id)
+
+    setResequencing(true)
+    try {
+      const res = await fetch('/api/getReports?type=resequence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ squadId, date, orderedBlockIds }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.ok) { showToast(data?.error || 'Error al reordenar', 'err'); return }
+      showToast(`Reordenado · ${data.updated} horario(s) actualizado(s)`)
+      loadData()
+    } catch (e: any) { showToast('Error de red: ' + (e?.message || 'desconocido'), 'err') }
+    finally { setResequencing(false) }
+  }
+
   const fmtDay = (iso: string) => {
     const d = new Date(iso + 'T12:00:00')
     return { short: d.toLocaleDateString('es-ES', { weekday: 'short' }), num: d.getDate() }
@@ -237,6 +276,7 @@ export default function PreDispatchPage() {
       <div className="rounded-2xl p-3" style={{ background: C.amberLight, border: `1px solid ${C.amber}30` }}>
         <p className="text-[11.5px]" style={{ color: '#92400E' }}>
           Aquí solo aparecen limpiezas ya <strong>lanzadas</strong> (Cleanings reales). Si falta una limpieza, primero lánzala desde Plan → Week.
+          {' '}Arrastrá una limpieza ya asignada sobre otra del mismo squad para reordenarlas — los horarios se recalculan solos (duración real + buffer de viaje configurado en Reglas).
         </p>
       </div>
 
@@ -346,12 +386,29 @@ export default function PreDispatchPage() {
                         onDrop={() => draggedCleaningId && isRelevant && handleDropCleaning(squad.id, date, draggedCleaningId)}
                         className="border-l p-1.5 min-h-[60px]"
                         style={{ borderColor: C.border, background: isRelevant ? C.white : C.bg, opacity: isRelevant ? 1 : 0.4 }}>
-                        {dayBlocks.map(b => {
+                        {dayBlocks.sort((a, b) => a.startTime.localeCompare(b.startTime)).map(b => {
                           const relatedCleaning = cleanings.find(c => c.id === b.cleaningId)
                           const tc = colorForType(relatedCleaning?.cleaningType || null)
                           const hasRealTime = relatedCleaning ? !!timeFromScheduled(relatedCleaning.scheduledTime) : true
+                          const isDraggingThis = draggedBlockId === b.id
+                          const isDragTarget = dragOverBlockId === b.id && draggedBlockId !== null && draggedBlockId !== b.id
                           return (
-                            <div key={b.id} className="rounded-xl px-2 py-1 mb-1 flex items-center justify-between gap-1" style={{ background: tc.bg, border: `1px solid ${tc.border}40` }}>
+                            <div key={b.id}
+                              draggable={!!b.cleaningId}
+                              title={b.cleaningId ? 'Arrastrá sobre otra limpieza del mismo squad para reordenar y recalcular horarios' : undefined}
+                              onDragStart={e => { e.stopPropagation(); setDraggedBlockId(b.id) }}
+                              onDragEnd={() => { setDraggedBlockId(null); setDragOverBlockId(null) }}
+                              onDragOver={e => { if (draggedBlockId) { e.preventDefault(); e.stopPropagation(); setDragOverBlockId(b.id) } }}
+                              onDragLeave={() => setDragOverBlockId(prev => prev === b.id ? null : prev)}
+                              onDrop={e => { if (draggedBlockId) { e.preventDefault(); e.stopPropagation(); handleReorderBlocks(squad.id, date, draggedBlockId, b.id) } }}
+                              className="rounded-xl px-2 py-1 mb-1 flex items-center justify-between gap-1 transition-all"
+                              style={{
+                                background: tc.bg,
+                                border: `1.5px solid ${isDragTarget ? C.primary : tc.border + '40'}`,
+                                opacity: isDraggingThis ? 0.4 : 1,
+                                cursor: b.cleaningId ? 'grab' : 'default',
+                                transform: isDragTarget ? 'scale(1.03)' : 'scale(1)',
+                              }}>
                               <div className="min-w-0">
                                 {hasRealTime && <p className="text-[9px] font-black truncate" style={{ color: tc.text }}>{b.startTime}–{b.endTime}</p>}
                                 {b.notes && <p className="text-[8.5px] truncate" style={{ color: hasRealTime ? C.muted : tc.text, fontWeight: hasRealTime ? 400 : 700 }}>{b.notes}</p>}
@@ -375,6 +432,11 @@ export default function PreDispatchPage() {
       {saving && (
         <div className="fixed bottom-5 right-5 px-4 py-2 rounded-xl text-[12px] font-bold text-white" style={{ background: C.primary }}>
           Guardando...
+        </div>
+      )}
+      {resequencing && (
+        <div className="fixed bottom-5 right-5 px-4 py-2 rounded-xl text-[12px] font-bold text-white" style={{ background: C.primary }}>
+          Recalculando horarios...
         </div>
       )}
     </div>
