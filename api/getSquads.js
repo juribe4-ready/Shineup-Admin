@@ -97,15 +97,32 @@ export default async function handler(req, res) {
 
     const squads = await fetchAllSquads(false)
 
-    const start = new Date(weekStart)
+    // weekStart arrives as a plain "YYYY-MM-DD" string. Parsing it with `new Date(weekStart)`
+    // gives a UTC-midnight instant — but mutating that with LOCAL-time methods (.getDate(),
+    // .setDate()) is unsafe: if the server process's timezone isn't UTC, the whole 7-day
+    // range silently shifts by a day, and the real Sunday falls outside the fetched range
+    // entirely (confirmed live — this is exactly what was happening). Pure UTC arithmetic
+    // throughout removes any dependency on the server's local timezone setting.
+    const [wy, wm, wd] = weekStart.split('-').map(Number)
+    const startUTC = new Date(Date.UTC(wy, wm - 1, wd))
     const dates = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(start)
-      d.setDate(start.getDate() + i)
+      const d = new Date(startUTC)
+      d.setUTCDate(startUTC.getUTCDate() + i)
       return d.toISOString().split('T')[0]
     })
 
     const weekEnd = dates[6]
-    const formula = encodeURIComponent(`AND({Date}>='${dates[0]}', {Date}<='${weekEnd}')`)
+    // Using < (day AFTER weekEnd) instead of <= weekEnd deliberately: if the Date field
+    // carries any time-of-day component, comparing <= against the bare last-day date can
+    // exclude that day's own records (e.g. 2026-06-21T04:00 is NOT <= bare '2026-06-21').
+    // This always hits exactly the LAST day of the range — confirmed live, this is why
+    // Sunday specifically (never a mid-week day) kept disappearing.
+    const dayAfterWeekEnd = (() => {
+      const d = new Date(startUTC)
+      d.setUTCDate(startUTC.getUTCDate() + 7)
+      return d.toISOString().split('T')[0]
+    })()
+    const formula = encodeURIComponent(`AND({Date}>='${dates[0]}', {Date}<'${dayAfterWeekEnd}')`)
     // Paginated — Airtable caps each response at 100 records. A full week can easily exceed
     // that (confirmed live: Sunday's records were being silently cut off without this loop).
     let blockRecords = [], blockOffset = null
@@ -133,7 +150,7 @@ export default async function handler(req, res) {
     }))
 
     // Fetch Cleanings for this week — these are the real launched jobs that need a squad assigned
-    const cleaningsFormula = encodeURIComponent(`AND({Date}>='${dates[0]}', {Date}<='${weekEnd}')`)
+    const cleaningsFormula = encodeURIComponent(`AND({Date}>='${dates[0]}', {Date}<'${dayAfterWeekEnd}')`)
     let cleaningRecords = [], cleaningOffset = null
     do {
       const cleaningsRes = await fetch(
