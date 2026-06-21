@@ -35,12 +35,20 @@ export default function App() {
   const loadProfile = async (uid: string) => {
     const { data } = await supabase.from('profiles').select('*').eq('id', uid).single()
     setProfile(data || null)
+    if (data?.role === 'monitor') setPage('cco_monitoring')
     setLoading(false)
   }
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     setProfile(null)
+  }
+
+  // 'monitor' role only ever sees Monitoring — guard navigation here too (not just the
+  // sidebar), since HomePage's internal quick-links also call onNavigate directly.
+  const handleNavigate = (p: PageKey) => {
+    if (profile?.role === 'monitor' && p !== 'cco_monitoring') { setPage('cco_monitoring'); return }
+    setPage(p)
   }
 
   if (loading) return (
@@ -69,25 +77,29 @@ export default function App() {
     )
   }
 
+  // Final guard, independent of how `page` got set: a monitor-role profile only ever
+  // renders the Monitoring page, full stop.
+  const effectivePage = profile.role === 'monitor' ? 'cco_monitoring' : page
+
   return (
-    <Layout profile={profile} page={page} onNavigate={setPage} onSignOut={handleSignOut}>
-      {page === 'home'              && <HomePage profile={profile} onNavigate={setPage} />}
-      {page === 'cco_monitoring'   && <OperationsPage profile={profile} initialTab="live" />}
-      {page === 'cco_incidents'    && <OperationsPage profile={profile} initialTab="incidents" />}
-      {page === 'cco_ruptures'     && <OperationsPage profile={profile} initialTab="inventory" />}
-      {page === 'plan_week'        && <PlanningPage />}
-      {page === 'plan_predispatch' && <PreDispatchPage />}
-      {page === 'plan_field'       && <ComingSoon title="Field" />}
-      {page === 'tars_rules'       && <RulesPage />}
-      {page === 'system_settings' && <SettingsPage />}
-      {page === 'tars_squads'      && <SquadsPage />}
-      {page === 'tars_blocks'      && <SquadBlocksPage />}
-      {page === 'earn_cascade'     && <AnalysisPage initialTab="cascade" />}
-      {page === 'earn_stats'       && <AnalysisPage initialTab="stats" />}
-      {page === 'earn_billing'     && <AnalysisPage initialTab="billing" />}
-      {page === 'command'          && <CommandCenterPage />}
-      {page === 'users'            && <UsersPage profile={profile} onSignOut={handleSignOut} />}
-      {page === 'import'           && <ImportPage />}
+    <Layout profile={profile} page={effectivePage} onNavigate={handleNavigate} onSignOut={handleSignOut}>
+      {effectivePage === 'home'              && <HomePage profile={profile} onNavigate={handleNavigate} />}
+      {effectivePage === 'cco_monitoring'   && <OperationsPage profile={profile} initialTab="live" />}
+      {effectivePage === 'cco_incidents'    && <OperationsPage profile={profile} initialTab="incidents" />}
+      {effectivePage === 'cco_ruptures'     && <OperationsPage profile={profile} initialTab="inventory" />}
+      {effectivePage === 'plan_week'        && <PlanningPage />}
+      {effectivePage === 'plan_predispatch' && <PreDispatchPage />}
+      {effectivePage === 'plan_field'       && <ComingSoon title="Field" />}
+      {effectivePage === 'tars_rules'       && <RulesPage />}
+      {effectivePage === 'system_settings' && <SettingsPage />}
+      {effectivePage === 'tars_squads'      && <SquadsPage />}
+      {effectivePage === 'tars_blocks'      && <SquadBlocksPage />}
+      {effectivePage === 'earn_cascade'     && <AnalysisPage initialTab="cascade" />}
+      {effectivePage === 'earn_stats'       && <AnalysisPage initialTab="stats" />}
+      {effectivePage === 'earn_billing'     && <AnalysisPage initialTab="billing" />}
+      {effectivePage === 'command'          && <CommandCenterPage />}
+      {effectivePage === 'users'            && <UsersPage profile={profile} onSignOut={handleSignOut} />}
+      {effectivePage === 'import'           && <ImportPage />}
     </Layout>
   )
 }

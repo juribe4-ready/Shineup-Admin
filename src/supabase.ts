@@ -15,7 +15,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 export interface Profile {
   id: string
   email: string
-  role: 'admin' | 'manager' | 'cleaner' | 'client'
+  role: 'admin' | 'manager' | 'cleaner' | 'client' | 'monitor'
   staff_airtable_id: string | null
   full_name: string | null
   initials: string | null
