@@ -130,14 +130,21 @@ export default async function handler(req, res) {
     // assignment — but awaited sequentially (not fire-and-forget) so there is exactly ONE
     // response sent, ever, with no risk of the serverless runtime freezing mid-flight on an
     // orphaned promise after an early response.
+    //
+    // IMPORTANT: this ADDS the squad's roster to whatever staff the cleaning already has
+    // (e.g. default staff set at launch time in Planning) — it never removes anyone. We
+    // fetch the cleaning's current Assigned Staff first, then write the union (deduped).
     if (cleaningId) {
       try {
         const staffIds = await resolveSquadStaff({ Authorization: `Bearer ${AIRTABLE_TOKEN}` }, squadId, date)
         if (staffIds.length > 0) {
+          const cleaningRes = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${cleaningId}`, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } })
+          const currentStaffIds = cleaningRes.ok ? (await cleaningRes.json()).fields?.['Assigned Staff'] || [] : []
+          const merged = Array.from(new Set([...(Array.isArray(currentStaffIds) ? currentStaffIds : []), ...staffIds]))
           await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${cleaningId}`, {
             method: 'PATCH',
             headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fields: { 'Assigned Staff': staffIds } }),
+            body: JSON.stringify({ fields: { 'Assigned Staff': merged } }),
           })
         }
       } catch (e) { console.error('[createSquadBlock] auto-staff fill error (non-blocking):', e.message) }

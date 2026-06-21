@@ -1,5 +1,5 @@
 // Consolidated reports API: /api/getReports?type=incidents|inventory
-import { computeLaborBaseMinutes, computeFinalLaborMinutes, getLaborFactorBand } from './_lib/duration.js'
+import { computeLaborBaseMinutes, computeFinalLaborMinutes, getLaborFactorBand, sequenceJobs, resolveRating } from './_lib/duration.js'
 const AIRTABLE_BASE  = 'appBwnoxgyIXILe6M'
 const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN
 const STAFF_TABLE    = 'tblgHwN1wX6u3ZtNY'
@@ -236,6 +236,7 @@ export default async function handler(req, res) {
     if (type === 'squadRoster' && req.method === 'POST') return res.status(200).json(await saveSquadRoster(headers, req.body))
     if (type === 'recalcLabor' && req.method === 'GET')  return res.status(200).json(await previewRecalcLabor(headers))
     if (type === 'recalcLabor' && req.method === 'POST') return res.status(200).json(await applyRecalcLabor(headers))
+    if (type === 'resequence' && req.method === 'POST') return res.status(200).json(await resequenceSquadDay(headers, req.body))
     if (type === 'cleaningTypes') {
       const ct = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Cleaning%20Type?fields[]=Cleaning%20Type%20Name`, { headers })
       const ctData = await ct.json()
@@ -386,6 +387,98 @@ async function saveTARSConfig(headers, body) {
 function timeToMinAvail(t) {
   const [h, m] = (t || '0:0').split(':').map(Number)
   return h * 60 + m
+}
+
+// Drag-to-reorder in Pre-dispatch: given the NEW order of blocks for one squad/day, recompute
+// every job's start/end time chained back-to-back (previous end + travel buffer = next start),
+// using each job's REAL duration (Labor ÷ cleaner count, same formula as everywhere else — see
+// api/_lib/duration.js). The first job in the new order keeps whatever time it already had —
+// that's the anchor everything else chains forward from. Writes both:
+//   - the Block's StartTime/EndTime (human-readable "HH:MM", what Pre-dispatch's pill shows)
+//   - the Cleaning's actual Scheduled Time (the real field every other part of the app reads)
+// Order itself isn't stored anywhere separately — once times are written, sorting blocks by
+// their own StartTime reproduces the sequence. No extra Airtable field needed.
+async function resequenceSquadDay(headers, body) {
+  const { squadId, date, orderedBlockIds } = body
+  if (!squadId || !date || !Array.isArray(orderedBlockIds) || orderedBlockIds.length === 0) {
+    return { ok: false, error: 'squadId, date y orderedBlockIds (array) requeridos' }
+  }
+
+  try {
+    // 1. Fetch the blocks in question (need their linked Cleaning + current StartTime as anchor)
+    const blockRecords = []
+    for (const blockId of orderedBlockIds) {
+      const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}/${blockId}`, { headers })
+      if (r.ok) blockRecords.push(await r.json())
+    }
+    if (blockRecords.length === 0) return { ok: false, error: 'No se encontraron los bloques' }
+
+    // Only blocks linked to a real Cleaning participate in sequencing (manual blocks have no
+    // labor/duration to compute — they keep whatever time they already have, untouched).
+    const cleaningIds = blockRecords.map(r => Array.isArray(r.fields?.Cleaning) ? r.fields.Cleaning[0] : r.fields?.Cleaning).filter(Boolean)
+    if (cleaningIds.length === 0) return { ok: true, updated: 0, note: 'Ningún bloque tiene Cleaning vinculada — nada que recalcular' }
+
+    // 2. Fetch each Cleaning's data needed for the duration formula
+    const cleaningById = {}
+    for (const cid of cleaningIds) {
+      const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${cid}`, { headers })
+      if (r.ok) cleaningById[cid] = await r.json()
+    }
+
+    // 3. Staff roles, to count cleaners assigned to each cleaning (same approach as getDashboard.js)
+    const staffRes = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${STAFF_TABLE}`, { headers })
+    const staffData = staffRes.ok ? await staffRes.json() : { records: [] }
+    const staffRoleById = {}
+    for (const s of (staffData.records || [])) staffRoleById[s.id] = (s.fields?.Role || '').toLowerCase()
+
+    // 4. TARS config — duration formula + travel buffer, all Juan's configured values
+    const { config } = await getTARSConfig(headers)
+    const cfg = config || {}
+
+    // 5. Build the job list in the NEW order, anchored to the first job's current time
+    const jobs = []
+    let anchor = null
+    for (const blockId of orderedBlockIds) {
+      const blockRecord = blockRecords.find(r => r.id === blockId)
+      if (!blockRecord) continue
+      const cid = Array.isArray(blockRecord.fields?.Cleaning) ? blockRecord.fields.Cleaning[0] : blockRecord.fields?.Cleaning
+      if (!cid || !cleaningById[cid]) continue
+      const cf = cleaningById[cid].fields || {}
+      const laborMinutes = Number(cf['Labor (from Property)'] ?? cf['Labor'] ?? 0)
+      const staffIds = Array.isArray(cf['Assigned Staff']) ? cf['Assigned Staff'] : []
+      const cleanerCount = staffIds.filter(id => (staffRoleById[id] || '').includes('cleaner')).length
+      const ratingVal = resolveRating(cf['Rating'])
+      if (!anchor && cf['Scheduled Time']) anchor = new Date(cf['Scheduled Time'])
+      jobs.push({ blockId, cleaningId: cid, laborMinutes, cleanerCount, ratingVal })
+    }
+    if (jobs.length === 0) return { ok: true, updated: 0, note: 'Ningún bloque tiene Cleaning vinculada — nada que recalcular' }
+    if (!anchor) anchor = new Date(`${date}T12:00:00.000-04:00`) // fallback: noon if truly nothing to anchor to
+
+    const sequenced = sequenceJobs(jobs, anchor, cfg)
+
+    // 6. Write back — Block's human-readable HH:MM, Cleaning's real Scheduled Time
+    let updated = 0
+    for (const job of sequenced) {
+      const startHHMM = job.start.toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })
+      const endHHMM = job.end.toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })
+      const blockPatch = fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}/${job.blockId}`, {
+        method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: { StartTime: startHHMM, EndTime: endHHMM } }),
+      })
+      const cleaningPatch = fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${job.cleaningId}`, {
+        method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: { 'Scheduled Time': job.start.toISOString() } }),
+      })
+      const [br, cr] = await Promise.all([blockPatch, cleaningPatch])
+      if (br.ok && cr.ok) updated++
+      else console.error('[resequenceSquadDay] patch failed:', job.blockId, !br.ok && await br.text(), !cr.ok && await cr.text())
+    }
+
+    return { ok: true, updated, total: sequenced.length }
+  } catch (e) {
+    console.error('[resequenceSquadDay] Exception:', e.message)
+    return { ok: false, error: e.message }
+  }
 }
 
 // Recalculate Properties.Labor (the FINAL, corrected value every other part of the app
