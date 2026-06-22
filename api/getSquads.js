@@ -237,6 +237,7 @@ export default async function handler(req, res) {
         id: r.id,
         date: r.fields?.Date || '',
         scheduledTime: r.fields?.['Scheduled Time'] || null,
+        turnoTime: r.fields?.['Turno Time'] || null,
         status: r.fields?.Status || 'Scheduled',
         propertyText: r.fields?.['Property Text'] || 'Sin propiedad',
         zip,

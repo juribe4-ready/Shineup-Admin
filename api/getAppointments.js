@@ -384,9 +384,17 @@ async function handleLaunchWeek(req, res) {
       }
       
       // Create Cleaning record with status SCHEDULED
+      // 'Turno Time' is a plain text field ("HH:MM") that stores the original Turno-imported
+      // time, written ONCE here and never touched again — not even by the resequencer.
+      // Pre-dispatch uses it when (re)assigning a cleaning to a squad, so after a
+      // delete+re-add the pill still shows the original Turno time instead of whatever
+      // the resequencer last wrote to 'Scheduled Time'.
+      const turnoTimeHHMM = propInfo.defaultStartTime || new Date(scheduledTime)
+        .toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })
       const cleaningFields = {
         'Date': date,
         'Scheduled Time': scheduledTime,
+        'Turno Time': turnoTimeHHMM,
         'Property': propId ? [propId] : [],
         'Status': 'Scheduled',
         'Rating': defaultRating === 3 ? '⭐⭐⭐ Bueno' : defaultRating === 1 ? '⭐ Malo' : '⭐⭐ Normal',
