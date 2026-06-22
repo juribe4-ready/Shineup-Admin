@@ -435,14 +435,12 @@ async function resequenceSquadDay(headers, body) {
     const { config } = await getTARSConfig(headers)
     const cfg = config || {}
 
-    // 5. FIXED anchor: always use the squad's configured start hour for the day.
-    // Previously used the first cleaning's Scheduled Time — but that field is an OUTPUT of
-    // resequencing, not an INPUT. After the first resequence it was already overwritten to a
-    // computed value, so the second resequence anchored to a drifted time (e.g. 12:00).
-    // squadStartHour comes from the frontend's already-loaded squad object (e.g. 8 = 08:00).
-    const anchorHour = typeof squadStartHour === 'number' ? squadStartHour : 8
-    const anchor = new Date(`${date}T${String(anchorHour).padStart(2, '0')}:00:00.000-04:00`)
-
+    // 5. Anchor = Scheduled Time of the first cleaning in the NEW order.
+    // Since the resequencer no longer writes to Scheduled Time, this is always the original
+    // Turno-imported time (e.g. 10:00, 11:00). squadStartHour is the squad's availability
+    // window — not necessarily when the first job starts. Using it as anchor was pushing
+    // everything to 08:00 even when all Turno times were 10:00.
+    let anchor = null
     const jobs = []
     for (const blockId of orderedBlockIds) {
       const blockRecord = blockRecords.find(r => r.id === blockId)
@@ -454,9 +452,16 @@ async function resequenceSquadDay(headers, body) {
       const staffIds = Array.isArray(cf['Assigned Staff']) ? cf['Assigned Staff'] : []
       const cleanerCount = staffIds.filter(id => (staffRoleById[id] || '').includes('cleaner')).length
       const ratingVal = resolveRating(cf['Rating'])
+      // Use the first cleaning's Scheduled Time as anchor (original Turno time)
+      if (!anchor && cf['Scheduled Time']) anchor = new Date(cf['Scheduled Time'])
       jobs.push({ blockId, cleaningId: cid, laborMinutes, cleanerCount, ratingVal })
     }
     if (jobs.length === 0) return { ok: true, updated: 0, note: 'Ningún bloque tiene Cleaning vinculada — nada que recalcular' }
+    // Fallback to squadStartHour only if truly no Scheduled Time exists
+    if (!anchor) {
+      const anchorHour = typeof squadStartHour === 'number' ? squadStartHour : 8
+      anchor = new Date(`${date}T${String(anchorHour).padStart(2, '0')}:00:00.000-04:00`)
+    }
 
     const sequenced = sequenceJobs(jobs, anchor, cfg)
 
