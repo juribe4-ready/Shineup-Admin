@@ -163,10 +163,10 @@ export default function PreDispatchPage() {
   }
 
   const assignCleaning = async (squad: Squad, date: string, cleaning: Cleaning) => {
-    const realStartTime = timeFromScheduled(cleaning.scheduledTime)
-    const validStart = realStartTime || `${String(squad.startHour).padStart(2, '0')}:00`
-    const [h, m] = validStart.split(':').map(Number)
-    const endMinTotal = h * 60 + m + 120
+    // Always use the squad's startHour — never cleaning.scheduledTime, which the resequencer
+    // may have overwritten to a computed value. Re-assigning then inherited that stale value.
+    const validStart = `${String(squad.startHour).padStart(2, '0')}:00`
+    const endMinTotal = squad.startHour * 60 + 120
     const endTime = `${String(Math.floor(endMinTotal / 60)).padStart(2, '0')}:${String(endMinTotal % 60).padStart(2, '0')}`
 
     setSaving(true)
