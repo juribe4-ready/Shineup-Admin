@@ -56,12 +56,11 @@ export default async function handler(req, res) {
     }
 
     // HARD GUARD: if this Cleaning or Appointment is already assigned to ANY squad block
-    // (any date, any squad), reject outright. This is enforced server-side so it can't be
-    // bypassed by frontend timing issues, double-clicks, or stale UI state.
+    // that also has a real Cleaning linked (not orphaned), reject outright.
     if (cleaningId || appointmentId) {
       const dupChecks = []
       if (cleaningId) dupChecks.push(`FIND('${cleaningId}', ARRAYJOIN(Cleaning))`)
-      if (appointmentId) dupChecks.push(`FIND('${appointmentId}', ARRAYJOIN(Appointment))`)
+      if (appointmentId) dupChecks.push(`AND(FIND('${appointmentId}', ARRAYJOIN(Appointment)), NOT(Cleaning = BLANK()))`)
       const dupFormula = encodeURIComponent(`OR(${dupChecks.join(',')})`)
       const dupRes = await fetch(
         `https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}?filterByFormula=${dupFormula}`,
