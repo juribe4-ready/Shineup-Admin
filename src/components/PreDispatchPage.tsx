@@ -166,7 +166,7 @@ export default function PreDispatchPage() {
     const realStartTime = timeFromScheduled(cleaning.scheduledTime)
     const validStart = realStartTime || `${String(squad.startHour).padStart(2, '0')}:00`
     const [h, m] = validStart.split(':').map(Number)
-    const endMinTotal = h * 60 + m + 120 // default 2h block; refine once real duration field exists
+    const endMinTotal = h * 60 + m + 120
     const endTime = `${String(Math.floor(endMinTotal / 60)).padStart(2, '0')}:${String(endMinTotal % 60).padStart(2, '0')}`
 
     setSaving(true)
@@ -183,8 +183,22 @@ export default function PreDispatchPage() {
       let data: any = null
       try { data = await res.json() } catch { /* response wasn't valid JSON — handled below */ }
       if (!res.ok || !data) { showToast(data?.error || `Error del servidor (${res.status})`, 'err'); return }
+
+      // Fix point 1: update local state optimistically instead of calling loadData() —
+      // loadData() causes a full page flicker/refresh on every single assignment, which
+      // makes rapid multi-assignment painful. We already know everything we need to build
+      // the block locally (same pattern as handleDeleteBlock's setBlocks(prev => ...)).
+      setBlocks(prev => [...prev, {
+        id: data.id,
+        squadId: squad.id,
+        date,
+        startTime: validStart,
+        endTime,
+        type: 'Appointment',
+        cleaningId: cleaning.id,
+        notes: cleaning.appointmentCode ? `${cleaning.propertyText} (${cleaning.appointmentCode})` : (cleaning.propertyText || ''),
+      }])
       showToast(`Asignado a ${squad.name} ✓`)
-      loadData()
     } catch (e: any) { showToast('Error de red: ' + (e?.message || 'desconocido'), 'err') }
     finally {
       setSaving(false)
@@ -214,6 +228,7 @@ export default function PreDispatchPage() {
     setDragOverBlockId(null)
     if (fromBlockId === toBlockId) return
 
+    const squad = squads.find(s => s.id === squadId)
     const dayBlocks = blocks
       .filter(b => b.squadId === squadId && b.date === date)
       .sort((a, b) => a.startTime.localeCompare(b.startTime))
@@ -232,12 +247,24 @@ export default function PreDispatchPage() {
       const res = await fetch('/api/getReports?type=resequence', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ squadId, date, orderedBlockIds }),
+        // Pass the squad's startHour as the fixed anchor — the sequence always begins at
+        // the squad's configured start time (e.g. 08:00 or 10:00). Using the cleaning's
+        // current Scheduled Time was the root of point 3: after the first resequence the
+        // Scheduled Time of the first cleaning was already overwritten, so the second
+        // resequence anchored to a computed/drifted time instead of the real squad start.
+        body: JSON.stringify({ squadId, date, orderedBlockIds, squadStartHour: squad?.startHour ?? 8 }),
       })
       const data = await res.json().catch(() => null)
       if (!res.ok || !data?.ok) { showToast(data?.error || 'Error al reordenar', 'err'); return }
+
+      // Update local block times immediately (same no-refresh approach as assignCleaning)
+      if (data.times) {
+        setBlocks(prev => prev.map(b => {
+          const updated = data.times[b.id]
+          return updated ? { ...b, startTime: updated.start, endTime: updated.end } : b
+        }))
+      }
       showToast(`Reordenado · ${data.updated} horario(s) actualizado(s)`)
-      loadData()
     } catch (e: any) { showToast('Error de red: ' + (e?.message || 'desconocido'), 'err') }
     finally { setResequencing(false) }
   }
