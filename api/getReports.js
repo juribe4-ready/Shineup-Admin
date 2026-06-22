@@ -401,13 +401,13 @@ function timeToMinAvail(t) {
 // Order itself isn't stored anywhere separately — once times are written, sorting blocks by
 // their own StartTime reproduces the sequence. No extra Airtable field needed.
 async function resequenceSquadDay(headers, body) {
-  const { squadId, date, orderedBlockIds } = body
+  const { squadId, date, orderedBlockIds, squadStartHour } = body
   if (!squadId || !date || !Array.isArray(orderedBlockIds) || orderedBlockIds.length === 0) {
     return { ok: false, error: 'squadId, date y orderedBlockIds (array) requeridos' }
   }
 
   try {
-    // 1. Fetch the blocks in question (need their linked Cleaning + current StartTime as anchor)
+    // 1. Fetch the blocks in question (need their linked Cleaning)
     const blockRecords = []
     for (const blockId of orderedBlockIds) {
       const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}/${blockId}`, { headers })
@@ -415,8 +415,6 @@ async function resequenceSquadDay(headers, body) {
     }
     if (blockRecords.length === 0) return { ok: false, error: 'No se encontraron los bloques' }
 
-    // Only blocks linked to a real Cleaning participate in sequencing (manual blocks have no
-    // labor/duration to compute — they keep whatever time they already have, untouched).
     const cleaningIds = blockRecords.map(r => Array.isArray(r.fields?.Cleaning) ? r.fields.Cleaning[0] : r.fields?.Cleaning).filter(Boolean)
     if (cleaningIds.length === 0) return { ok: true, updated: 0, note: 'Ningún bloque tiene Cleaning vinculada — nada que recalcular' }
 
@@ -427,19 +425,25 @@ async function resequenceSquadDay(headers, body) {
       if (r.ok) cleaningById[cid] = await r.json()
     }
 
-    // 3. Staff roles, to count cleaners assigned to each cleaning (same approach as getDashboard.js)
+    // 3. Staff roles, to count cleaners assigned to each cleaning
     const staffRes = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${STAFF_TABLE}`, { headers })
     const staffData = staffRes.ok ? await staffRes.json() : { records: [] }
     const staffRoleById = {}
     for (const s of (staffData.records || [])) staffRoleById[s.id] = (s.fields?.Role || '').toLowerCase()
 
-    // 4. TARS config — duration formula + travel buffer, all Juan's configured values
+    // 4. TARS config — duration formula + travel buffer
     const { config } = await getTARSConfig(headers)
     const cfg = config || {}
 
-    // 5. Build the job list in the NEW order, anchored to the first job's current time
+    // 5. FIXED anchor: always use the squad's configured start hour for the day.
+    // Previously used the first cleaning's Scheduled Time — but that field is an OUTPUT of
+    // resequencing, not an INPUT. After the first resequence it was already overwritten to a
+    // computed value, so the second resequence anchored to a drifted time (e.g. 12:00).
+    // squadStartHour comes from the frontend's already-loaded squad object (e.g. 8 = 08:00).
+    const anchorHour = typeof squadStartHour === 'number' ? squadStartHour : 8
+    const anchor = new Date(`${date}T${String(anchorHour).padStart(2, '0')}:00:00.000-04:00`)
+
     const jobs = []
-    let anchor = null
     for (const blockId of orderedBlockIds) {
       const blockRecord = blockRecords.find(r => r.id === blockId)
       if (!blockRecord) continue
@@ -450,19 +454,19 @@ async function resequenceSquadDay(headers, body) {
       const staffIds = Array.isArray(cf['Assigned Staff']) ? cf['Assigned Staff'] : []
       const cleanerCount = staffIds.filter(id => (staffRoleById[id] || '').includes('cleaner')).length
       const ratingVal = resolveRating(cf['Rating'])
-      if (!anchor && cf['Scheduled Time']) anchor = new Date(cf['Scheduled Time'])
       jobs.push({ blockId, cleaningId: cid, laborMinutes, cleanerCount, ratingVal })
     }
     if (jobs.length === 0) return { ok: true, updated: 0, note: 'Ningún bloque tiene Cleaning vinculada — nada que recalcular' }
-    if (!anchor) anchor = new Date(`${date}T12:00:00.000-04:00`) // fallback: noon if truly nothing to anchor to
 
     const sequenced = sequenceJobs(jobs, anchor, cfg)
 
     // 6. Write back — Block's human-readable HH:MM, Cleaning's real Scheduled Time
     let updated = 0
+    const times = {} // blockId -> { start, end } — returned to frontend for optimistic state update
     for (const job of sequenced) {
       const startHHMM = job.start.toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })
       const endHHMM = job.end.toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })
+      times[job.blockId] = { start: startHHMM, end: endHHMM }
       const blockPatch = fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}/${job.blockId}`, {
         method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ fields: { StartTime: startHHMM, EndTime: endHHMM } }),
@@ -476,7 +480,7 @@ async function resequenceSquadDay(headers, body) {
       else console.error('[resequenceSquadDay] patch failed:', job.blockId, !br.ok && await br.text(), !cr.ok && await cr.text())
     }
 
-    return { ok: true, updated, total: sequenced.length }
+    return { ok: true, updated, total: sequenced.length, times }
   } catch (e) {
     console.error('[resequenceSquadDay] Exception:', e.message)
     return { ok: false, error: e.message }
