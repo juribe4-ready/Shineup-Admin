@@ -460,24 +460,21 @@ async function resequenceSquadDay(headers, body) {
 
     const sequenced = sequenceJobs(jobs, anchor, cfg)
 
-    // 6. Write back — Block's human-readable HH:MM, Cleaning's real Scheduled Time
+    // 6. Write back — Block StartTime/EndTime only. Do NOT touch Cleaning.Scheduled Time —
+    // that field holds the original Turno-imported time and is what assignCleaning reads
+    // when re-assigning after a delete. Overwriting it was the root cause of the 13:45/08:00 bug.
     let updated = 0
-    const times = {} // blockId -> { start, end } — returned to frontend for optimistic state update
+    const times = {}
     for (const job of sequenced) {
       const startHHMM = job.start.toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })
       const endHHMM = job.end.toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })
       times[job.blockId] = { start: startHHMM, end: endHHMM }
-      const blockPatch = fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}/${job.blockId}`, {
+      const br = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}/${job.blockId}`, {
         method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ fields: { StartTime: startHHMM, EndTime: endHHMM } }),
       })
-      const cleaningPatch = fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${job.cleaningId}`, {
-        method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: { 'Scheduled Time': job.start.toISOString() } }),
-      })
-      const [br, cr] = await Promise.all([blockPatch, cleaningPatch])
-      if (br.ok && cr.ok) updated++
-      else console.error('[resequenceSquadDay] patch failed:', job.blockId, !br.ok && await br.text(), !cr.ok && await cr.text())
+      if (br.ok) updated++
+      else console.error('[resequenceSquadDay] block patch failed:', job.blockId, await br.text())
     }
 
     return { ok: true, updated, total: sequenced.length, times }

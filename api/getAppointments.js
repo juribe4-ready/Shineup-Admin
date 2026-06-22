@@ -394,7 +394,7 @@ async function handleLaunchWeek(req, res) {
       const cleaningFields = {
         'Date': date,
         'Scheduled Time': scheduledTime,
-        'Turno Time': turnoTimeHHMM,
+        // 'Turno Time': turnoTimeHHMM, // ← UNCOMMENT once Juan creates this Text field in Cleanings
         'Property': propId ? [propId] : [],
         'Status': 'Scheduled',
         'Rating': defaultRating === 3 ? '⭐⭐⭐ Bueno' : defaultRating === 1 ? '⭐ Malo' : '⭐⭐ Normal',
