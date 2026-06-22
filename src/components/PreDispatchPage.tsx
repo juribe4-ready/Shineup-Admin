@@ -33,7 +33,7 @@ function colorForZip(zip: string | null): string | null {
 
 interface Squad { id: string; name: string; color: string; type: string; startHour: number; endHour: number }
 interface Block { id: string; squadId: string; date: string; startTime: string; endTime: string; type: string; cleaningId: string | null; notes: string }
-interface Cleaning { id: string; date: string; scheduledTime: string | null; status: string; propertyText: string; zip: string | null; assignedStaff: string[]; appointmentCode: string | null; appointmentRecordId: string | null; cleaningType: string | null }
+interface Cleaning { id: string; date: string; scheduledTime: string | null; turnoTime: string | null; status: string; propertyText: string; zip: string | null; assignedStaff: string[]; appointmentCode: string | null; appointmentRecordId: string | null; cleaningType: string | null }
 
 function getMonday(d: Date) {
   const dow = (d.getDay() + 6) % 7
@@ -163,10 +163,12 @@ export default function PreDispatchPage() {
   }
 
   const assignCleaning = async (squad: Squad, date: string, cleaning: Cleaning) => {
-    // Always use the squad's startHour — never cleaning.scheduledTime, which the resequencer
-    // may have overwritten to a computed value. Re-assigning then inherited that stale value.
-    const validStart = `${String(squad.startHour).padStart(2, '0')}:00`
-    const endMinTotal = squad.startHour * 60 + 120
+    // Use turnoTime (the original Turno-imported time, never overwritten) so the pill always
+    // shows the correct time even after delete+re-add. Falls back to squad.startHour only
+    // for cleanings launched before this field existed.
+    const validStart = cleaning.turnoTime || `${String(squad.startHour).padStart(2, '0')}:00`
+    const [startH, startM] = validStart.split(':').map(Number)
+    const endMinTotal = startH * 60 + startM + 120
     const endTime = `${String(Math.floor(endMinTotal / 60)).padStart(2, '0')}:${String(endMinTotal % 60).padStart(2, '0')}`
 
     setSaving(true)
