@@ -163,10 +163,10 @@ export default function PreDispatchPage() {
   }
 
   const assignCleaning = async (squad: Squad, date: string, cleaning: Cleaning) => {
-    // Use turnoTime (the original Turno-imported time, never overwritten) so the pill always
-    // shows the correct time even after delete+re-add. Falls back to squad.startHour only
-    // for cleanings launched before this field existed.
-    const validStart = cleaning.turnoTime || `${String(squad.startHour).padStart(2, '0')}:00`
+    // Use the cleaning's Scheduled Time (original from Turno). Since the resequencer no
+    // longer overwrites Scheduled Time, this is always the original imported time.
+    const rawTime = cleaning.scheduledTime ? new Date(cleaning.scheduledTime).toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }) : null
+    const validStart = rawTime || `${String(squad.startHour).padStart(2, '0')}:00`
     const [startH, startM] = validStart.split(':').map(Number)
     const endMinTotal = startH * 60 + startM + 120
     const endTime = `${String(Math.floor(endMinTotal / 60)).padStart(2, '0')}:${String(endMinTotal % 60).padStart(2, '0')}`
