@@ -125,31 +125,41 @@ export default async function handler(req, res) {
     const data = await airtableRes.json()
     if (!airtableRes.ok) throw new Error(JSON.stringify(data))
 
-    // Auto-fill staffing: best-effort, errors swallowed so it never fails the actual
-    // assignment — but awaited sequentially (not fire-and-forget) so there is exactly ONE
-    // response sent, ever, with no risk of the serverless runtime freezing mid-flight on an
-    // orphaned promise after an early response.
-    //
-    // IMPORTANT: this ADDS the squad's roster to whatever staff the cleaning already has
-    // (e.g. default staff set at launch time in Planning) — it never removes anyone. We
-    // fetch the cleaning's current Assigned Staff first, then write the union (deduped).
+    // One combined PATCH on the Cleaning (after the block is safely created):
+    // 1. Date → set to the block's date (handles cross-day moves)
+    // 2. Scheduled Time → date + startTime in Eastern, so Ops always shows the right time
+    // 3. Assigned Staff → merge in the squad's roster (never remove what's already there)
+    // Best-effort: a failure here never rolls back the block creation.
+    let dateChanged = false
     if (cleaningId) {
       try {
-        const staffIds = await resolveSquadStaff({ Authorization: `Bearer ${AIRTABLE_TOKEN}` }, squadId, date)
-        if (staffIds.length > 0) {
-          const cleaningRes = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${cleaningId}`, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } })
-          const currentStaffIds = cleaningRes.ok ? (await cleaningRes.json()).fields?.['Assigned Staff'] || [] : []
-          const merged = Array.from(new Set([...(Array.isArray(currentStaffIds) ? currentStaffIds : []), ...staffIds]))
-          await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${cleaningId}`, {
-            method: 'PATCH',
-            headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fields: { 'Assigned Staff': merged } }),
-          })
+        const authHeaders = { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
+        const staffIds = await resolveSquadStaff(authHeaders, squadId, date)
+        const cleaningRes = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${cleaningId}`, { headers: authHeaders })
+        const cleaningJson = cleaningRes.ok ? await cleaningRes.json() : null
+        const currentStaffIds = Array.isArray(cleaningJson?.fields?.['Assigned Staff']) ? cleaningJson.fields['Assigned Staff'] : []
+        const currentDate = cleaningJson?.fields?.Date || null
+        dateChanged = currentDate !== null && currentDate !== date
+
+        const merged = staffIds.length > 0
+          ? Array.from(new Set([...currentStaffIds, ...staffIds]))
+          : currentStaffIds
+
+        const patchFields = {
+          'Date': date,
+          'Scheduled Time': `${date}T${startTime}:00.000-04:00`,
         }
-      } catch (e) { console.error('[createSquadBlock] auto-staff fill error (non-blocking):', e.message) }
+        if (merged.length > 0) patchFields['Assigned Staff'] = merged
+
+        await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${cleaningId}`, {
+          method: 'PATCH',
+          headers: { ...authHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: patchFields }),
+        })
+      } catch (e) { console.error('[createSquadBlock] cleaning update error (non-blocking):', e.message) }
     }
 
-    return res.status(200).json({ success: true, id: data.id })
+    return res.status(200).json({ success: true, id: data.id, dateChanged })
   } catch (err) {
     console.error('[createSquadBlock] Error:', err)
     return res.status(500).json({ error: err.message })

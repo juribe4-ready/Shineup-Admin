@@ -3,6 +3,7 @@ const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN
 const BLOCKS_TABLE = 'tblR9T67eyBrIi5Ny'
 const SQUADS_TABLE = 'tbl6CaYpYaZe1PY0s'
 const CLEANINGS_TABLE = 'tblabOdNknnjrYUU1'
+const PROPS_TABLE = 'tbl1iETmcFP460oWN'
 
 // Same pattern as createSquadBlock.js's resolveSquadStaff — duplicated since each /api/*.js
 // file here is a standalone serverless function with no shared imports between them.
@@ -87,12 +88,39 @@ export default async function handler(req, res) {
 
     const airtableRes = await fetch(
       `https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}/${blockId}`,
-      {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
-      }
+      { method: 'DELETE', headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
     )
     if (!airtableRes.ok) throw new Error('Error al eliminar')
+
+    // Reset Scheduled Time on the Cleaning back to the property's Default Start Time.
+    // This ensures that re-assigning the cleaning to a squad always shows the original
+    // property time, never the last resequenced value (which could be anything).
+    // Best-effort — a failure here never blocks the deletion response.
+    if (cleaningId && date) {
+      try {
+        const cleaningRes = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${cleaningId}`, { headers })
+        if (cleaningRes.ok) {
+          const cleaningData = await cleaningRes.json()
+          const propId = Array.isArray(cleaningData.fields?.Property) ? cleaningData.fields.Property[0] : (cleaningData.fields?.Property || null)
+          if (propId) {
+            const propRes = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${PROPS_TABLE}/${propId}`, { headers })
+            if (propRes.ok) {
+              const propData = await propRes.json()
+              const defaultTime = propData.fields?.['Default Start Time'] // "HH:MM" text field
+              if (defaultTime) {
+                const resetTime = `${date}T${defaultTime}:00.000-04:00`
+                await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${cleaningId}`, {
+                  method: 'PATCH',
+                  headers: { ...headers, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ fields: { 'Scheduled Time': resetTime } }),
+                })
+              }
+            }
+          }
+        }
+      } catch (e) { console.error('[deleteSquadBlock] scheduled time reset error (non-blocking):', e.message) }
+    }
+
     return res.status(200).json({ success: true })
   } catch (err) {
     console.error('[deleteSquadBlock] Error:', err)
