@@ -139,7 +139,6 @@ export default function PreDispatchPage() {
 
   // ── Computed stats ──────────────────────────────────────────────
   const totalRevenue = cleanings.reduce((s, c) => s + (c.price || 0), 0)
-  const assignedCount = new Set(blocks.filter(b => b.cleaningId).map(b => b.cleaningId)).size
   const unassignedCleanings = cleanings.filter(c => !blocks.some(b => b.cleaningId === c.id))
 
   const revenueByDate: Record<string, number> = {}
