@@ -310,7 +310,7 @@ async function applyImportPayments(headers, body) {
 
 async function createTurnoAppointments(headers, body) {
   const { date, properties } = body
-  results = []
+  const results = []
 
   // Pre-fetch property Default Start Times in one bulk request
   const propIds = (properties || []).map(p => p.propertyId).filter(Boolean)
