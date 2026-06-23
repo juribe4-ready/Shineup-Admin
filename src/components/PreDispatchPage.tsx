@@ -240,11 +240,19 @@ export default function PreDispatchPage() {
 
   const handleDeleteBlock = async (blockId: string) => {
     try {
-      await fetch('/api/deleteSquadBlock', {
+      const res = await fetch('/api/deleteSquadBlock', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ blockId })
       })
+      const data = await res.json().catch(() => null)
       setBlocks(prev => prev.filter(b => b.id !== blockId))
+      // If the backend reset the cleaning's Scheduled Time, update local state immediately
+      // so re-assigning uses the original time, not the stale resequenced value
+      if (data?.resetScheduledTime && data?.cleaningId) {
+        setCleanings(prev => prev.map(c =>
+          c.id === data.cleaningId ? { ...c, scheduledTime: data.resetScheduledTime } : c
+        ))
+      }
       showToast('Asignación eliminada')
     } catch { showToast('Error al eliminar', 'err') }
   }
