@@ -137,6 +137,7 @@ export default async function handler(req, res) {
               headers: { ...headers, 'Content-Type': 'application/json' },
               body: JSON.stringify({ fields: { 'Scheduled Time': resetTime } }),
             })
+            return res.status(200).json({ success: true, cleaningId, resetScheduledTime: resetTime })
           }
         }
       } catch (e) { console.error('[deleteSquadBlock] scheduled time reset error (non-blocking):', e.message) }
