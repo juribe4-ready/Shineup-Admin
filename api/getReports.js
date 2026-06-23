@@ -310,14 +310,37 @@ async function applyImportPayments(headers, body) {
 
 async function createTurnoAppointments(headers, body) {
   const { date, properties } = body
-  // properties = [{name: 'truncated name from turno', propertyId: 'recXXX or null'}]
-  const results = []
+  results = []
+
+  // Pre-fetch property Default Start Times in one bulk request
+  const propIds = (properties || []).map(p => p.propertyId).filter(Boolean)
+  const propDefaultTimes = {}
+  if (propIds.length > 0) {
+    try {
+      const formula = encodeURIComponent(`OR(${propIds.map(id => `RECORD_ID()='${id}'`).join(',')})`)
+      const pr = await fetch(
+        `https://api.airtable.com/v0/${AIRTABLE_BASE}/${PROPS_TABLE}?filterByFormula=${formula}&pageSize=100`,
+        { headers }
+      )
+      if (pr.ok) {
+        const pd = await pr.json()
+        for (const r of (pd.records || [])) {
+          propDefaultTimes[r.id] = r.fields?.['Default Start Time'] || null
+        }
+      }
+    } catch(e) { console.error('[createTurnoAppointments] property lookup error:', e.message) }
+  }
+
   for (const p of (properties || [])) {
     if (!p.propertyId) { results.push({ name: p.name, ok: false, reason: 'no_match' }); continue }
     try {
-      // Columbus EDT = UTC-4, use 10am local time
+      // Use property's Default Start Time if available; otherwise default to 10:00 ET (14:00 UTC)
+      const defaultTime = propDefaultTimes[p.propertyId]
+      const timeUTC = defaultTime
+        ? `${date}T${defaultTime}:00.000-04:00`  // HH:MM from Properties → Eastern time
+        : `${date}T14:00:00.000Z`                 // fallback: 10:00 ET
       const fields = {
-        'Requested Date & Time': `${date}T14:00:00.000Z`,
+        'Requested Date & Time': timeUTC,
         'Status': 'Confirmed',
         'Source': 'Turno',
         'Property': [p.propertyId],
