@@ -92,30 +92,51 @@ export default async function handler(req, res) {
     )
     if (!airtableRes.ok) throw new Error('Error al eliminar')
 
-    // Reset Scheduled Time on the Cleaning back to the property's Default Start Time.
-    // This ensures that re-assigning the cleaning to a squad always shows the original
-    // property time, never the last resequenced value (which could be anything).
-    // Best-effort — a failure here never blocks the deletion response.
+    // Reset Scheduled Time on the Cleaning back to the original time.
+    // Priority: 1) property's Default Start Time, 2) Appointment's Requested Date & Time
+    // (the original Turno time, which never changes), 3) leave as-is.
     if (cleaningId && date) {
       try {
         const cleaningRes = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${cleaningId}`, { headers })
         if (cleaningRes.ok) {
           const cleaningData = await cleaningRes.json()
+          let resetTime = null
+
+          // Option 1: property's Default Start Time
           const propId = Array.isArray(cleaningData.fields?.Property) ? cleaningData.fields.Property[0] : (cleaningData.fields?.Property || null)
           if (propId) {
             const propRes = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${PROPS_TABLE}/${propId}`, { headers })
             if (propRes.ok) {
               const propData = await propRes.json()
-              const defaultTime = propData.fields?.['Default Start Time'] // "HH:MM" text field
-              if (defaultTime) {
-                const resetTime = `${date}T${defaultTime}:00.000-04:00`
-                await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${cleaningId}`, {
-                  method: 'PATCH',
-                  headers: { ...headers, 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ fields: { 'Scheduled Time': resetTime } }),
-                })
+              const defaultTime = propData.fields?.['Default Start Time']
+              if (defaultTime) resetTime = `${date}T${defaultTime}:00.000-04:00`
+            }
+          }
+
+          // Option 2: Appointment's Requested Date & Time (original Turno time, never changes)
+          if (!resetTime) {
+            const apptId = Array.isArray(cleaningData.fields?.Appointment) ? cleaningData.fields.Appointment[0] : (cleaningData.fields?.Appointment || null)
+            if (apptId) {
+              const apptRes = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblXlpg7MuYWA8Ocn/${apptId}`, { headers })
+              if (apptRes.ok) {
+                const apptData = await apptRes.json()
+                const apptTime = apptData.fields?.['Requested Date & Time']
+                if (apptTime) {
+                  // Format in Eastern time, apply to the new date (in case date changed)
+                  const t = new Date(apptTime)
+                  const hhmm = t.toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })
+                  resetTime = `${date}T${hhmm}:00.000-04:00`
+                }
               }
             }
+          }
+
+          if (resetTime) {
+            await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${cleaningId}`, {
+              method: 'PATCH',
+              headers: { ...headers, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fields: { 'Scheduled Time': resetTime } }),
+            })
           }
         }
       } catch (e) { console.error('[deleteSquadBlock] scheduled time reset error (non-blocking):', e.message) }
