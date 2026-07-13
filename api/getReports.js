@@ -458,11 +458,41 @@ async function resequenceSquadDay(headers, body) {
     const { config } = await getTARSConfig(headers)
     const cfg = config || {}
 
-    // 5. Anchor = Scheduled Time of the first cleaning in the NEW order.
-    // Since the resequencer no longer writes to Scheduled Time, this is always the original
-    // Turno-imported time (e.g. 10:00, 11:00). squadStartHour is the squad's availability
-    // window — not necessarily when the first job starts. Using it as anchor was pushing
-    // everything to 08:00 even when all Turno times were 10:00.
+    // 5. Anchor = the TRUE original start time of the cleaning that is now FIRST in the new
+    // order — never the Cleaning's "Scheduled Time" field, because that field gets overwritten
+    // by this very function on every resequence (see the Scheduled Time PATCH below). Reading
+    // it back as the anchor means a cleaning that was previously sequenced to a late slot (e.g.
+    // 19:00) carries that contaminated time forward if you later drag it to the front — anchoring
+    // the whole day from the wrong hour ("se me va la hora ridículamente").
+    // The real, never-mutated original time lives on the Appointment ("Requested Date & Time"),
+    // same source deleteSquadBlock.js already uses when resetting a removed cleaning — with the
+    // Property's "Default Start Time" as priority 1, matching that same file's priority order.
+    async function resolveOriginalStartTime(cf) {
+      const propId = Array.isArray(cf.Property) ? cf.Property[0] : (cf.Property || null)
+      if (propId) {
+        const propRes = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${PROPS_TABLE}/${propId}`, { headers })
+        if (propRes.ok) {
+          const propData = await propRes.json()
+          const defaultTime = propData.fields?.['Default Start Time']
+          if (defaultTime) return new Date(`${date}T${defaultTime}:00.000-04:00`)
+        }
+      }
+      const apptId = Array.isArray(cf.Appointment) ? cf.Appointment[0] : (cf.Appointment || null)
+      if (apptId) {
+        const apptRes = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}/${apptId}`, { headers })
+        if (apptRes.ok) {
+          const apptData = await apptRes.json()
+          const apptTime = apptData.fields?.['Requested Date & Time']
+          if (apptTime) {
+            const t = new Date(apptTime)
+            const hhmm = t.toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })
+            return new Date(`${date}T${hhmm}:00.000-04:00`)
+          }
+        }
+      }
+      return null
+    }
+
     let anchor = null
     const jobs = []
     for (const blockId of orderedBlockIds) {
@@ -475,12 +505,13 @@ async function resequenceSquadDay(headers, body) {
       const staffIds = Array.isArray(cf['Assigned Staff']) ? cf['Assigned Staff'] : []
       const cleanerCount = staffIds.filter(id => (staffRoleById[id] || '').includes('cleaner')).length
       const ratingVal = resolveRating(cf['Rating'])
-      // Use the first cleaning's Scheduled Time as anchor (original Turno time)
-      if (!anchor && cf['Scheduled Time']) anchor = new Date(cf['Scheduled Time'])
+      // Anchor from the FIRST job in the new order — its own true original time, never the
+      // (possibly contaminated) Scheduled Time field.
+      if (!anchor) anchor = await resolveOriginalStartTime(cf)
       jobs.push({ blockId, cleaningId: cid, laborMinutes, cleanerCount, ratingVal })
     }
     if (jobs.length === 0) return { ok: true, updated: 0, note: 'Ningún bloque tiene Cleaning vinculada — nada que recalcular' }
-    // Fallback to squadStartHour only if truly no Scheduled Time exists
+    // Fallback to squadStartHour only if truly no Property/Appointment original time exists
     if (!anchor) {
       const anchorHour = typeof squadStartHour === 'number' ? squadStartHour : 8
       anchor = new Date(`${date}T${String(anchorHour).padStart(2, '0')}:00:00.000-04:00`)
