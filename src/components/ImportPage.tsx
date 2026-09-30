@@ -147,7 +147,9 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
   useEffect(() => { setOvSelected(new Set()) }, [ovFrom, ovTo, ovClient, ovProperty])
 
   const ovClients = [...new Set(ovCleanings.map((c:any)=>c.clientName).filter(Boolean))].sort() as string[]
-  const ovProperties = [...new Set(ovCleanings.map((c:any)=>c.property).filter(Boolean))].sort() as string[]
+  const ovProperties = [...new Set(
+    ovCleanings.filter((c:any)=>ovClient==='all'||c.clientName===ovClient).map((c:any)=>c.property).filter(Boolean)
+  )].sort() as string[]
   // Pendientes = todo lo que no está pagado aún (Sin Cobrar + Facturado) — así puedes marcarlo con cualquiera de los 2 estados desde aquí
   const ovPending = ovCleanings.filter((c:any) =>
     (c.paymentStatus==='unpaid' || c.paymentStatus==='invoiced')
@@ -320,7 +322,7 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
           <span style={{ color:C.muted, fontSize:12 }}>—</span>
           <input type="date" value={ovTo} onChange={e=>setOvTo(e.target.value)}
             style={{ height:36, padding:'0 10px', borderRadius:9, border:`1.5px solid ${C.border}`, fontSize:12, color:C.ink, outline:'none' }} />
-          <select value={ovClient} onChange={e=>setOvClient(e.target.value)}
+          <select value={ovClient} onChange={e=>{setOvClient(e.target.value); setOvProperty('all')}}
             style={{ height:36, padding:'0 10px', borderRadius:9, border:`1.5px solid ${C.border}`, fontSize:12, color:C.slate, outline:'none' }}>
             <option value="all">Todos los clientes</option>
             {ovClients.map(cl=><option key={cl} value={cl}>{cl}</option>)}
