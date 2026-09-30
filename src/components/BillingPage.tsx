@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { DollarSign, Download, RefreshCw, AlertCircle, TrendingUp, Clock, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { DollarSign, Download, RefreshCw, AlertCircle, TrendingUp, Clock, CheckCircle2, AlertTriangle, SlidersHorizontal, Send, Banknote, X } from 'lucide-react'
 
 const C = {
   primary: '#6366F1', primaryLight: '#EEF2FF',
@@ -65,13 +65,14 @@ const sel = (active: boolean) => ({
   fontSize: 12, fontWeight: 600, outline: 'none', cursor: 'pointer',
 } as React.CSSProperties)
 
-// Grid: date | property | client | type | #cleaners | rating | status | price | HH | HH Total | pay status
-const GRID = '70px 130px 120px 130px 72px 72px 88px 88px 48px 80px 90px 100px'
-const COLS = ['Fecha','Propiedad','Cliente','Tipo','#Cleaners','Rating','Status','Precio','HH','HH Total','Source','Cobro']
+// Grid: checkbox | date | property | client | type | #cleaners | rating | status | price | HH | HH Total | pay status
+const GRID = '28px 70px 130px 120px 130px 72px 72px 88px 88px 48px 80px 100px'
+const COLS = ['', 'Fecha','Propiedad','Cliente','Tipo','#Cleaners','Rating','Status','Precio','HH','HH Total','Cobro']
 
 export default function BillingPage() {
   const [dateFrom, setDateFrom] = useState(thirtyAgo())
   const [dateTo,   setDateTo]   = useState(todayStr())
+  const [quickRange, setQuickRange] = useState('custom')
   const [cleanings, setCleanings] = useState<Cleaning[]>([])
   const [summary,   setSummary]   = useState<Summary | null>(null)
   const [loading,   setLoading]   = useState(true)
@@ -79,6 +80,9 @@ export default function BillingPage() {
   const [propFilter,   setPropFilter]   = useState('all')
   const [clientFilter, setClientFilter] = useState('all')
   const [sourceFilter,  setSourceFilter]  = useState('all')
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [applying, setApplying] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
@@ -98,6 +102,44 @@ export default function BillingPage() {
   useEffect(() => { load() }, [load])
   // Auto-refresh when filters change
   useEffect(() => { load() }, [propFilter, clientFilter, sourceFilter])
+  // Limpiar selección cuando cambian los filtros o se recarga
+  useEffect(() => { setSelected(new Set()) }, [statusFilter, propFilter, clientFilter, sourceFilter, dateFrom, dateTo])
+
+  // ---- Rango rápido: antes eran 5 botones sueltos, ahora un solo select ----
+  const quickRanges = useMemo(() => {
+    const tz = { timeZone: 'America/New_York' }
+    const today = new Date().toLocaleDateString('en-CA', tz)
+    const now = new Date()
+    const dow = (now.getDay() + 6) % 7 // 0=Mon
+    const mon = new Date(now); mon.setDate(now.getDate() - dow)
+    const monStr = mon.toLocaleDateString('en-CA', tz)
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
+    const sunStr = sun.toLocaleDateString('en-CA', tz)
+    const weekNum = (() => {
+      const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
+      const dayNum = d.getUTCDay() || 7
+      d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+      return Math.ceil((((d.valueOf() - yearStart.valueOf()) / 86400000) + 1) / 7)
+    })()
+    const mtdStart = new Date(now.getFullYear(), now.getMonth(), 1).toLocaleDateString('en-CA', tz)
+    const ytdStart = `${now.getFullYear()}-01-01`
+    return [
+      { key: 'today', label: 'Hoy',                  from: today,    to: today },
+      { key: 'wtd',   label: `Semana ${weekNum} (a la fecha)`, from: monStr, to: today,
+        title: 'Lunes a hoy — solo lo que ya pasó.' },
+      { key: 'wfull', label: `Semana ${weekNum} completa`,     from: monStr, to: sunStr,
+        title: 'Lunes a domingo completos, incluye lo programado a futuro.' },
+      { key: 'mtd',   label: 'Mes a la fecha',        from: mtdStart, to: today },
+      { key: 'ytd',   label: 'Año a la fecha',        from: ytdStart, to: today },
+    ]
+  }, [])
+
+  const applyQuickRange = (key: string) => {
+    setQuickRange(key)
+    const r = quickRanges.find(q => q.key === key)
+    if (r) { setDateFrom(r.from); setDateTo(r.to) }
+  }
 
   const properties = [...new Set(cleanings.map(c => c.property).filter(Boolean))].sort()
   const clients    = [...new Set(cleanings.map(c => c.clientName).filter(Boolean))].sort() as string[]
@@ -120,11 +162,42 @@ export default function BillingPage() {
     return c.paymentStatus === statusFilter
   })
 
+  // ---- Selección ----
+  const selectableIds = filtered.filter(c => c.hasPrice).map(c => c.id) // solo tiene sentido marcar las que ya tienen precio
+  const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id))
+  const toggleAll = () => {
+    setSelected(prev => allSelected ? new Set() : new Set(selectableIds))
+  }
+  const toggleOne = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const applyStatus = async (status: 'Invoiced' | 'Paid') => {
+    if (selected.size === 0) return
+    setApplying(true)
+    try {
+      const r = await fetch('/api/getReports?type=updateBillingStatus', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selected), status }),
+      })
+      const d = await r.json()
+      if (!r.ok || d.error) throw new Error(d.error || 'Error')
+      showToast(`✓ ${d.updated} marcadas como ${status === 'Invoiced' ? 'Facturado' : 'Cobrado'}${d.failed ? ` (${d.failed} fallaron)` : ''}`)
+      setSelected(new Set())
+      await load()
+    } catch (e: any) {
+      showToast('Error al actualizar: ' + (e.message || 'desconocido'))
+    } finally { setApplying(false) }
+  }
+
   const exportCSV = () => {
     const headers = ['Fecha','Propiedad','Cliente','Tipo','#Cleaners','Rating','Status','Precio','HH Casa','HH Total','Source','Estado Cobro']
     const cleanRating = (r: string | null) => {
       if (!r) return ''
-      // Remove star emojis, keep just the label
       return r.replace(/⭐+\s*/g, '').trim()
     }
     const rows = filtered.map(c => [
@@ -135,7 +208,6 @@ export default function BillingPage() {
       `"${c.source||''}"`, c.paymentStatus||''
     ])
     const csv = [headers,...rows].map(r=>r.join(',')).join('\n')
-    // Add UTF-8 BOM to prevent encoding issues in Excel
     const blob = new Blob(['\uFEFF' + csv], {type:'text/csv;charset=utf-8;'})
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a'); a.href=url
@@ -151,53 +223,18 @@ export default function BillingPage() {
         </div>
       )}
 
-      {/* Controls */}
-      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16, flexWrap:'wrap' }}>
-        <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
+      {/* Controles principales — antes eran ~18, ahora el rango rápido es 1 select y Source vive detrás de "Más filtros" */}
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, flexWrap:'wrap' }}>
+        <input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value); setQuickRange('custom')}}
           style={{ height:38, padding:'0 12px', borderRadius:10, border:`1.5px solid ${C.border}`, fontSize:13, color:C.ink, outline:'none' }} />
         <span style={{ color:C.muted, fontSize:13 }}>—</span>
-        <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
+        <input type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value); setQuickRange('custom')}}
           style={{ height:38, padding:'0 12px', borderRadius:10, border:`1.5px solid ${C.border}`, fontSize:13, color:C.ink, outline:'none' }} />
 
-        {/* Quick range buttons */}
-        {(() => {
-          const tz = { timeZone: 'America/New_York' }
-          const today = new Date().toLocaleDateString('en-CA', tz)
-          const now = new Date()
-          const dow = (now.getDay() + 6) % 7 // 0=Mon
-          const mon = new Date(now); mon.setDate(now.getDate() - dow)
-          const monStr = mon.toLocaleDateString('en-CA', tz)
-          const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
-          const sunStr = sun.toLocaleDateString('en-CA', tz)
-          const weekNum = (() => {
-            const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
-            const dayNum = d.getUTCDay() || 7
-            d.setUTCDate(d.getUTCDate() + 4 - dayNum)
-            const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
-            return Math.ceil((((d.valueOf() - yearStart.valueOf()) / 86400000) + 1) / 7)
-          })()
-          const mtdStart = new Date(now.getFullYear(), now.getMonth(), 1).toLocaleDateString('en-CA', tz)
-          const ytdStart = `${now.getFullYear()}-01-01`
-
-          return [
-            { label: 'Today',           from: today,    to: today,   active: dateFrom===today && dateTo===today, title: undefined },
-            { label: `W${weekNum} (a la fecha)`, from: monStr, to: today, active: dateFrom===monStr && dateTo===today,
-              title: 'Lunes a hoy — solo lo que ya pasó. No incluye limpiezas programadas para el resto de la semana.' },
-            { label: `W${weekNum} completa`, from: monStr, to: sunStr, active: dateFrom===monStr && dateTo===sunStr,
-              title: 'Lunes a domingo completos — incluye limpiezas programadas a futuro. Comparable con "Ingresos semana" en Squad Blocks.' },
-            { label: 'MTD',             from: mtdStart, to: today,   active: dateFrom===mtdStart && dateTo===today, title: undefined },
-            { label: 'YTD',             from: ytdStart, to: today,   active: dateFrom===ytdStart && dateTo===today, title: undefined },
-          ].map(b => (
-            <button key={b.label} onClick={() => { setDateFrom(b.from); setDateTo(b.to) }} title={b.title}
-              style={{ height:38, padding:'0 12px', borderRadius:10, fontSize:12, fontWeight:700, cursor:'pointer', transition:'all 0.15s',
-                border:`1.5px solid ${b.active ? C.primary : C.border}`,
-                background: b.active ? C.primaryLight : C.white,
-                color: b.active ? C.primary : C.muted,
-              }}>
-              {b.label}
-            </button>
-          ))
-        })()}
+        <select value={quickRange} onChange={e=>applyQuickRange(e.target.value)} style={sel(quickRange!=='custom')}>
+          <option value="custom">Rango personalizado</option>
+          {quickRanges.map(q => <option key={q.key} value={q.key}>{q.label}</option>)}
+        </select>
 
         <select value={propFilter} onChange={e=>setPropFilter(e.target.value)} style={sel(propFilter!=='all')}>
           <option value="all">Todas las propiedades</option>
@@ -207,11 +244,13 @@ export default function BillingPage() {
           <option value="all">Todos los clientes</option>
           {clients.map(cl=><option key={cl} value={cl}>{cl}</option>)}
         </select>
-        <select value={sourceFilter} onChange={e=>setSourceFilter(e.target.value)} style={sel(sourceFilter!=='all')}>
-          <option value="all">Todos los sources</option>
-          <option value="__blank__">Sin source</option>
-          {sources.map(s=><option key={s} value={s}>{s}</option>)}
-        </select>
+
+        <button onClick={()=>setShowAdvanced(v=>!v)}
+          title="Filtro de source (poco usado para el check semanal)"
+          style={{ ...sel(showAdvanced || sourceFilter!=='all'), display:'flex', alignItems:'center', gap:6 }}>
+          <SlidersHorizontal style={{ width:13, height:13 }} /> Más filtros
+        </button>
+
         <button onClick={load} disabled={loading}
           style={{ width:38, height:38, borderRadius:10, border:`1.5px solid ${C.border}`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
           <RefreshCw style={{ width:15, height:15, color:C.muted }} className={loading?'animate-spin':''} />
@@ -224,6 +263,18 @@ export default function BillingPage() {
           <Download style={{ width:14, height:14 }} /> Exportar CSV
         </button>
       </div>
+
+      {/* Filtro avanzado (Source), oculto por defecto */}
+      {showAdvanced && (
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, padding:'10px 12px', background:C.bg, borderRadius:10, border:`1px dashed ${C.border}` }}>
+          <span style={{ fontSize:11, color:C.muted, fontWeight:600 }}>SOURCE:</span>
+          <select value={sourceFilter} onChange={e=>setSourceFilter(e.target.value)} style={sel(sourceFilter!=='all')}>
+            <option value="all">Todos los sources</option>
+            <option value="__blank__">Sin source</option>
+            {sources.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+      )}
 
       {/* Summary Cards */}
       {summary && (
@@ -249,7 +300,7 @@ export default function BillingPage() {
       )}
 
       {/* Status filter pills */}
-      <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
+      <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' }}>
         {[
           { key:'all',      label:`Todas (${preFiltered.length})`,                                                            bg:C.bg,         color:C.slate },
           { key:'unpaid',   label:`Sin Cobrar (${preFiltered.filter(c=>c.paymentStatus==='unpaid').length})`,                 bg:C.amberLight, color:C.amber },
@@ -265,12 +316,37 @@ export default function BillingPage() {
         ))}
       </div>
 
+      {/* Barra de acción masiva — aparece solo si hay algo seleccionado */}
+      {selected.size > 0 && (
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12, padding:'10px 14px', background:C.primaryLight, borderRadius:12, border:`1.5px solid ${C.primary}` }}>
+          <span style={{ fontSize:13, fontWeight:700, color:C.primary }}>{selected.size} seleccionada{selected.size!==1?'s':''}</span>
+          <button onClick={()=>applyStatus('Invoiced')} disabled={applying}
+            style={{ display:'flex', alignItems:'center', gap:6, height:34, padding:'0 14px', borderRadius:9, border:`1.5px solid ${C.teal}`, background:C.tealLight, color:C.teal, fontSize:12, fontWeight:700, cursor:applying?'default':'pointer', opacity:applying?0.6:1 }}>
+            <Send style={{ width:13, height:13 }} /> Marcar Facturado
+          </button>
+          <button onClick={()=>applyStatus('Paid')} disabled={applying}
+            style={{ display:'flex', alignItems:'center', gap:6, height:34, padding:'0 14px', borderRadius:9, border:`1.5px solid ${C.green}`, background:C.greenLight, color:C.green, fontSize:12, fontWeight:700, cursor:applying?'default':'pointer', opacity:applying?0.6:1 }}>
+            <Banknote style={{ width:13, height:13 }} /> Marcar Cobrado
+          </button>
+          <button onClick={()=>setSelected(new Set())}
+            style={{ display:'flex', alignItems:'center', gap:4, height:34, padding:'0 10px', borderRadius:9, border:'none', background:'transparent', color:C.muted, fontSize:12, fontWeight:600, cursor:'pointer', marginLeft:'auto' }}>
+            <X style={{ width:13, height:13 }} /> Cancelar
+          </button>
+        </div>
+      )}
+
       {/* Table with sticky header + scroll */}
       <div style={{ background:C.white, borderRadius:16, border:`1px solid ${C.border}`, overflow:'hidden' }}>
         {/* Sticky header */}
         <div style={{ display:'grid', gridTemplateColumns:GRID, padding:'10px 16px', background:C.bg, borderBottom:`1px solid ${C.border}`, position:'sticky', top:0, zIndex:10 }}>
           {COLS.map((h,i)=>(
-            <span key={h} style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'0.05em', textAlign: i < 4 ? 'left' : 'center', display:'block' }}>{h}</span>
+            i===0 ? (
+              <input key="checkall" type="checkbox" checked={allSelected} onChange={toggleAll}
+                disabled={selectableIds.length===0}
+                style={{ width:15, height:15, cursor:selectableIds.length===0?'default':'pointer' }} />
+            ) : (
+              <span key={h} style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'0.05em', textAlign: i < 5 ? 'left' : 'center', display:'block' }}>{h}</span>
+            )
           ))}
         </div>
 
@@ -289,12 +365,17 @@ export default function BillingPage() {
           ) : filtered.map((c,i)=>{
             const pc = c.paymentStatus ? (PAY[c.paymentStatus]||null) : null
             const sc = c.status ? (STATUS_COLORS[c.status]||{ bg:C.bg, color:C.muted }) : null
+            const canSelect = c.hasPrice
             return (
               <div key={c.id} style={{
                 display:'grid', gridTemplateColumns:GRID,
                 padding:'10px 16px', borderBottom:i<filtered.length-1?`1px solid ${C.border}`:'none',
-                alignItems:'center', background:!c.hasPrice&&c.status==='Done'?'#FFFBEB':'white',
+                alignItems:'center', background: selected.has(c.id) ? C.primaryLight : (!c.hasPrice&&c.status==='Done'?'#FFFBEB':'white'),
               }}>
+                {/* Checkbox */}
+                <input type="checkbox" checked={selected.has(c.id)} onChange={()=>toggleOne(c.id)}
+                  disabled={!canSelect} title={!canSelect?'Necesita precio antes de poder marcarse':undefined}
+                  style={{ width:15, height:15, cursor:canSelect?'pointer':'not-allowed', opacity:canSelect?1:0.3 }} />
                 {/* Fecha */}
                 <span style={{ fontSize:11, color:C.slate, fontWeight:500 }}>{fmtDate(c.date)}</span>
                 {/* Propiedad */}
@@ -332,8 +413,6 @@ export default function BillingPage() {
                   {c.hoursTotal?`${c.hoursTotal}h`:'—'}
                   {c.staffCount>1&&<span style={{ fontSize:10, color:C.muted }}> ×{c.staffCount}</span>}
                 </span>
-                {/* Source */}
-                <span style={{ fontSize:10, color:C.muted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textAlign:'center', display:'block' }}>{c.source||'—'}</span>
                 {/* Cobro */}
                 {pc ? (
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:4, background:pc.bg, padding:'4px 8px', borderRadius:8 }}>
