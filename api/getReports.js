@@ -247,6 +247,7 @@ export default async function handler(req, res) {
     }
     if (type === 'importApply' && req.method === 'POST') return res.status(200).json(await applyImportPayments(headers, req.body))
     if (type === 'updateBillingStatus' && req.method === 'POST') return res.status(200).json(await updateBillingStatus(headers, req.body))
+    if (type === 'updateTurnoProject' && req.method === 'POST') return res.status(200).json(await updateTurnoProject(headers, req.body))
     if (type === 'createAppointments' && req.method === 'POST') return res.status(200).json(await createTurnoAppointments(headers, req.body))
     return res.status(400).json({ error: `Unknown type: ${type}` })
   } catch (err) {
@@ -329,6 +330,21 @@ async function updateBillingStatus(headers, body) {
     } catch (e) { results.push({ id, ok: false, error: e.message }) }
   }
   return { results, updated: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length }
+}
+
+async function updateTurnoProject(headers, body) {
+  // Escribe a mano el mismo campo 'Turno Project' que ya usa applyImportPayments — sin campos nuevos.
+  const { id, value } = body || {}
+  if (!id) return { error: 'id vacío' }
+  try {
+    const r = await fetch(
+      `https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${id}`,
+      { method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: { 'Turno Project': value || '' } }) }
+    )
+    if (!r.ok) return { error: await r.text() }
+    return { ok: true }
+  } catch (e) { return { error: e.message } }
 }
 
 async function createTurnoAppointments(headers, body) {
