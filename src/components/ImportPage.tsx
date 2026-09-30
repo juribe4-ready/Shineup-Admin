@@ -128,6 +128,7 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
   const [ovFrom, setOvFrom] = useState(thirtyAgoDate())
   const [ovTo,   setOvTo]   = useState(todayDate())
   const [ovClient, setOvClient] = useState('all')
+  const [ovProperty, setOvProperty] = useState('all')
   const [ovLoading, setOvLoading] = useState(false)
   const [ovCleanings, setOvCleanings] = useState<any[]>([])
   const [ovSelected, setOvSelected] = useState<Set<string>>(new Set())
@@ -143,29 +144,39 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
     } catch {} finally { setOvLoading(false) }
   }, [ovFrom, ovTo])
   useEffect(() => { loadOverview() }, [loadOverview])
-  useEffect(() => { setOvSelected(new Set()) }, [ovFrom, ovTo, ovClient])
+  useEffect(() => { setOvSelected(new Set()) }, [ovFrom, ovTo, ovClient, ovProperty])
 
   const ovClients = [...new Set(ovCleanings.map((c:any)=>c.clientName).filter(Boolean))].sort() as string[]
-  const ovUnpaid = ovCleanings.filter((c:any) => c.paymentStatus==='unpaid' && (ovClient==='all'||c.clientName===ovClient))
-  const ovUnpaidAmount = ovUnpaid.reduce((a:number,c:any)=>a+(c.price||0),0)
+  const ovProperties = [...new Set(ovCleanings.map((c:any)=>c.property).filter(Boolean))].sort() as string[]
+  // Pendientes = todo lo que no está pagado aún (Sin Cobrar + Facturado) — así puedes marcarlo con cualquiera de los 2 estados desde aquí
+  const ovPending = ovCleanings.filter((c:any) =>
+    (c.paymentStatus==='unpaid' || c.paymentStatus==='invoiced')
+    && (ovClient==='all'||c.clientName===ovClient)
+    && (ovProperty==='all'||c.property===ovProperty)
+  )
+  const ovPendingAmount = ovPending.reduce((a:number,c:any)=>a+(c.price||0),0)
+  const OV_STATUS: Record<string,{label:string;bg:string;color:string}> = {
+    unpaid:   { label:'Sin Cobrar', bg:C.amberLight, color:C.amber },
+    invoiced: { label:'Facturado',  bg:C.tealLight,  color:C.teal },
+  }
 
   const toggleOvAll = () => {
-    setOvSelected(ovSelected.size===ovUnpaid.length ? new Set() : new Set(ovUnpaid.map((c:any)=>c.id)))
+    setOvSelected(ovSelected.size===ovPending.length ? new Set() : new Set(ovPending.map((c:any)=>c.id)))
   }
   const toggleOvOne = (id: string) => {
     setOvSelected(prev => { const next = new Set(prev); next.has(id)?next.delete(id):next.add(id); return next })
   }
-  const markOvPaid = async () => {
+  const markOvStatus = async (status: 'Invoiced'|'Paid') => {
     if (ovSelected.size===0) return
     setOvSaving(true)
     try {
       const r = await fetch('/api/getReports?type=updateBillingStatus', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ ids: Array.from(ovSelected), status: 'Paid' })
+        body: JSON.stringify({ ids: Array.from(ovSelected), status })
       })
       const d = await r.json()
       if (!r.ok || d.error) throw new Error(d.error||'Error')
-      showToast(`✓ ${d.updated} marcadas como Paid`)
+      showToast(`✓ ${d.updated} marcadas como ${status==='Paid'?'Paid':'Invoiced'}`)
       setOvSelected(new Set())
       await loadOverview()
     } catch(e:any) { showToast('Error: '+e.message) }
@@ -314,6 +325,11 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
             <option value="all">Todos los clientes</option>
             {ovClients.map(cl=><option key={cl} value={cl}>{cl}</option>)}
           </select>
+          <select value={ovProperty} onChange={e=>setOvProperty(e.target.value)}
+            style={{ height:36, padding:'0 10px', borderRadius:9, border:`1.5px solid ${C.border}`, fontSize:12, color:C.slate, outline:'none' }}>
+            <option value="all">Todas las propiedades</option>
+            {ovProperties.map(p=><option key={p} value={p}>{p}</option>)}
+          </select>
           <button onClick={loadOverview} disabled={ovLoading}
             title="Actualizar"
             style={{ width:36, height:36, borderRadius:9, border:`1.5px solid ${C.border}`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -322,12 +338,14 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
         </div>
         <div style={{ display:'flex', gap:16, alignItems:'baseline' }}>
           <div>
-            <span style={{ fontSize:26, fontWeight:900, color:C.amber }}>{ovUnpaid.length}</span>
-            <span style={{ fontSize:12, color:C.muted, marginLeft:6 }}>limpiezas sin cobrar</span>
+            <span style={{ fontSize:26, fontWeight:900, color:C.amber }}>{ovPending.length}</span>
+            <span style={{ fontSize:12, color:C.muted, marginLeft:6 }}>pendientes de cobro</span>
           </div>
           <div>
-            <span style={{ fontSize:26, fontWeight:900, color:C.amber }}>${ovUnpaidAmount.toFixed(2)}</span>
-            <span style={{ fontSize:12, color:C.muted, marginLeft:6 }}>en ese rango{ovClient!=='all'?` · ${ovClient}`:''}</span>
+            <span style={{ fontSize:26, fontWeight:900, color:C.amber }}>${ovPendingAmount.toFixed(2)}</span>
+            <span style={{ fontSize:12, color:C.muted, marginLeft:6 }}>
+              en ese rango{ovClient!=='all'?` · ${ovClient}`:''}{ovProperty!=='all'?` · ${ovProperty}`:''}
+            </span>
           </div>
         </div>
 
@@ -335,7 +353,11 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
         {ovSelected.size > 0 && (
           <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:12, padding:'8px 12px', background:C.primaryLight, borderRadius:10, border:`1.5px solid ${C.primary}` }}>
             <span style={{ fontSize:12, fontWeight:700, color:C.primary }}>{ovSelected.size} seleccionada{ovSelected.size!==1?'s':''}</span>
-            <button onClick={markOvPaid} disabled={ovSaving}
+            <button onClick={()=>markOvStatus('Invoiced')} disabled={ovSaving}
+              style={{ display:'flex', alignItems:'center', gap:6, height:30, padding:'0 12px', borderRadius:8, border:`1.5px solid ${C.teal}`, background:C.tealLight, color:C.teal, fontSize:12, fontWeight:700, cursor:ovSaving?'default':'pointer', opacity:ovSaving?0.6:1 }}>
+              Marcar Facturado
+            </button>
+            <button onClick={()=>markOvStatus('Paid')} disabled={ovSaving}
               style={{ display:'flex', alignItems:'center', gap:6, height:30, padding:'0 12px', borderRadius:8, border:`1.5px solid ${C.green}`, background:C.greenLight, color:C.green, fontSize:12, fontWeight:700, cursor:ovSaving?'default':'pointer', opacity:ovSaving?0.6:1 }}>
               <CheckCircle2 style={{width:12,height:12}} /> Marcar Pagado
             </button>
@@ -344,24 +366,27 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
           </div>
         )}
 
-        {/* Lista de detalle — accionable: marcar pagado y editar código de Turno Project */}
-        {ovUnpaid.length > 0 && (
+        {/* Lista de detalle — accionable: marcar Facturado/Pagado y editar código de Turno Project */}
+        {ovPending.length > 0 && (
           <div style={{ marginTop:14, background:C.bg, borderRadius:12, border:`1px solid ${C.border}`, overflow:'hidden' }}>
-            <div style={{ display:'grid', gridTemplateColumns:'24px 70px 1fr 120px 100px 130px 80px', padding:'7px 12px', borderBottom:`1px solid ${C.border}`, alignItems:'center' }}>
-              <input type="checkbox" checked={ovSelected.size>0 && ovSelected.size===ovUnpaid.length} onChange={toggleOvAll}
+            <div style={{ display:'grid', gridTemplateColumns:'24px 65px 1fr 105px 85px 78px 120px 70px', padding:'7px 12px', borderBottom:`1px solid ${C.border}`, alignItems:'center' }}>
+              <input type="checkbox" checked={ovSelected.size>0 && ovSelected.size===ovPending.length} onChange={toggleOvAll}
                 style={{ width:13, height:13, cursor:'pointer' }} />
-              {['Fecha','Propiedad','Cliente','Source','Turno Project','Precio'].map(h=>(
+              {['Fecha','Propiedad','Cliente','Source','Estado','Turno Project','Precio'].map(h=>(
                 <span key={h} style={{ fontSize:9, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'0.04em' }}>{h}</span>
               ))}
             </div>
             <div style={{ maxHeight:260, overflowY:'auto' }}>
-              {[...ovUnpaid].sort((a:any,b:any)=>(a.date||'').localeCompare(b.date||'')).map((c:any,i:number)=>(
-                <div key={c.id} style={{ display:'grid', gridTemplateColumns:'24px 70px 1fr 120px 100px 130px 80px', padding:'6px 12px', borderBottom:i<ovUnpaid.length-1?`1px solid ${C.border}`:'none', alignItems:'center', background: ovSelected.has(c.id)?C.primaryLight:'transparent' }}>
+              {[...ovPending].sort((a:any,b:any)=>(a.date||'').localeCompare(b.date||'')).map((c:any,i:number)=>{
+                const st = OV_STATUS[c.paymentStatus] || { label:c.paymentStatus||'—', bg:C.bg, color:C.muted }
+                return (
+                <div key={c.id} style={{ display:'grid', gridTemplateColumns:'24px 65px 1fr 105px 85px 78px 120px 70px', padding:'6px 12px', borderBottom:i<ovPending.length-1?`1px solid ${C.border}`:'none', alignItems:'center', background: ovSelected.has(c.id)?C.primaryLight:'transparent' }}>
                   <input type="checkbox" checked={ovSelected.has(c.id)} onChange={()=>toggleOvOne(c.id)} style={{ width:13, height:13, cursor:'pointer' }} />
                   <span style={{ fontSize:11, color:C.slate }}>{c.date||'—'}</span>
                   <span style={{ fontSize:12, color:C.ink, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.property}</span>
                   <span style={{ fontSize:11, color:C.slate, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.clientName||'—'}</span>
                   <span style={{ fontSize:10, color:C.slate, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.source||'—'}</span>
+                  <span style={{ fontSize:9, fontWeight:700, color:st.color, background:st.bg, padding:'3px 6px', borderRadius:6, textAlign:'center' }}>{st.label}</span>
                   <input
                     value={ovTpEdits[c.id] ?? c.turnoProject ?? ''}
                     onChange={e=>setOvTpEdits(prev=>({...prev,[c.id]:e.target.value}))}
@@ -372,7 +397,7 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
                   />
                   <span style={{ fontSize:12, fontWeight:700, color:c.hasPrice?C.ink:C.amber }}>{c.hasPrice?`$${c.price.toFixed(2)}`:'⚠️ —'}</span>
                 </div>
-              ))}
+              )})}
             </div>
           </div>
         )}
