@@ -252,6 +252,16 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
     setRows(parsed); await matchWithAPI(parsed)
   }
 
+  const [pasteText, setPasteText] = useState('')
+  const [showPaste, setShowPaste] = useState(false)
+  const handlePaste = async () => {
+    if (!pasteText.trim()) { showToast('Pega algo primero'); return }
+    setFileName('(pegado manualmente)'); setResults(null); setMatches([]); setManualMatches({})
+    const parsed = parseCSV(pasteText)
+    if (!parsed.length) { showToast('No se encontraron filas válidas — revisa que tenga encabezados'); return }
+    setRows(parsed); await matchWithAPI(parsed)
+  }
+
   // Candidatos para conectar a mano: limpiezas dentro de ±2 días de la fecha del CSV, sin pagar aún.
   // Sirve tanto para "sin match" normal como para el caso de casas twin (ej. Glenmawr 2552-54).
   const candidatesFor = (row: TurnoRow) => {
@@ -408,13 +418,33 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
       {/* Upload */}
       <div onClick={() => fileRef.current?.click()} onDragOver={e=>e.preventDefault()}
         onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)handleFile(f)}}
-        style={{ border:`2px dashed ${C.border}`, borderRadius:16, padding:'36px 24px', textAlign:'center', cursor:'pointer', marginBottom:20, background:C.white }}
+        style={{ border:`2px dashed ${C.border}`, borderRadius:16, padding:'36px 24px', textAlign:'center', cursor:'pointer', marginBottom:10, background:C.white }}
         onMouseEnter={e=>(e.currentTarget.style.borderColor=C.primary)} onMouseLeave={e=>(e.currentTarget.style.borderColor=C.border)}>
         <input ref={fileRef} type="file" accept=".csv,.tsv,.txt" style={{display:'none'}} onChange={e=>{const f=e.target.files?.[0];if(f)handleFile(f)}} />
         <Upload style={{width:28,height:28,color:C.muted,margin:'0 auto 10px'}} />
         {fileName ? <p style={{fontSize:14,fontWeight:700,color:C.ink}}>{fileName}</p>
           : <p style={{fontSize:13,color:C.muted}}>Arrastra el CSV/TSV de Turno · <span style={{color:C.primary,fontWeight:600}}>Reports → Transactions</span></p>}
       </div>
+
+      <button onClick={()=>setShowPaste(v=>!v)}
+        style={{ fontSize:12, color:C.primary, background:'none', border:'none', cursor:'pointer', fontWeight:600, marginBottom:showPaste?10:20, padding:0 }}>
+        {showPaste ? '× Cerrar pegado manual' : 'o pega el CSV directamente →'}
+      </button>
+
+      {showPaste && (
+        <div style={{ marginBottom:20 }}>
+          <textarea
+            value={pasteText}
+            onChange={e=>setPasteText(e.target.value)}
+            placeholder={"Pega aquí las filas copiadas de Turno (con encabezados: Date, Customer, Amount, Property, Notes/Project #...)"}
+            style={{ width:'100%', height:140, padding:'12px 14px', borderRadius:12, border:`1.5px solid ${C.border}`, fontSize:12, color:C.ink, fontFamily:'monospace', outline:'none', resize:'vertical', boxSizing:'border-box' }}
+          />
+          <button onClick={handlePaste} disabled={!pasteText.trim()}
+            style={{ display:'flex', alignItems:'center', gap:6, height:38, padding:'0 18px', borderRadius:10, border:'none', background:pasteText.trim()?`linear-gradient(135deg,${C.primary} 0%,#4F46E5 100%)`:C.border, color:'white', fontSize:13, fontWeight:700, cursor:pasteText.trim()?'pointer':'default', marginTop:10 }}>
+            Procesar pegado
+          </button>
+        </div>
+      )}
 
       {loading && <div style={{display:'flex',alignItems:'center',gap:10,padding:'14px 18px',background:C.primaryLight,borderRadius:12,marginBottom:16}}>
         <RefreshCw style={{width:15,height:15,color:C.primary,animation:'spin 1s linear infinite'}} />
