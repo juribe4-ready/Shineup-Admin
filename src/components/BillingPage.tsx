@@ -166,7 +166,7 @@ export default function BillingPage() {
   const selectableIds = filtered.filter(c => c.hasPrice).map(c => c.id) // solo tiene sentido marcar las que ya tienen precio
   const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id))
   const toggleAll = () => {
-    setSelected(prev => allSelected ? new Set() : new Set(selectableIds))
+    setSelected(allSelected ? new Set() : new Set(selectableIds))
   }
   const toggleOne = (id: string) => {
     setSelected(prev => {
