@@ -17,7 +17,7 @@ const todayDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Amer
 // TYPES
 // ─────────────────────────────────────────────
 interface TurnoRow { date: string; customer: string; amount: number; property: string; projectNumber: string; status: string }
-interface PayMatch { turnoRow: TurnoRow; cleaningId: string | null; cleaningProperty: string; matchType: 'turnoName'|'exact'|'none'; alreadyPaid: boolean }
+interface PayMatch { turnoRow: TurnoRow; cleaningId: string | null; cleaningProperty: string; matchType: 'turnoName'|'exact'|'none'; alreadyPaid: boolean; manual?: boolean }
 interface PropMatch { name: string; propertyId: string | null; propertyName: string; matchType: 'turnoName'|'exact'|'none' }
 
 // ─────────────────────────────────────────────
@@ -123,14 +123,41 @@ export default function ImportPage() {
 // TAB 1: MARCAR PAGADOS
 // ─────────────────────────────────────────────
 function PayTab({ showToast }: { showToast: (m:string)=>void }) {
+  // ── Resumen "Sin Cobrar" — antes de subir el CSV, para decidir qué vas a reconciliar ──
+  const thirtyAgoDate = () => { const d = new Date(); d.setDate(d.getDate()-30); return d.toLocaleDateString('en-CA',{timeZone:'America/New_York'}) }
+  const [ovFrom, setOvFrom] = useState(thirtyAgoDate())
+  const [ovTo,   setOvTo]   = useState(todayDate())
+  const [ovClient, setOvClient] = useState('all')
+  const [ovLoading, setOvLoading] = useState(false)
+  const [ovCleanings, setOvCleanings] = useState<any[]>([])
+
+  const loadOverview = useCallback(async () => {
+    setOvLoading(true)
+    try {
+      const r = await fetch(`/api/getReports?type=billing&dateFrom=${ovFrom}&dateTo=${ovTo}`)
+      const d = await r.json()
+      setOvCleanings(d.cleanings || [])
+    } catch {} finally { setOvLoading(false) }
+  }, [ovFrom, ovTo])
+  useEffect(() => { loadOverview() }, [loadOverview])
+
+  const ovClients = [...new Set(ovCleanings.map((c:any)=>c.clientName).filter(Boolean))].sort() as string[]
+  const ovUnpaid = ovCleanings.filter((c:any) => c.paymentStatus==='unpaid' && (ovClient==='all'||c.clientName===ovClient))
+  const ovUnpaidAmount = ovUnpaid.reduce((a:number,c:any)=>a+(c.price||0),0)
+
+  // ── Matching contra el CSV de Turno ──
   const [rows,       setRows]       = useState<TurnoRow[]>([])
   const [matches,    setMatches]    = useState<PayMatch[]>([])
+  const [allCleanings, setAllCleanings] = useState<any[]>([]) // registros crudos, para armar candidatos de match manual
+  const [manualMatches, setManualMatches] = useState<Record<string,string>>({}) // key(row) -> cleaningId elegido a mano
   const [loading,    setLoading]    = useState(false)
   const [processing, setProcessing] = useState(false)
   const [results,    setResults]    = useState<{paid:number;skipped:number;errors:number}|null>(null)
   const [fileName,       setFileName]       = useState('')
   const [showUnmatched,  setShowUnmatched]  = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  const keyFor = (row: TurnoRow) => `${row.date}|${row.property}|${row.projectNumber}`
 
   const matchWithAPI = useCallback(async (turnoRows: TurnoRow[]) => {
     setLoading(true)
@@ -140,6 +167,7 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
       const res = await fetch(`/api/getReports?type=importMatch&dateFrom=${dates[0]}&dateTo=${dates[dates.length-1]}`)
       if (!res.ok) throw new Error('Error al cargar datos')
       const { cleanings, propsMap } = await res.json()
+      setAllCleanings(cleanings || [])
 
       setMatches(turnoRows.map(row => {
         const rowDate = normalizeDate(row.date)
@@ -165,15 +193,49 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
   }, [showToast])
 
   const handleFile = async (file: File) => {
-    setFileName(file.name); setResults(null); setMatches([])
+    setFileName(file.name); setResults(null); setMatches([]); setManualMatches({})
     const text = await file.text()
     const parsed = parseCSV(text)
     if (!parsed.length) { showToast('No se encontraron filas válidas'); return }
     setRows(parsed); await matchWithAPI(parsed)
   }
 
+  // Candidatos para conectar a mano: limpiezas dentro de ±2 días de la fecha del CSV, sin pagar aún.
+  // Sirve tanto para "sin match" normal como para el caso de casas twin (ej. Glenmawr 2552-54).
+  const candidatesFor = (row: TurnoRow) => {
+    const rowDate = normalizeDate(row.date)
+    if (!rowDate) return []
+    const target = new Date(rowDate + 'T12:00:00').getTime()
+    return allCleanings
+      .filter((c: any) => {
+        const d = c.fields?.Date
+        if (!d) return false
+        if ((c.fields?.['Payment Status']||'').toLowerCase() === 'paid') return false
+        const diffDays = Math.abs(new Date(d+'T12:00:00').getTime() - target) / 86400000
+        return diffDays <= 2
+      })
+      .sort((a:any,b:any) => Math.abs(new Date(a.fields.Date+'T12:00:00').getTime()-target) - Math.abs(new Date(b.fields.Date+'T12:00:00').getTime()-target))
+      .slice(0, 40)
+  }
+  const fmtShort = (iso: string) => { const d = new Date(iso+'T12:00:00'); return d.toLocaleDateString('es-ES',{day:'numeric',month:'short'}) }
+
+  // Fusiona el match automático con las elecciones manuales — no se pierden aunque se recalculen los matches.
+  const effectiveMatches: PayMatch[] = matches.map(m => {
+    if (m.cleaningId) return m
+    const manualId = manualMatches[keyFor(m.turnoRow)]
+    if (!manualId) return m
+    const c = allCleanings.find((c:any) => c.id === manualId)
+    return {
+      ...m,
+      cleaningId: manualId,
+      cleaningProperty: c?.fields?.['Property Text'] || m.cleaningProperty,
+      manual: true,
+      alreadyPaid: (c?.fields?.['Payment Status']||'').toLowerCase()==='paid',
+    }
+  })
+
   const applyPayments = async () => {
-    const toUpdate = matches.filter(m => m.cleaningId && !m.alreadyPaid)
+    const toUpdate = effectiveMatches.filter(m => m.cleaningId && !m.alreadyPaid)
     if (!toUpdate.length) { showToast('Nada nuevo para marcar'); return }
     setProcessing(true)
     try {
@@ -183,21 +245,50 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
       })
       const data = await res.json()
       const paid = data.results?.filter((r:any)=>r.ok).length||0
-      setResults({ paid, skipped: matches.length-toUpdate.length, errors: data.results?.filter((r:any)=>!r.ok).length||0 })
+      setResults({ paid, skipped: effectiveMatches.length-toUpdate.length, errors: data.results?.filter((r:any)=>!r.ok).length||0 })
       showToast(`✓ ${paid} marcadas como Paid`)
       await matchWithAPI(rows)
+      await loadOverview()
     } catch(e:any) { showToast('Error: '+e.message) }
     finally { setProcessing(false) }
   }
 
-  const toProcess = matches.filter(m => m.cleaningId && !m.alreadyPaid)
-  const alreadyPd = matches.filter(m => m.alreadyPaid)
-  const unmatched = matches.filter(m => !m.cleaningId)
-  const displayed = showUnmatched ? unmatched : matches
+  const toProcess = effectiveMatches.filter(m => m.cleaningId && !m.alreadyPaid)
+  const alreadyPd = effectiveMatches.filter(m => m.alreadyPaid)
+  const unmatched = effectiveMatches.filter(m => !m.cleaningId)
+  const displayed = showUnmatched ? unmatched : effectiveMatches
   const totalAmt  = toProcess.reduce((a,m) => a+m.turnoRow.amount, 0)
 
   return (
     <div>
+      {/* ── Resumen Sin Cobrar, filtrable, antes de subir nada ── */}
+      <div style={{ background:C.white, borderRadius:16, border:`1px solid ${C.border}`, padding:'18px 20px', marginBottom:20 }}>
+        <p style={{ fontSize:12, fontWeight:700, color:C.slate, marginBottom:10 }}>Antes de subir el CSV — ¿qué vas a reconciliar?</p>
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, flexWrap:'wrap' }}>
+          <input type="date" value={ovFrom} onChange={e=>setOvFrom(e.target.value)}
+            style={{ height:36, padding:'0 10px', borderRadius:9, border:`1.5px solid ${C.border}`, fontSize:12, color:C.ink, outline:'none' }} />
+          <span style={{ color:C.muted, fontSize:12 }}>—</span>
+          <input type="date" value={ovTo} onChange={e=>setOvTo(e.target.value)}
+            style={{ height:36, padding:'0 10px', borderRadius:9, border:`1.5px solid ${C.border}`, fontSize:12, color:C.ink, outline:'none' }} />
+          <select value={ovClient} onChange={e=>setOvClient(e.target.value)}
+            style={{ height:36, padding:'0 10px', borderRadius:9, border:`1.5px solid ${C.border}`, fontSize:12, color:C.slate, outline:'none' }}>
+            <option value="all">Todos los clientes</option>
+            {ovClients.map(cl=><option key={cl} value={cl}>{cl}</option>)}
+          </select>
+          {ovLoading && <RefreshCw style={{width:14,height:14,color:C.muted,animation:'spin 1s linear infinite'}} />}
+        </div>
+        <div style={{ display:'flex', gap:16, alignItems:'baseline' }}>
+          <div>
+            <span style={{ fontSize:26, fontWeight:900, color:C.amber }}>{ovUnpaid.length}</span>
+            <span style={{ fontSize:12, color:C.muted, marginLeft:6 }}>limpiezas sin cobrar</span>
+          </div>
+          <div>
+            <span style={{ fontSize:26, fontWeight:900, color:C.amber }}>${ovUnpaidAmount.toFixed(2)}</span>
+            <span style={{ fontSize:12, color:C.muted, marginLeft:6 }}>en ese rango{ovClient!=='all'?` · ${ovClient}`:''}</span>
+          </div>
+        </div>
+      </div>
+
       {/* Upload */}
       <div onClick={() => fileRef.current?.click()} onDragOver={e=>e.preventDefault()}
         onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)handleFile(f)}}
@@ -214,12 +305,12 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
         <span style={{fontSize:13,color:C.primary,fontWeight:600}}>Cruzando con Airtable...</span>
       </div>}
 
-      {matches.length > 0 && !loading && <>
+      {effectiveMatches.length > 0 && !loading && <>
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:16}}>
           {[
             {label:'Para pagar', count:toProcess.length, sub:`$${totalAmt.toFixed(2)}`, bg:C.greenLight, color:C.green, Icon:CheckCircle2},
             {label:'Ya pagadas', count:alreadyPd.length, sub:'ya procesadas', bg:'#DBEAFE', color:'#2563EB', Icon:DollarSign},
-            {label:'Sin match',  count:unmatched.length, sub:'revisar Turno Name', bg:C.redLight, color:C.red, Icon:XCircle},
+            {label:'Sin match',  count:unmatched.length, sub:'conecta a mano abajo', bg:C.redLight, color:C.red, Icon:XCircle},
           ].map(s=>(
             <div key={s.label} style={{background:s.bg,borderRadius:14,padding:'14px 16px',border:`1px solid ${s.color}25`}}>
               <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:4}}>
@@ -243,7 +334,7 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
             {showUnmatched && (
               <button onClick={() => setShowUnmatched(false)}
                 style={{fontSize:12,color:C.muted,background:'none',border:'none',cursor:'pointer',textDecoration:'underline'}}>
-                Show all ({matches.length})
+                Show all ({effectiveMatches.length})
               </button>
             )}
           </div>
@@ -266,31 +357,28 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
           <div style={{background:C.greenLight,borderRadius:12,padding:'10px 14px',border:`1px solid ${C.green}25`}}>
             <div style={{fontSize:10,fontWeight:700,color:C.green,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:2}}>Pagadas</div>
             <div style={{fontSize:18,fontWeight:800,color:C.green}}>${alreadyPd.reduce((a,m)=>a+m.turnoRow.amount,0).toFixed(2)}</div>
-            <div style={{fontSize:10,color:C.muted}}>{alreadyPd.length} limpiezas</div>
           </div>
-          <div style={{background:C.amberLight,borderRadius:12,padding:'10px 14px',border:`1px solid ${C.amber}25`}}>
-            <div style={{fontSize:10,fontWeight:700,color:C.amber,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:2}}>Para pagar</div>
-            <div style={{fontSize:18,fontWeight:800,color:C.amber}}>${toProcess.reduce((a,m)=>a+m.turnoRow.amount,0).toFixed(2)}</div>
-            <div style={{fontSize:10,color:C.muted}}>{toProcess.length} limpiezas</div>
+          <div style={{background:C.primaryLight,borderRadius:12,padding:'10px 14px',border:`1px solid ${C.primary}25`}}>
+            <div style={{fontSize:10,fontWeight:700,color:C.primary,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:2}}>Por pagar</div>
+            <div style={{fontSize:18,fontWeight:800,color:C.primary}}>${totalAmt.toFixed(2)}</div>
           </div>
           <div style={{background:C.redLight,borderRadius:12,padding:'10px 14px',border:`1px solid ${C.red}25`}}>
             <div style={{fontSize:10,fontWeight:700,color:C.red,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:2}}>Sin match</div>
             <div style={{fontSize:18,fontWeight:800,color:C.red}}>${unmatched.reduce((a,m)=>a+m.turnoRow.amount,0).toFixed(2)}</div>
-            <div style={{fontSize:10,color:C.muted}}>{unmatched.length} limpiezas</div>
           </div>
           </div>
           <button onClick={() => {
             const headers = ['Fecha','Propiedad Turno','Limpieza ShineUp','Proyecto','Monto','Match','Estado']
-            const rows = displayed.map(m => [
+            const rowsOut = displayed.map(m => [
               m.turnoRow.date,
               `"${m.turnoRow.property}"`,
               `"${m.cleaningProperty||''}"`,
               m.turnoRow.projectNumber||'',
               m.turnoRow.amount.toFixed(2),
-              m.matchType==='none'?'Sin match':m.matchType==='turnoName'?'Turno Name':'Exacto',
+              m.manual?'Manual':m.matchType==='none'?'Sin match':m.matchType==='turnoName'?'Turno Name':'Exacto',
               m.alreadyPaid?'Ya pagada':m.cleaningId?'Para pagar':'Sin match'
             ])
-            const csv = [headers,...rows].map(r=>r.join(',')).join('\n')
+            const csv = [headers,...rowsOut].map(r=>r.join(',')).join('\n')
             const blob = new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'})
             const url = URL.createObjectURL(blob)
             const a = document.createElement('a'); a.href=url
@@ -302,21 +390,34 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
         </div>
 
         <div style={{background:C.white,borderRadius:16,border:`1px solid ${C.border}`,overflow:'hidden'}}>
-          <div style={{display:'grid',gridTemplateColumns:'70px 1fr 160px 90px 80px 80px 90px',padding:'10px 16px',background:C.bg,borderBottom:`1px solid ${C.border}`}}>
+          <div style={{display:'grid',gridTemplateColumns:'70px 1fr 200px 90px 80px 80px 90px',padding:'10px 16px',background:C.bg,borderBottom:`1px solid ${C.border}`}}>
             {['Fecha','Propiedad Turno','Limpieza ShineUp','Proyecto','Monto','Match','Estado'].map(h=>(
               <span key={h} style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:'uppercase',letterSpacing:'0.05em'}}>{h}</span>
             ))}
           </div>
-          <div style={{maxHeight:400,overflowY:'auto'}}>
+          <div style={{maxHeight:440,overflowY:'auto'}}>
             {displayed.map((m,i)=>{
-              const mc=m.matchType==='none'?C.red:m.matchType==='turnoName'?C.green:C.primary
-              const ml=m.matchType==='none'?'Sin match':m.matchType==='turnoName'?'Turno Name':'Exacto'
+              const mc = m.manual ? '#7C3AED' : m.matchType==='none'?C.red:m.matchType==='turnoName'?C.green:C.primary
+              const ml = m.manual ? 'Manual' : m.matchType==='none'?'Sin match':m.matchType==='turnoName'?'Turno Name':'Exacto'
               const sc=m.alreadyPaid?'#2563EB':m.cleaningId?C.green:C.red
+              const candidates = !m.cleaningId ? candidatesFor(m.turnoRow) : []
               return (
-                <div key={i} style={{display:'grid',gridTemplateColumns:'70px 1fr 160px 90px 80px 80px 90px',padding:'10px 16px',borderBottom:i<displayed.length-1?`1px solid ${C.border}`:'none',alignItems:'center',background:m.matchType==='none'?'#FFF5F5':m.alreadyPaid?'#F0F9FF':'white'}}>
+                <div key={i} style={{display:'grid',gridTemplateColumns:'70px 1fr 200px 90px 80px 80px 90px',padding:'10px 16px',borderBottom:i<displayed.length-1?`1px solid ${C.border}`:'none',alignItems:'center',background:m.matchType==='none'&&!m.manual?'#FFF5F5':m.alreadyPaid?'#F0F9FF':'white'}}>
                   <span style={{fontSize:11,color:C.slate}}>{m.turnoRow.date}</span>
                   <span style={{fontSize:12,color:C.ink,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.turnoRow.property}</span>
-                  <span style={{fontSize:12,color:m.cleaningId?C.ink:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.cleaningProperty||'—'}</span>
+                  {m.cleaningId ? (
+                    <span style={{fontSize:12,color:C.ink,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {m.cleaningProperty||'—'}
+                    </span>
+                  ) : (
+                    <select defaultValue="" onChange={e=>{ const id=e.target.value; if(id) setManualMatches(prev=>({...prev,[keyFor(m.turnoRow)]:id})) }}
+                      style={{fontSize:11,padding:'4px 6px',borderRadius:7,border:`1.5px solid ${C.primary}50`,color:C.primary,background:C.primaryLight,maxWidth:190,cursor:'pointer'}}>
+                      <option value="">Conectar a mano…</option>
+                      {candidates.map((c:any) => (
+                        <option key={c.id} value={c.id}>{fmtShort(c.fields.Date)} · {c.fields['Property Text']||'?'} · ${c.fields.Price??'—'}</option>
+                      ))}
+                    </select>
+                  )}
                   <span style={{fontSize:11,color:C.muted,fontFamily:'monospace'}}>{m.turnoRow.projectNumber||'—'}</span>
                   <span style={{fontSize:13,fontWeight:700,color:C.ink}}>${m.turnoRow.amount.toFixed(2)}</span>
                   <span style={{fontSize:10,fontWeight:700,color:mc,background:`${mc}15`,padding:'3px 8px',borderRadius:6,textAlign:'center'}}>{ml}</span>
@@ -326,22 +427,6 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
             })}
           </div>
         </div>
-
-        {unmatched.length>0&&(
-          <div style={{marginTop:12,padding:'12px 16px',background:C.amberLight,borderRadius:12,border:`1px solid ${C.amber}30`}}>
-            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
-              <AlertTriangle style={{width:14,height:14,color:C.amber}} />
-              <span style={{fontSize:12,fontWeight:700,color:C.amber}}>Agrega "Turno Name" en Properties para estos:</span>
-            </div>
-            <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
-              {unmatched.map((m,i)=>(
-                <span key={i} style={{fontSize:11,background:'white',border:`1px solid ${C.border}`,borderRadius:8,padding:'4px 10px',color:C.slate}}>
-                  <strong>{m.turnoRow.property}</strong> · {m.turnoRow.date}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
       </>}
     </div>
   )
