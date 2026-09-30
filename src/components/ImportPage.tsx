@@ -130,6 +130,9 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
   const [ovClient, setOvClient] = useState('all')
   const [ovLoading, setOvLoading] = useState(false)
   const [ovCleanings, setOvCleanings] = useState<any[]>([])
+  const [ovSelected, setOvSelected] = useState<Set<string>>(new Set())
+  const [ovTpEdits, setOvTpEdits] = useState<Record<string,string>>({})
+  const [ovSaving, setOvSaving] = useState(false)
 
   const loadOverview = useCallback(async () => {
     setOvLoading(true)
@@ -140,10 +143,46 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
     } catch {} finally { setOvLoading(false) }
   }, [ovFrom, ovTo])
   useEffect(() => { loadOverview() }, [loadOverview])
+  useEffect(() => { setOvSelected(new Set()) }, [ovFrom, ovTo, ovClient])
 
   const ovClients = [...new Set(ovCleanings.map((c:any)=>c.clientName).filter(Boolean))].sort() as string[]
   const ovUnpaid = ovCleanings.filter((c:any) => c.paymentStatus==='unpaid' && (ovClient==='all'||c.clientName===ovClient))
   const ovUnpaidAmount = ovUnpaid.reduce((a:number,c:any)=>a+(c.price||0),0)
+
+  const toggleOvAll = () => {
+    setOvSelected(ovSelected.size===ovUnpaid.length ? new Set() : new Set(ovUnpaid.map((c:any)=>c.id)))
+  }
+  const toggleOvOne = (id: string) => {
+    setOvSelected(prev => { const next = new Set(prev); next.has(id)?next.delete(id):next.add(id); return next })
+  }
+  const markOvPaid = async () => {
+    if (ovSelected.size===0) return
+    setOvSaving(true)
+    try {
+      const r = await fetch('/api/getReports?type=updateBillingStatus', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ ids: Array.from(ovSelected), status: 'Paid' })
+      })
+      const d = await r.json()
+      if (!r.ok || d.error) throw new Error(d.error||'Error')
+      showToast(`✓ ${d.updated} marcadas como Paid`)
+      setOvSelected(new Set())
+      await loadOverview()
+    } catch(e:any) { showToast('Error: '+e.message) }
+    finally { setOvSaving(false) }
+  }
+  const saveTurnoProject = async (id: string, value: string) => {
+    try {
+      const r = await fetch('/api/getReports?type=updateTurnoProject', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ id, value })
+      })
+      const d = await r.json()
+      if (!r.ok || d.error) throw new Error(d.error||'Error')
+      showToast('✓ Código guardado')
+      await loadOverview()
+    } catch(e:any) { showToast('Error al guardar código: '+e.message) }
+  }
 
   // ── Matching contra el CSV de Turno ──
   const [rows,       setRows]       = useState<TurnoRow[]>([])
@@ -275,7 +314,11 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
             <option value="all">Todos los clientes</option>
             {ovClients.map(cl=><option key={cl} value={cl}>{cl}</option>)}
           </select>
-          {ovLoading && <RefreshCw style={{width:14,height:14,color:C.muted,animation:'spin 1s linear infinite'}} />}
+          <button onClick={loadOverview} disabled={ovLoading}
+            title="Actualizar"
+            style={{ width:36, height:36, borderRadius:9, border:`1.5px solid ${C.border}`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <RefreshCw style={{width:14,height:14,color:C.muted}} className={ovLoading?'animate-spin':''} />
+          </button>
         </div>
         <div style={{ display:'flex', gap:16, alignItems:'baseline' }}>
           <div>
@@ -288,22 +331,45 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
           </div>
         </div>
 
-        {/* Lista de detalle — para comparar a ojo contra el CSV antes de subirlo */}
+        {/* Barra de acción — aparece al seleccionar filas */}
+        {ovSelected.size > 0 && (
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:12, padding:'8px 12px', background:C.primaryLight, borderRadius:10, border:`1.5px solid ${C.primary}` }}>
+            <span style={{ fontSize:12, fontWeight:700, color:C.primary }}>{ovSelected.size} seleccionada{ovSelected.size!==1?'s':''}</span>
+            <button onClick={markOvPaid} disabled={ovSaving}
+              style={{ display:'flex', alignItems:'center', gap:6, height:30, padding:'0 12px', borderRadius:8, border:`1.5px solid ${C.green}`, background:C.greenLight, color:C.green, fontSize:12, fontWeight:700, cursor:ovSaving?'default':'pointer', opacity:ovSaving?0.6:1 }}>
+              <CheckCircle2 style={{width:12,height:12}} /> Marcar Pagado
+            </button>
+            <button onClick={()=>setOvSelected(new Set())}
+              style={{ height:30, padding:'0 8px', borderRadius:8, border:'none', background:'transparent', color:C.muted, fontSize:12, cursor:'pointer', marginLeft:'auto' }}>Cancelar</button>
+          </div>
+        )}
+
+        {/* Lista de detalle — accionable: marcar pagado y editar código de Turno Project */}
         {ovUnpaid.length > 0 && (
           <div style={{ marginTop:14, background:C.bg, borderRadius:12, border:`1px solid ${C.border}`, overflow:'hidden' }}>
-            <div style={{ display:'grid', gridTemplateColumns:'70px 1fr 120px 100px 110px 80px', padding:'7px 12px', borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ display:'grid', gridTemplateColumns:'24px 70px 1fr 120px 100px 130px 80px', padding:'7px 12px', borderBottom:`1px solid ${C.border}`, alignItems:'center' }}>
+              <input type="checkbox" checked={ovSelected.size>0 && ovSelected.size===ovUnpaid.length} onChange={toggleOvAll}
+                style={{ width:13, height:13, cursor:'pointer' }} />
               {['Fecha','Propiedad','Cliente','Source','Turno Project','Precio'].map(h=>(
                 <span key={h} style={{ fontSize:9, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'0.04em' }}>{h}</span>
               ))}
             </div>
-            <div style={{ maxHeight:220, overflowY:'auto' }}>
+            <div style={{ maxHeight:260, overflowY:'auto' }}>
               {[...ovUnpaid].sort((a:any,b:any)=>(a.date||'').localeCompare(b.date||'')).map((c:any,i:number)=>(
-                <div key={c.id} style={{ display:'grid', gridTemplateColumns:'70px 1fr 120px 100px 110px 80px', padding:'6px 12px', borderBottom:i<ovUnpaid.length-1?`1px solid ${C.border}`:'none', alignItems:'center' }}>
+                <div key={c.id} style={{ display:'grid', gridTemplateColumns:'24px 70px 1fr 120px 100px 130px 80px', padding:'6px 12px', borderBottom:i<ovUnpaid.length-1?`1px solid ${C.border}`:'none', alignItems:'center', background: ovSelected.has(c.id)?C.primaryLight:'transparent' }}>
+                  <input type="checkbox" checked={ovSelected.has(c.id)} onChange={()=>toggleOvOne(c.id)} style={{ width:13, height:13, cursor:'pointer' }} />
                   <span style={{ fontSize:11, color:C.slate }}>{c.date||'—'}</span>
                   <span style={{ fontSize:12, color:C.ink, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.property}</span>
                   <span style={{ fontSize:11, color:C.slate, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.clientName||'—'}</span>
                   <span style={{ fontSize:10, color:C.slate, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.source||'—'}</span>
-                  <span style={{ fontSize:11, color:c.turnoProject?C.ink:C.muted, fontFamily:'monospace' }}>{c.turnoProject||'sin código'}</span>
+                  <input
+                    value={ovTpEdits[c.id] ?? c.turnoProject ?? ''}
+                    onChange={e=>setOvTpEdits(prev=>({...prev,[c.id]:e.target.value}))}
+                    onBlur={e=>{ if (e.target.value !== (c.turnoProject||'')) saveTurnoProject(c.id, e.target.value) }}
+                    onKeyDown={e=>{ if(e.key==='Enter') (e.target as HTMLInputElement).blur() }}
+                    placeholder="código…"
+                    style={{ fontSize:11, fontFamily:'monospace', color:C.ink, border:`1px solid ${C.border}`, borderRadius:6, padding:'3px 6px', width:'100%', boxSizing:'border-box', outline:'none' }}
+                  />
                   <span style={{ fontSize:12, fontWeight:700, color:c.hasPrice?C.ink:C.amber }}>{c.hasPrice?`$${c.price.toFixed(2)}`:'⚠️ —'}</span>
                 </div>
               ))}
