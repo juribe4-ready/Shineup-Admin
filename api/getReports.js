@@ -245,6 +245,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ cleaningTypes: (ctData.records||[]).map(r => ({ id: r.id, name: r.fields?.['Cleaning Type Name']||'' })) })
     }
     if (type === 'importApply' && req.method === 'POST') return res.status(200).json(await applyImportPayments(headers, req.body))
+    if (type === 'updateBillingStatus' && req.method === 'POST') return res.status(200).json(await updateBillingStatus(headers, req.body))
     if (type === 'createAppointments' && req.method === 'POST') return res.status(200).json(await createTurnoAppointments(headers, req.body))
     return res.status(400).json({ error: `Unknown type: ${type}` })
   } catch (err) {
@@ -306,6 +307,27 @@ async function applyImportPayments(headers, body) {
     } catch(e) { results.push({ cleaningId: u.cleaningId, ok: false }) }
   }
   return { results }
+}
+
+async function updateBillingStatus(headers, body) {
+  // Marca en lote el mismo campo 'Payment Status' que ya usa applyImportPayments — sin campos nuevos.
+  const { ids, status } = body || {}
+  const validStatuses = ['Unpaid', 'Invoiced', 'Paid']
+  if (!Array.isArray(ids) || ids.length === 0) return { error: 'ids vacío' }
+  if (!validStatuses.includes(status)) return { error: `status inválido: ${status}` }
+
+  const results = []
+  for (const id of ids) {
+    try {
+      const r = await fetch(
+        `https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${id}`,
+        { method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: { 'Payment Status': status } }) }
+      )
+      results.push({ id, ok: r.ok })
+    } catch (e) { results.push({ id, ok: false, error: e.message }) }
+  }
+  return { results, updated: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length }
 }
 
 async function createTurnoAppointments(headers, body) {
