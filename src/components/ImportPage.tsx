@@ -287,6 +287,29 @@ function PayTab({ showToast }: { showToast: (m:string)=>void }) {
             <span style={{ fontSize:12, color:C.muted, marginLeft:6 }}>en ese rango{ovClient!=='all'?` · ${ovClient}`:''}</span>
           </div>
         </div>
+
+        {/* Lista de detalle — para comparar a ojo contra el CSV antes de subirlo */}
+        {ovUnpaid.length > 0 && (
+          <div style={{ marginTop:14, background:C.bg, borderRadius:12, border:`1px solid ${C.border}`, overflow:'hidden' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'70px 1fr 120px 100px 110px 80px', padding:'7px 12px', borderBottom:`1px solid ${C.border}` }}>
+              {['Fecha','Propiedad','Cliente','Source','Turno Project','Precio'].map(h=>(
+                <span key={h} style={{ fontSize:9, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'0.04em' }}>{h}</span>
+              ))}
+            </div>
+            <div style={{ maxHeight:220, overflowY:'auto' }}>
+              {[...ovUnpaid].sort((a:any,b:any)=>(a.date||'').localeCompare(b.date||'')).map((c:any,i:number)=>(
+                <div key={c.id} style={{ display:'grid', gridTemplateColumns:'70px 1fr 120px 100px 110px 80px', padding:'6px 12px', borderBottom:i<ovUnpaid.length-1?`1px solid ${C.border}`:'none', alignItems:'center' }}>
+                  <span style={{ fontSize:11, color:C.slate }}>{c.date||'—'}</span>
+                  <span style={{ fontSize:12, color:C.ink, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.property}</span>
+                  <span style={{ fontSize:11, color:C.slate, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.clientName||'—'}</span>
+                  <span style={{ fontSize:10, color:C.slate, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.source||'—'}</span>
+                  <span style={{ fontSize:11, color:c.turnoProject?C.ink:C.muted, fontFamily:'monospace' }}>{c.turnoProject||'sin código'}</span>
+                  <span style={{ fontSize:12, fontWeight:700, color:c.hasPrice?C.ink:C.amber }}>{c.hasPrice?`$${c.price.toFixed(2)}`:'⚠️ —'}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Upload */}
