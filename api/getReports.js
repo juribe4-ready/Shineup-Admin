@@ -187,6 +187,7 @@ async function getBilling(headers, query) {
       rating: f['Rating'] || null,
       price, hoursWorked, hoursTotal, staffCount,
       hasPrice: !!f['Price'],
+      turnoProject: f['Turno Project'] || null,
     }
   })
 
