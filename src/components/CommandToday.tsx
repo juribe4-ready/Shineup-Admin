@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { splitShift, fmtH, TRAVEL_CAP_MIN, type Split } from './splitTime'
 
 const C = { primary: '#6366F1', ink: '#0F172A', slate: '#475569', muted: '#94A3B8', border: '#E2E8F0', bg: '#F8FAFC', white: '#FFFFFF', green: '#059669', red: '#DC2626', amber: '#B45309' }
 const card: React.CSSProperties = { background: C.white, border: `1px solid ${C.border}`, borderRadius: 12, padding: '12px 16px' }
@@ -9,8 +10,8 @@ const todayDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Amer
 const getMonday = (d: Date) => { const dow = (d.getDay() + 6) % 7; const m = new Date(d); m.setDate(d.getDate() - dow); return m }
 const money = (n: number) => '$' + Math.round(n || 0).toLocaleString('en-US')
 
-interface Cl { id: string; propertyText: string; status: string; scheduledTime: string | null; startTime?: string | null; endTime?: string | null; staffListText: string; laborStaff?: { id: string; rate: number | null }[] }
-interface Sh { staffId: string; start: string; end: string | null; closed: boolean; rate: number | null }
+interface Cl { id: string; propertyText: string; status: string; scheduledTime: string | null; startTime?: string | null; endTime?: string | null; staffListText: string; laborStaff?: { id: string; name?: string; rate: number | null }[] }
+interface Sh { staffId: string; name?: string; start: string; end: string | null; closed: boolean; rate: number | null }
 interface Bl { id: string; price: number | null; staffCount: number; status: string | null }
 
 const STATUS: Record<string, { t: string; bg: string; fg: string }> = {
@@ -25,8 +26,7 @@ export default function CommandToday({ extraCard, kpis, week, onRefresh }: { ext
   const [billing, setBilling] = useState<any>(null)
   const [bills, setBills] = useState<Bl[]>([])
   const [shifts, setShifts] = useState<Sh[]>([])
-  const [rate, setRate] = useState<number>(readRate)
-  const saveRate = (v: number) => { setRate(v); try { localStorage.setItem(RATE_KEY, String(v)) } catch { /* sin storage */ } }
+  const [debug, setDebug] = useState<any>(null)
   const [now, setNow] = useState(Date.now())
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(t) }, [])
   const [capPct, setCapPct] = useState<number | null>(null)
@@ -45,7 +45,7 @@ export default function CommandToday({ extraCard, kpis, week, onRefresh }: { ext
           fetch(`/api/getSquads?weekStart=${monStr}`),
           fetch('/api/getReports?type=incidents'),
         ])
-        if (d.ok) { const j = await d.json(); setCleanings(j.cleanings || []); setShifts(j.shifts || []); setStats({ total: j.stats?.total || 0, done: j.stats?.done || 0, inProgress: j.stats?.inProgress || 0 }) }
+        if (d.ok) { const j = await d.json(); setCleanings(j.cleanings || []); setShifts(j.shifts || []); setDebug(j.debug || null); setStats({ total: j.stats?.total || 0, done: j.stats?.done || 0, inProgress: j.stats?.inProgress || 0 }) }
         if (b.ok) { const j = await b.json(); setBilling(j.summary || null); setBills(j.cleanings || []) }
         if (s.ok) {
           const j = await s.json(); const squads = j.squads || []; const blocks = j.blocks || []
@@ -77,11 +77,11 @@ export default function CommandToday({ extraCard, kpis, week, onRefresh }: { ext
     return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m${c.endTime ? '' : ' ⏱'}`
   }
   const billOf = (id: string) => bills.find(b => b.id === id)
-  const rateNow = rate
+  const model = useMemo(() => buildModel(cleanings, shifts, now), [cleanings, shifts, now])
   const laborOf = (c: Cl): number | null => {
     if (!c.startTime) return null
     const end = c.endTime ? new Date(c.endTime).getTime() : now
-    return laborCost(c, Math.max(1, billOf(c.id)?.staffCount || 1), rateNow, Math.max(0, (end - new Date(c.startTime).getTime()) / 3600000))
+    return laborCost(c, Math.max(1, billOf(c.id)?.staffCount || 1), model.avgRate, Math.max(0, (end - new Date(c.startTime).getTime()) / 3600000))
   }
 
   return (
@@ -116,7 +116,8 @@ export default function CommandToday({ extraCard, kpis, week, onRefresh }: { ext
 
       {kpis}
 
-      <LaborChart cleanings={cleanings} bills={bills} shifts={shifts} now={now} loading={loading} rate={rate} saveRate={saveRate} />
+      <LaborChart cleanings={cleanings} bills={bills} model={model} now={now} loading={loading} />
+      <HoursCard model={model} loading={loading} debug={debug} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, alignItems: 'start' }}>
       <div style={{ ...card, padding: '12px 16px' }}>
@@ -131,7 +132,8 @@ export default function CommandToday({ extraCard, kpis, week, onRefresh }: { ext
             </div>
             {list.map(c => {
               const st = STATUS[c.status] || { t: 'Programada', bg: '#F1F5F9', fg: '#475569' }
-              const unassigned = !c.staffListText || c.staffListText === 'Sin asignar'
+              const cleaners = (c.laborStaff || []).map(x => (x.name || '').split(' ')[0]).filter(Boolean)
+              const unassigned = cleaners.length === 0
               const b = billOf(c.id)
               return (
                 <div key={c.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(120px,1.6fr) minmax(90px,1fr) 62px 62px 84px 74px 86px', gap: 8, alignItems: 'center', padding: '7px 0', borderTop: '1px solid #F1F5F9', fontSize: 13, minWidth: 600 }}>
@@ -139,7 +141,7 @@ export default function CommandToday({ extraCard, kpis, week, onRefresh }: { ext
                     <b style={{ display: 'block', color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.propertyText || 'Sin nombre'}</b>
                     {b?.price ? <span style={{ fontSize: 11, color: C.muted }}>{money(b.price)}</span> : null}
                   </div>
-                  <span style={{ color: unassigned ? C.amber : '#64748B', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{unassigned ? 'Sin asignar' : c.staffListText}</span>
+                  <span style={{ color: unassigned ? C.amber : '#64748B', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{unassigned ? 'Sin cleaners' : `${cleaners.length} · ${cleaners.join(', ')}`}</span>
                   <span style={{ color: '#64748B', fontSize: 12, textAlign: 'right' }}>{fmtTime(c.scheduledTime)}</span>
                   <span style={{ color: c.startTime ? C.ink : C.muted, fontSize: 12, textAlign: 'right' }}>{fmtTime(c.startTime || null)}</span>
                   <span style={{ color: c.endTime ? C.green : c.startTime ? C.primary : C.muted, fontSize: 12, fontWeight: 600, textAlign: 'right' }}>{fmtDur(c)}</span>
@@ -163,13 +165,27 @@ const etHour = (ms: number) => {
   const h = Number(p.find(x => x.type === 'hour')?.value) % 24, m = Number(p.find(x => x.type === 'minute')?.value)
   return h + m / 60
 }
-const RATE_KEY = 'shineup-labor-rate'
-// Costo de labor de una limpieza entre dos instantes (horas). Con Cost/Hour por persona si existe; si no, tarifa única × cleaners.
-const laborCost = (c: { laborStaff?: { id: string; rate: number | null }[] }, n: number, defRate: number, hours: number) =>
-  c.laborStaff && c.laborStaff.length ? c.laborStaff.reduce((a, p) => a + (p.rate ?? defRate) * hours, 0) : defRate * n * hours
-const readRate = () => { try { return Number(localStorage.getItem(RATE_KEY)) || 18 } catch { return 18 } }
+// Costo de labor de una limpieza (solo cleaners) en `hours` horas, con Cost/Hour por persona; sin tarifa usa el promedio del equipo.
+const laborCost = (c: { laborStaff?: { id: string; rate: number | null }[] }, n: number, avgRate: number, hours: number) =>
+  c.laborStaff && c.laborStaff.length ? c.laborStaff.reduce((a, p) => a + (p.rate ?? avgRate) * hours, 0) : avgRate * n * hours
 
-function LaborChart({ cleanings, bills, shifts, now, loading, rate, saveRate }: { cleanings: Cl[]; bills: Bl[]; shifts: Sh[]; now: number; loading: boolean; rate: number; saveRate: (v: number) => void }) {
+// Modelo de labor del día: por persona (turno → limpiando / traslado / muerto) y totales.
+interface PersonRow { id: string; name: string; startMs: number; endMs: number; open: boolean; rate: number; noRate: boolean; sp: Split }
+function buildModel(cleanings: Cl[], shifts: Sh[], now: number) {
+  const known = [...shifts.map(x => x.rate), ...cleanings.flatMap(c => (c.laborStaff || []).map(p => p.rate))].filter((v): v is number => typeof v === 'number' && v > 0)
+  const avgRate = known.length ? known.reduce((a, b) => a + b, 0) / known.length : 0
+  const people: PersonRow[] = shifts.map(x => {
+    const startMs = new Date(x.start).getTime(), endMs = x.end ? new Date(x.end).getTime() : now
+    const iv = cleanings.filter(c => c.startTime && (c.laborStaff || []).some(p => p.id === x.staffId)).map(c => ({ s: new Date(c.startTime as string).getTime(), e: c.endTime ? new Date(c.endTime).getTime() : now }))
+    return { id: x.staffId, name: x.name || 'Cleaner', startMs, endMs, open: !x.end, rate: x.rate ?? avgRate, noRate: x.rate == null, sp: splitShift(startMs, endMs, iv) }
+  })
+  const H = 3600000
+  const tot = people.reduce((t, p) => ({ total: t.total + p.sp.total, clean: t.clean + p.sp.clean, travel: t.travel + p.sp.travel, dead: t.dead + p.sp.dead, cleanC: t.cleanC + p.rate * p.sp.clean / H, travelC: t.travelC + p.rate * p.sp.travel / H, deadC: t.deadC + p.rate * p.sp.dead / H }), { total: 0, clean: 0, travel: 0, dead: 0, cleanC: 0, travelC: 0, deadC: 0 })
+  return { avgRate, people, tot, byShift: people.length > 0 }
+}
+
+function LaborChart({ cleanings, bills, model, now, loading }: { cleanings: Cl[]; bills: Bl[]; model: ReturnType<typeof buildModel>; now: number; loading: boolean }) {
+  const rate = model.avgRate
 
   const d = useMemo(() => {
     const nowH = etHour(now)
@@ -177,10 +193,10 @@ function LaborChart({ cleanings, bills, shifts, now, loading, rate, saveRate }: 
       const b = bills.find(x => x.id === c.id)
       return { c, s: etHour(new Date(c.startTime as string).getTime()), e: c.endTime ? etHour(new Date(c.endTime).getTime()) : nowH, done: !!c.endTime, price: b?.price || 0, n: Math.max(1, b?.staffCount || 1) }
     })
-    if (!jobs.length && !shifts.length) return null
+    if (!jobs.length && !model.byShift) return null
     const target = cleanings.reduce((t, c) => t + (bills.find(x => x.id === c.id)?.price || 0), 0)
     // Labor = horas de TURNO (desde que cada cleaner inicia turno) × su costo/hora. Sin turnos registrados: estimado por horas en casas.
-    const sh = shifts.map(x => ({ s: etHour(new Date(x.start).getTime()), e: x.end ? etHour(new Date(x.end).getTime()) : nowH, rate: x.rate ?? rate }))
+    const sh = model.people.map(x => ({ s: etHour(x.startMs), e: x.open ? nowH : etHour(x.endMs), rate: x.rate }))
     const byShift = sh.length > 0
     const costAt = (t: number) => byShift
       ? sh.reduce((a, p) => a + p.rate * Math.max(0, Math.min(t, p.e) - p.s), 0)
@@ -193,9 +209,8 @@ function LaborChart({ cleanings, bills, shifts, now, loading, rate, saveRate }: 
     for (let t = first; t <= Math.min(x1, nowH) + 1e-9; t += 0.25) { rev.push([t, revAt(t)]); cost.push([t, costAt(t)]) }
     const hours = Array.from({ length: x1 - x0 }, (_, i) => { const a = x0 + i, b = Math.min(a + 1, nowH); return { h: a, rev: a >= nowH ? 0 : revAt(b) - revAt(a), cost: a >= nowH ? 0 : costAt(b) - costAt(a) } })
     const lastR = revAt(nowH), lastC = costAt(nowH)
-    const cross = rev.find((p, i) => p[1] >= cost[i][1] && p[1] > 0)
-    return { x0, x1, rev, cost, hours, target, lastR, lastC, cross: cross ? cross[0] : null, nowH, byShift, people: sh.length }
-  }, [cleanings, bills, shifts, now, rate])
+    return { x0, x1, rev, cost, hours, target, lastR, lastC, nowH, byShift, people: sh.length }
+  }, [cleanings, bills, model, now, rate])
 
   const W = 700, H = 170, pl = 46, pr = 84, pt = 10, pb = 20
   const body = (() => {
@@ -208,6 +223,8 @@ function LaborChart({ cleanings, bills, shifts, now, loading, rate, saveRate }: 
     const path = (pts: [number, number][]) => pts.map((p, i) => `${i ? 'L' : 'M'}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(' ')
     const hl = (h: number) => `${((h + 11) % 12) + 1}${h < 12 ? 'a' : 'p'}`
     const margin = d.lastR - d.lastC
+    const personHours = model.tot.total / 3600000
+    const mph = personHours > 0 ? margin / personHours : 0
     const bw = (plotR - pl) / (d.x1 - d.x0)
     const bx = plotR + 14, bwid = 26, base = H - pb
     return (
@@ -216,6 +233,7 @@ function LaborChart({ cleanings, bills, shifts, now, loading, rate, saveRate }: 
           <div><p style={lbl}>Ingreso (terminadas)</p><p style={{ ...big, fontSize: 18, margin: '1px 0', color: C.primary }}>{money(d.lastR)}</p></div>
           <div><p style={lbl}>Labor de turno{d.byShift ? ` · ${d.people} cleaners` : ' (estimado)'}</p><p style={{ ...big, fontSize: 18, margin: '1px 0', color: C.red }}>{money(d.lastC)}</p></div>
           <div><p style={lbl}>Margen</p><p style={{ ...big, fontSize: 18, margin: '1px 0', color: margin >= 0 ? C.green : C.red }}>{margin >= 0 ? '+' : '−'}{money(Math.abs(margin))}</p></div>
+          <div><p style={lbl}>Margen por hora</p><p style={{ ...big, fontSize: 18, margin: '1px 0', color: mph >= 0 ? C.green : C.red }}>{mph >= 0 ? '+' : '−'}{money(Math.abs(mph))}/h</p></div>
           <div><p style={lbl}>Meta del día</p><p style={{ ...big, fontSize: 18, margin: '1px 0', color: C.slate }}>{money(d.target)}</p></div>
         </div>
         <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', maxHeight: 190, fontFamily: 'inherit' }}>
@@ -230,7 +248,6 @@ function LaborChart({ cleanings, bills, shifts, now, loading, rate, saveRate }: 
           <line x1={pl} x2={plotR} y1={Y(d.target)} y2={Y(d.target)} stroke="#A5B4FC" strokeDasharray="5 4" />
           <path d={path(d.cost)} fill="none" stroke={C.red} strokeWidth="2.2" />
           <path d={path(d.rev)} fill="none" stroke={C.primary} strokeWidth="2.6" />
-          {d.cross != null && <g><line x1={X(d.cross)} x2={X(d.cross)} y1={pt} y2={base} stroke={C.green} strokeDasharray="3 3" /><text x={X(d.cross) + 4} y={pt + 10} fontSize="10" fill={C.green} fontWeight="600">breakeven</text></g>}
           <line x1={X(d.nowH)} x2={X(d.nowH)} y1={pt} y2={base} stroke="#CBD5E1" />
           <text x={X(d.nowH) - 3} y={pt + 22} fontSize="10" textAnchor="end" fill={C.muted}>ahora</text>
           {/* dos barras finales: totales acumulados de hoy */}
@@ -252,13 +269,67 @@ function LaborChart({ cleanings, bills, shifts, now, loading, rate, saveRate }: 
     <div style={card}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
         <p style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>Ingreso vs labor · hoy</p>
-        <label style={{ ...lbl, display: 'flex', alignItems: 'center', gap: 6 }}>
-          Tarifa base $/h (si falta Cost/Hour)
-          <input type="number" min={0} step={0.5} value={rate} onChange={e => saveRate(Math.max(0, Number(e.target.value) || 0))} style={{ width: 64, padding: '3px 6px', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12, fontFamily: 'inherit' }} />
-        </label>
       </div>
       {body}
-      <p style={{ fontSize: 10, color: C.muted, marginTop: 6 }}>Labor = Cost/Hour de cada cleaner × horas de turno (desde que inicia el turno; sin turno registrado se estima por las horas en casas). El ingreso cuenta al terminar cada limpieza.</p>
+      <p style={{ fontSize: 10, color: C.muted, marginTop: 6 }}>Labor = Cost/Hour de cada cleaner × horas de turno (solo cleaners). Margen por hora = (ingreso − labor) ÷ horas-persona de turno. El ingreso cuenta al terminar cada limpieza.</p>
+    </div>
+  )
+}
+
+
+// ── Horas y costo del turno: limpiando / traslado / tiempo muerto ─────────────
+function HoursCard({ model, loading, debug }: { model: ReturnType<typeof buildModel>; loading: boolean; debug: any }) {
+  const t = model.tot
+  const groups = [
+    { k: 'Limpiando', ms: t.clean, cost: t.cleanC, color: C.primary, note: 'dentro de las casas' },
+    { k: 'Traslado', ms: t.travel, cost: t.travelC, color: '#F59E0B', note: `hueco entre casas, hasta ${TRAVEL_CAP_MIN} min` },
+    { k: 'Tiempo muerto', ms: t.dead, cost: t.deadC, color: '#94A3B8', note: 'lo que exceda ese tope' },
+  ]
+  const totalCost = t.cleanC + t.travelC + t.deadC
+  return (
+    <div style={card}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+        <p style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>Horas y costo del turno · hoy</p>
+        <p style={lbl}>{model.byShift ? `${model.people.length} cleaners · ${fmtH(t.total)} en total · ${money(totalCost)}` : '—'}</p>
+      </div>
+      {loading ? <p style={{ fontSize: 13, color: C.muted }}>Cargando…</p> : !model.byShift ? (
+        <p style={{ fontSize: 13, color: C.muted }}>Aún no hay turnos de cleaners registrados hoy (se registran en Ops, pestaña Turno).</p>
+      ) : (
+        <>
+          <div style={{ display: 'flex', height: 10, borderRadius: 99, overflow: 'hidden', background: '#E2E8F0', marginBottom: 10 }}>
+            {groups.map(g => <div key={g.k} title={g.k} style={{ width: `${t.total ? (g.ms / t.total) * 100 : 0}%`, background: g.color }} />)}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 10 }}>
+            {groups.map(g => (
+              <div key={g.k}>
+                <p style={lbl}><b style={{ color: g.color }}>●</b> {g.k}</p>
+                <p style={{ ...big, fontSize: 18, margin: '1px 0' }}>{fmtH(g.ms)} · {money(g.cost)}</p>
+                <p style={{ fontSize: 10, color: C.muted }}>{g.note}</p>
+              </div>
+            ))}
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <div style={{ minWidth: 480 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr .8fr .8fr .8fr .8fr .8fr', gap: 8, fontSize: 11, color: C.muted, fontWeight: 600, padding: '4px 0', borderBottom: `1px solid ${C.border}` }}>
+                <span>Cleaner</span><span style={{ textAlign: 'right' }}>Turno</span><span style={{ textAlign: 'right' }}>Limpiando</span><span style={{ textAlign: 'right' }}>Traslado</span><span style={{ textAlign: 'right' }}>Muerto</span><span style={{ textAlign: 'right' }}>Costo</span>
+              </div>
+              {model.people.map(p => (
+                <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1.2fr .8fr .8fr .8fr .8fr .8fr', gap: 8, fontSize: 12, padding: '5px 0', borderTop: '1px solid #F1F5F9', alignItems: 'center' }}>
+                  <span style={{ color: C.ink, fontWeight: 600 }}>{p.name}{p.open ? ' ⏱' : ''}{p.noRate ? <span title="Sin Cost/Hour: se usa el promedio del equipo" style={{ color: C.amber }}> *</span> : null}</span>
+                  <span style={{ textAlign: 'right' }}>{fmtH(p.sp.total)}</span><span style={{ textAlign: 'right' }}>{fmtH(p.sp.clean)}</span><span style={{ textAlign: 'right' }}>{fmtH(p.sp.travel)}</span><span style={{ textAlign: 'right' }}>{fmtH(p.sp.dead)}</span>
+                  <span style={{ textAlign: 'right', fontWeight: 600 }}>{money(p.rate * p.sp.total / 3600000)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+      <p style={{ fontSize: 10, color: C.muted, marginTop: 6 }}>Costo de limpiezas = suma de la columna «Labor casa». Traslado y muerto salen de los huecos entre limpiezas de cada persona (aún no hay un botón en Ops para marcarlos).</p>
+      {debug && (
+        <p style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>
+          Debug · Cost/Hour: {debug.costRead} · {debug.ratesFound} de {debug.cleanersTotal} cleaners con tarifa{debug.cleanersWithoutRate?.length ? ` (sin tarifa: ${debug.cleanersWithoutRate.join(', ')})` : ''} · turnos de cleaners hoy: {debug.shiftsToday}
+        </p>
+      )}
     </div>
   )
 }
