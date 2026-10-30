@@ -414,6 +414,25 @@ export default async function handler(req, res) {
       }
     } catch (e) { console.error('[getDashboard] Cost/Hour read skipped:', e.message); }
 
+    // Turnos del día (tabla «Turnos»: una fila por persona con Inicio/Fin). Lectura tolerante: si falla, el front estima por casas.
+    const shifts = [];
+    try {
+      const formula = encodeURIComponent(`IS_SAME({Fecha},'${effectiveDate}','day')`);
+      let off = null;
+      do {
+        const sr = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Turnos?pageSize=100&filterByFormula=${formula}${off ? `&offset=${off}` : ''}`, { headers: { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` } });
+        if (!sr.ok) break;
+        const sd = await sr.json();
+        for (const r of (sd.records || [])) {
+          const sid = Array.isArray(r.fields['Persona']) ? r.fields['Persona'][0] : null;
+          if (!sid || !r.fields['Inicio']) continue;
+          if (!(staffMap[sid]?.role || '').toLowerCase().includes('cleaner')) continue;
+          shifts.push({ staffId: sid, start: r.fields['Inicio'], end: r.fields['Fin'] || null, closed: !!r.fields['Cerrado'], rate: costMap[sid] ?? null });
+        }
+        off = sd.offset || null;
+      } while (off);
+    } catch (e) { console.error('[getDashboard] Turnos read skipped:', e.message); }
+
     // Fetch Labor from Properties for all unique property IDs
     const propertyIds = [...new Set(filtered.map(r => {
       const p = r.fields['Property'];
@@ -628,7 +647,7 @@ export default async function handler(req, res) {
       completionRate: cleanings.length > 0 ? Math.round((stats.done / cleanings.length) * 100) : 0,
     };
 
-    return res.status(200).json({ cleanings, timeline, stats, globalMetrics, date: effectiveDate });
+    return res.status(200).json({ cleanings, timeline, stats, globalMetrics, shifts, date: effectiveDate });
   } catch (err) {
     console.error('[getDashboard] Error:', err);
     return res.status(500).json({ error: err.message });
