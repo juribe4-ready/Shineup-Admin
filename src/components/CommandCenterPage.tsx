@@ -20,6 +20,8 @@ const C = {
   amberLight: '#FEF3C7',
 }
 
+import CommandToday from './CommandToday'
+
 export default function CommandCenterPage() {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<any>(null)
@@ -46,7 +48,7 @@ export default function CommandCenterPage() {
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 400 }}>
-        <div style={{ width: 32, height: 32, border: '3px solid #E2E8F0', borderTopColor: '#EC4899', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <div style={{ width: 32, height: 32, border: '3px solid #E2E8F0', borderTopColor: '#6366F1', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
         <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
       </div>
     )
@@ -71,14 +73,7 @@ export default function CommandCenterPage() {
       
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>
-            Command Center
-          </h1>
-          <p style={{ fontSize: 14, color: C.muted, marginTop: 4 }}>
-            Vista ejecutiva de tu negocio
-          </p>
-        </div>
+        <div />
         <button 
           onClick={loadData}
           style={{
@@ -100,9 +95,11 @@ export default function CommandCenterPage() {
         </button>
       </div>
 
+      <CommandToday />
+
       {/* North Star Metric */}
       <div style={{
-        background: 'linear-gradient(135deg, #EC4899 0%, #DB2777 100%)',
+        background: '#1E293B',
         borderRadius: 24,
         padding: 32,
         marginBottom: 24,
