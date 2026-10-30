@@ -18,6 +18,7 @@ interface Incident {
   id: string; name: string; status: string; creationDate: string | null
   comment: string; propertyName: string; propertyId: string
   photoUrls: string[]; reportedBy: string; closeComment?: string
+  category?: string; incidentType?: string; item?: string
 }
 const fmtDT = (v?: string | null) => {
   if (!v) return null
@@ -34,6 +35,7 @@ export default function IncidentsPage() {
   const [selected, setSelected]   = useState<Incident | null>(null)
   const [statusFilter, setStatusFilter] = useState('Reported')
   const [propFilter, setPropFilter]     = useState('all')
+  const [catFilter, setCatFilter]       = useState('all')
   const [dateFrom, setDateFrom]         = useState('')
   const [dateTo, setDateTo]             = useState('')
   const [showFilters, setShowFilters]   = useState(false)
@@ -118,14 +120,16 @@ export default function IncidentsPage() {
   const filtered = useMemo(() => incidents.filter(i => {
     if (statusFilter !== 'all' && i.status !== statusFilter) return false
     if (propFilter !== 'all' && i.propertyName !== propFilter) return false
+    if (catFilter !== 'all' && (i.category || 'Sin categoría') !== catFilter) return false
     if (dateFrom && i.creationDate && i.creationDate < dateFrom) return false
     if (dateTo && i.creationDate && i.creationDate.slice(0,10) > dateTo) return false
     if (todayFilter && todayProps.length > 0 && !todayProps.includes(i.propertyName)) return false
     return true
-  }), [incidents, statusFilter, propFilter, dateFrom, dateTo, todayFilter, todayProps])
+  }), [incidents, statusFilter, propFilter, catFilter, dateFrom, dateTo, todayFilter, todayProps])
 
   const counts = incidents.reduce((acc, i) => { acc[i.status] = (acc[i.status]||0)+1; return acc }, {} as Record<string,number>)
-  const hasFilters = propFilter !== 'all' || dateFrom || dateTo
+  const hasFilters = propFilter !== 'all' || catFilter !== 'all' || dateFrom || dateTo
+  const categories = [...new Set(incidents.map(i => i.category || 'Sin categoría'))]
 
   const inputStyle = { height: 34, padding: '0 10px', borderRadius: 10, border: `1px solid ${C.border}`, fontSize: 12, fontFamily: "'Inter', sans-serif", color: C.ink, background: C.white, outline: 'none' }
 
@@ -188,8 +192,12 @@ export default function IncidentsPage() {
               <span style={{ fontSize: 12, color: C.muted }}>—</span>
               <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={inputStyle} />
             </div>
+            <select value={catFilter} onChange={e => setCatFilter(e.target.value)} style={inputStyle}>
+              <option value="all">Todas las categorías</option>
+              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
             {hasFilters && (
-              <button onClick={() => { setPropFilter('all'); setDateFrom(''); setDateTo('') }}
+              <button onClick={() => { setPropFilter('all'); setCatFilter('all'); setDateFrom(''); setDateTo('') }}
                 style={{ fontSize: 12, fontWeight: 600, color: C.red, background: 'none', border: 'none', cursor: 'pointer' }}>
                 Limpiar filtros
               </button>
@@ -224,6 +232,7 @@ export default function IncidentsPage() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 2 }}>{inc.name}</p>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      {inc.category && <span style={{ fontSize: 10, fontWeight: 700, color: C.blue, background: '#DBEAFE', borderRadius: 6, padding: '1px 6px' }}>{inc.category}{inc.incidentType ? ` · ${inc.incidentType}` : ''}{inc.item ? ` · ${inc.item}` : ''}</span>}
                       <span style={{ fontSize: 11, fontWeight: 600, color: C.primary }}>{inc.propertyName}</span>
                       {inc.reportedBy && <span style={{ fontSize: 11, color: C.muted }}>· {inc.reportedBy}</span>}
                       {fmtDT(inc.creationDate) && <span style={{ fontSize: 11, color: C.muted }}>· {fmtDT(inc.creationDate)}</span>}

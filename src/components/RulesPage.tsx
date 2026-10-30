@@ -165,6 +165,11 @@ interface TARSConfig {
   // Single ± percentage tolerance around 1.0 for Properties."Labor Correction Factor" —
   // just a reference for the recalc preview's warning, not enforced.
   laborFactorAlertPct: number
+  // Laundry (app Shineup-Laundry): días máx. de maleta sucia y ventanas de riesgo antes de la limpieza
+  laundryDirtyWarnDays: number
+  laundryDirtyMaxDays: number
+  laundryRiskAmberDays: number
+  laundryRiskRedDays: number
 }
 
 const DEFAULT_CONFIG: TARSConfig = {
@@ -187,6 +192,10 @@ const DEFAULT_CONFIG: TARSConfig = {
   laborMinutesPerBathroom: 23,
   laborMinutesPerSqFt: 0.05,
   laborFactorAlertPct: 25,
+  laundryDirtyWarnDays: 2,
+  laundryDirtyMaxDays: 3,
+  laundryRiskAmberDays: 2,
+  laundryRiskRedDays: 1,
 }
 
 export default function RulesPage() {
@@ -434,6 +443,39 @@ export default function RulesPage() {
           Con {config.laborFactorAlertPct}% el rango esperado es {Math.round((1 - config.laborFactorAlertPct / 100) * 100) / 100}–{Math.round((1 + config.laborFactorAlertPct / 100) * 100) / 100}. Es solo de referencia — si una propiedad tiene un <code style={{ background: C.bg, padding: '1px 4px', borderRadius: 4 }}>Labor Correction Factor</code> fuera de ese rango, la vista previa de Recalcular lo marca para que lo revises, pero no lo corrige solo.
         </p>
         <RecalcLaborButton config={config} />
+      </div>
+
+      {/* Laundry */}
+      <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 16, padding: '20px 20px', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <TrendingUp style={{ width: 16, height: 16, color: C.primary }} />
+          <p style={{ fontSize: 14, fontWeight: 700, color: C.ink, margin: 0 }}>Laundry — maletas</p>
+        </div>
+        <p style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>
+          Una maleta sucia se marca en amarillo al llegar al primer límite y en rojo al segundo. El riesgo se calcula contra la próxima limpieza de sus propiedades: si no está LISTA y faltan ≤ los días rojos, es rojo; ≤ los días ámbar, amarillo.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 14 }}>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Aviso sucia (días)</p>
+            <input type="number" min={0} step="1" value={config.laundryDirtyWarnDays} onChange={e => set('laundryDirtyWarnDays', +e.target.value)}
+              style={{ width: '100%', height: 38, padding: '0 10px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, fontWeight: 600, color: C.ink, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Máximo sucia (días)</p>
+            <input type="number" min={0} step="1" value={config.laundryDirtyMaxDays} onChange={e => set('laundryDirtyMaxDays', +e.target.value)}
+              style={{ width: '100%', height: 38, padding: '0 10px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, fontWeight: 600, color: C.ink, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Riesgo ámbar (días antes)</p>
+            <input type="number" min={0} step="1" value={config.laundryRiskAmberDays} onChange={e => set('laundryRiskAmberDays', +e.target.value)}
+              style={{ width: '100%', height: 38, padding: '0 10px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, fontWeight: 600, color: C.ink, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Riesgo rojo (días antes)</p>
+            <input type="number" min={0} step="1" value={config.laundryRiskRedDays} onChange={e => set('laundryRiskRedDays', +e.target.value)}
+              style={{ width: '100%', height: 38, padding: '0 10px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, fontWeight: 600, color: C.ink, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+        </div>
       </div>
 
       {/* ESD calibration */}

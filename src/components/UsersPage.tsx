@@ -80,6 +80,17 @@ export default function UsersPage({ profile: _profile, onSignOut: _onSignOut }: 
     } catch {}
   }
 
+  // Acceso a la app Shineup-Laundry (independiente del rol)
+  const toggleLaundry = async (user: Profile) => {
+    try {
+      const next = !user.laundry_access
+      const { error } = await supabase.from('profiles').update({ laundry_access: next }).eq('id', user.id)
+      if (error) throw error
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, laundry_access: next } : u))
+      showToast(next ? 'Acceso a Laundry activado' : 'Acceso a Laundry quitado')
+    } catch { showToast('Error al cambiar acceso a Laundry (¿existe la columna laundry_access?)', 'err') }
+  }
+
   const toggleActive = async (user: Profile) => {
     try {
       const { error } = await supabase.from('profiles').update({ active: !user.active }).eq('id', user.id)
@@ -262,6 +273,10 @@ export default function UsersPage({ profile: _profile, onSignOut: _onSignOut }: 
                       )}
                     </div>
                     <div className="col-span-2">
+                      <button onClick={() => toggleLaundry(user)} className="text-[10px] font-bold px-2 py-1 rounded-lg mr-2"
+                        style={{ background: user.laundry_access ? '#CFFAFE' : '#F1F5F9', color: user.laundry_access ? '#0E7490' : C.muted }}>
+                        🧺 Laundry {user.laundry_access ? 'ON' : 'OFF'}
+                      </button>
                       <button onClick={() => toggleActive(user)} className="flex items-center gap-2 active:scale-95 transition-all">
                         {user.active
                           ? <><ToggleRight className="w-6 h-6" style={{ color: C.green }} /><span className="text-[11px] font-bold" style={{ color: C.green }}>Activo</span></>
@@ -328,7 +343,11 @@ export default function UsersPage({ profile: _profile, onSignOut: _onSignOut }: 
                       style={{ background: '#FEF3C7', color: C.amber }}>+ Vincular
                     </button>
                   )}
-                  <button onClick={() => toggleActive(user)} className="flex items-center gap-1.5 ml-auto">
+                  <button onClick={() => toggleLaundry(user)} className="text-[10px] font-bold px-2 py-1 rounded-lg mr-2"
+                        style={{ background: user.laundry_access ? '#CFFAFE' : '#F1F5F9', color: user.laundry_access ? '#0E7490' : C.muted }}>
+                        🧺 Laundry {user.laundry_access ? 'ON' : 'OFF'}
+                      </button>
+                      <button onClick={() => toggleActive(user)} className="flex items-center gap-1.5 ml-auto">
                     {user.active
                       ? <><ToggleRight className="w-5 h-5" style={{ color: C.green }} /><span className="text-[11px] font-bold" style={{ color: C.green }}>Activo</span></>
                       : <><ToggleLeft className="w-5 h-5" style={{ color: C.muted }} /><span className="text-[11px] font-bold" style={{ color: C.muted }}>Inactivo</span></>}
