@@ -10,6 +10,7 @@ const getMonday = (d: Date) => { const dow = (d.getDay() + 6) % 7; const m = new
 const money = (n: number) => '$' + Math.round(n || 0).toLocaleString('en-US')
 
 interface Cl { id: string; propertyText: string; status: string; scheduledTime: string | null; startTime?: string | null; endTime?: string | null; staffListText: string; laborStaff?: { id: string; rate: number | null }[] }
+interface Sh { staffId: string; start: string; end: string | null; closed: boolean; rate: number | null }
 interface Bl { id: string; price: number | null; staffCount: number; status: string | null }
 
 const STATUS: Record<string, { t: string; bg: string; fg: string }> = {
@@ -23,6 +24,7 @@ export default function CommandToday({ extraCard, kpis, week, onRefresh }: { ext
   const [stats, setStats] = useState({ total: 0, done: 0, inProgress: 0 })
   const [billing, setBilling] = useState<any>(null)
   const [bills, setBills] = useState<Bl[]>([])
+  const [shifts, setShifts] = useState<Sh[]>([])
   const [rate, setRate] = useState<number>(readRate)
   const saveRate = (v: number) => { setRate(v); try { localStorage.setItem(RATE_KEY, String(v)) } catch { /* sin storage */ } }
   const [now, setNow] = useState(Date.now())
@@ -43,7 +45,7 @@ export default function CommandToday({ extraCard, kpis, week, onRefresh }: { ext
           fetch(`/api/getSquads?weekStart=${monStr}`),
           fetch('/api/getReports?type=incidents'),
         ])
-        if (d.ok) { const j = await d.json(); setCleanings(j.cleanings || []); setStats({ total: j.stats?.total || 0, done: j.stats?.done || 0, inProgress: j.stats?.inProgress || 0 }) }
+        if (d.ok) { const j = await d.json(); setCleanings(j.cleanings || []); setShifts(j.shifts || []); setStats({ total: j.stats?.total || 0, done: j.stats?.done || 0, inProgress: j.stats?.inProgress || 0 }) }
         if (b.ok) { const j = await b.json(); setBilling(j.summary || null); setBills(j.cleanings || []) }
         if (s.ok) {
           const j = await s.json(); const squads = j.squads || []; const blocks = j.blocks || []
@@ -114,7 +116,7 @@ export default function CommandToday({ extraCard, kpis, week, onRefresh }: { ext
 
       {kpis}
 
-      <LaborChart cleanings={cleanings} bills={bills} now={now} loading={loading} rate={rate} saveRate={saveRate} />
+      <LaborChart cleanings={cleanings} bills={bills} shifts={shifts} now={now} loading={loading} rate={rate} saveRate={saveRate} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, alignItems: 'start' }}>
       <div style={{ ...card, padding: '12px 16px' }}>
@@ -125,7 +127,7 @@ export default function CommandToday({ extraCard, kpis, week, onRefresh }: { ext
         {loading ? <p style={{ fontSize: 13, color: C.muted }}>Cargando…</p> : list.length === 0 ? <p style={{ fontSize: 13, color: C.muted }}>No hay limpiezas para hoy.</p> : (
           <div style={{ maxHeight: 440, overflowY: 'auto', overflowX: 'auto' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px,1.6fr) minmax(90px,1fr) 62px 62px 84px 74px 86px', gap: 8, padding: '6px 0', fontSize: 11, color: C.muted, fontWeight: 600, position: 'sticky', top: 0, background: C.white, borderBottom: `1px solid ${C.border}`, minWidth: 600 }}>
-              <span>Casa</span><span>Cleaners</span><span style={{ textAlign: 'right' }}>Programada</span><span style={{ textAlign: 'right' }}>Inició</span><span style={{ textAlign: 'right' }}>Duración</span><span style={{ textAlign: 'right' }}>Labor</span><span style={{ textAlign: 'right' }}>Estado</span>
+              <span>Casa</span><span>Cleaners</span><span style={{ textAlign: 'right' }}>Programada</span><span style={{ textAlign: 'right' }}>Inició</span><span style={{ textAlign: 'right' }}>Duración</span><span style={{ textAlign: 'right' }} title="Costo de las horas en esa casa (el labor total usa horas de turno)">Labor casa</span><span style={{ textAlign: 'right' }}>Estado</span>
             </div>
             {list.map(c => {
               const st = STATUS[c.status] || { t: 'Programada', bg: '#F1F5F9', fg: '#475569' }
@@ -167,7 +169,7 @@ const laborCost = (c: { laborStaff?: { id: string; rate: number | null }[] }, n:
   c.laborStaff && c.laborStaff.length ? c.laborStaff.reduce((a, p) => a + (p.rate ?? defRate) * hours, 0) : defRate * n * hours
 const readRate = () => { try { return Number(localStorage.getItem(RATE_KEY)) || 18 } catch { return 18 } }
 
-function LaborChart({ cleanings, bills, now, loading, rate, saveRate }: { cleanings: Cl[]; bills: Bl[]; now: number; loading: boolean; rate: number; saveRate: (v: number) => void }) {
+function LaborChart({ cleanings, bills, shifts, now, loading, rate, saveRate }: { cleanings: Cl[]; bills: Bl[]; shifts: Sh[]; now: number; loading: boolean; rate: number; saveRate: (v: number) => void }) {
 
   const d = useMemo(() => {
     const nowH = etHour(now)
@@ -175,21 +177,27 @@ function LaborChart({ cleanings, bills, now, loading, rate, saveRate }: { cleani
       const b = bills.find(x => x.id === c.id)
       return { c, s: etHour(new Date(c.startTime as string).getTime()), e: c.endTime ? etHour(new Date(c.endTime).getTime()) : nowH, done: !!c.endTime, price: b?.price || 0, n: Math.max(1, b?.staffCount || 1) }
     })
-    if (!jobs.length) return null
+    if (!jobs.length && !shifts.length) return null
     const target = cleanings.reduce((t, c) => t + (bills.find(x => x.id === c.id)?.price || 0), 0)
-    // Eje: desde la primera hora trabajada hasta las 10pm como mínimo (crece si se trabaja más tarde)
-    const x0 = Math.max(0, Math.min(6, Math.floor(Math.min(...jobs.map(j => j.s))))), x1 = Math.max(22, Math.ceil(Math.max(nowH, ...jobs.map(j => j.e))))
+    // Labor = horas de TURNO (desde que cada cleaner inicia turno) × su costo/hora. Sin turnos registrados: estimado por horas en casas.
+    const sh = shifts.map(x => ({ s: etHour(new Date(x.start).getTime()), e: x.end ? etHour(new Date(x.end).getTime()) : nowH, rate: x.rate ?? rate }))
+    const byShift = sh.length > 0
+    const costAt = (t: number) => byShift
+      ? sh.reduce((a, p) => a + p.rate * Math.max(0, Math.min(t, p.e) - p.s), 0)
+      : jobs.reduce((a, j) => a + laborCost(j.c, j.n, rate, Math.max(0, Math.min(t, j.e) - j.s)), 0)
     const revAt = (t: number) => jobs.reduce((a, j) => a + (j.done && j.e <= t ? j.price : 0), 0)
-    const costAt = (t: number) => jobs.reduce((a, j) => a + laborCost(j.c, j.n, rate, Math.max(0, Math.min(t, j.e) - j.s)), 0)
+    // Eje: desde que empieza el turno / la primera casa; hasta las 10pm como mínimo (crece si se trabaja más tarde)
+    const first = Math.min(...jobs.map(j => j.s), ...sh.map(p => p.s))
+    const x0 = Math.max(0, Math.floor(first)), x1 = Math.max(22, Math.ceil(Math.max(nowH, ...jobs.map(j => j.e), ...sh.map(p => p.e))))
     const rev: [number, number][] = [], cost: [number, number][] = []
-    for (let t = x0; t <= Math.min(x1, nowH) + 1e-9; t += 0.25) { rev.push([t, revAt(t)]); cost.push([t, costAt(t)]) }
+    for (let t = first; t <= Math.min(x1, nowH) + 1e-9; t += 0.25) { rev.push([t, revAt(t)]); cost.push([t, costAt(t)]) }
     const hours = Array.from({ length: x1 - x0 }, (_, i) => { const a = x0 + i, b = Math.min(a + 1, nowH); return { h: a, rev: a >= nowH ? 0 : revAt(b) - revAt(a), cost: a >= nowH ? 0 : costAt(b) - costAt(a) } })
     const lastR = revAt(nowH), lastC = costAt(nowH)
     const cross = rev.find((p, i) => p[1] >= cost[i][1] && p[1] > 0)
-    return { x0, x1, rev, cost, hours, target, lastR, lastC, cross: cross ? cross[0] : null, nowH }
-  }, [cleanings, bills, now, rate])
+    return { x0, x1, rev, cost, hours, target, lastR, lastC, cross: cross ? cross[0] : null, nowH, byShift, people: sh.length }
+  }, [cleanings, bills, shifts, now, rate])
 
-  const W = 700, H = 240, pl = 48, pr = 96, pt = 14, pb = 24
+  const W = 700, H = 170, pl = 46, pr = 84, pt = 10, pb = 20
   const body = (() => {
     if (loading) return <p style={{ fontSize: 13, color: C.muted }}>Cargando…</p>
     if (!d) return <p style={{ fontSize: 13, color: C.muted }}>Aún no hay limpiezas iniciadas hoy. La gráfica aparece cuando empiece la primera.</p>
@@ -204,13 +212,13 @@ function LaborChart({ cleanings, bills, now, loading, rate, saveRate }: { cleani
     const bx = plotR + 14, bwid = 26, base = H - pb
     return (
       <>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 12, marginBottom: 8 }}>
-          <div><p style={lbl}>Ingreso (terminadas)</p><p style={{ ...big, fontSize: 22, color: C.primary }}>{money(d.lastR)}</p></div>
-          <div><p style={lbl}>Labor hasta ahora</p><p style={{ ...big, fontSize: 22, color: C.red }}>{money(d.lastC)}</p></div>
-          <div><p style={lbl}>Margen</p><p style={{ ...big, fontSize: 22, color: margin >= 0 ? C.green : C.red }}>{margin >= 0 ? '+' : '−'}{money(Math.abs(margin))}</p></div>
-          <div><p style={lbl}>Meta del día</p><p style={{ ...big, fontSize: 22, color: C.slate }}>{money(d.target)}</p></div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 4 }}>
+          <div><p style={lbl}>Ingreso (terminadas)</p><p style={{ ...big, fontSize: 18, margin: '1px 0', color: C.primary }}>{money(d.lastR)}</p></div>
+          <div><p style={lbl}>Labor de turno{d.byShift ? ` · ${d.people} cleaners` : ' (estimado)'}</p><p style={{ ...big, fontSize: 18, margin: '1px 0', color: C.red }}>{money(d.lastC)}</p></div>
+          <div><p style={lbl}>Margen</p><p style={{ ...big, fontSize: 18, margin: '1px 0', color: margin >= 0 ? C.green : C.red }}>{margin >= 0 ? '+' : '−'}{money(Math.abs(margin))}</p></div>
+          <div><p style={lbl}>Meta del día</p><p style={{ ...big, fontSize: 18, margin: '1px 0', color: C.slate }}>{money(d.target)}</p></div>
         </div>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', fontFamily: 'inherit' }}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', maxHeight: 190, fontFamily: 'inherit' }}>
           {[0, 0.25, 0.5, 0.75, 1].map(f => { const v = (ymax / 1.08) * f; return <g key={f}><line x1={pl} x2={plotR} y1={Y(v)} y2={Y(v)} stroke="#EEF2F7" /><text x={pl - 6} y={Y(v) + 3} fontSize="10" textAnchor="end" fill={C.muted}>{money(v)}</text></g> })}
           {d.hours.map(hh => (
             <g key={hh.h}>
@@ -250,7 +258,7 @@ function LaborChart({ cleanings, bills, now, loading, rate, saveRate }: { cleani
         </label>
       </div>
       {body}
-      <p style={{ fontSize: 10, color: C.muted, marginTop: 6 }}>Labor = tarifa × cleaners × horas trabajadas (desde que inicia cada limpieza). El ingreso cuenta cuando la limpieza termina. Usa el Cost/Hour de cada cleaner (Staff); si alguien no lo tiene, usa la tarifa base.</p>
+      <p style={{ fontSize: 10, color: C.muted, marginTop: 6 }}>Labor = Cost/Hour de cada cleaner × horas de turno (desde que inicia el turno; sin turno registrado se estima por las horas en casas). El ingreso cuenta al terminar cada limpieza.</p>
     </div>
   )
 }
