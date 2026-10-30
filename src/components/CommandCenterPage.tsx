@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { 
-  TrendingUp, AlertTriangle, 
-  DollarSign, Clock, Home, Users, RefreshCw 
+  Clock, Home, Users
 } from 'lucide-react'
 
 const C = {
@@ -58,7 +57,6 @@ export default function CommandCenterPage() {
   const mockRevenue = 3200
   const hhReales = data?.current?.hhReales || 125
   const revenuePerHH = hhReales > 0 ? (mockRevenue / hhReales).toFixed(2) : 0
-  const revenuePerHHDelta = 8.2
 
   const utilizacion = data?.current?.hhDisponibles 
     ? Math.round((data.current.hhProgramadas / data.current.hhDisponibles) * 100) 
@@ -68,200 +66,62 @@ export default function CommandCenterPage() {
     : 0
   const onTime = data?.current?.onTimeRate ?? 0
 
-  return (
-    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-      
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div />
-        <button 
-          onClick={loadData}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '10px 16px',
-            borderRadius: 12,
-            border: `1px solid ${C.border}`,
-            background: C.white,
-            cursor: 'pointer',
-            color: C.slate,
-            fontWeight: 500,
-            fontSize: 13
-          }}
-        >
-          <RefreshCw style={{ width: 16, height: 16 }} />
-          Actualizar
-        </button>
-      </div>
+  const northStar = (
+    <div style={{ background: '#1E293B', borderRadius: 12, padding: '14px 16px', color: 'white' }}>
+      <p style={{ fontSize: 12, fontWeight: 500, opacity: 0.75 }}>North Star · Revenue / HH</p>
+      <p style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.02em', margin: '3px 0' }}>${revenuePerHH}</p>
+      <p style={{ fontSize: 11, color: '#FDE68A' }}>Estimado: falta conectar facturación real</p>
+    </div>
+  )
 
-      <CommandToday />
+  const kpis = (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14 }}>
+      <KPICard icon={Clock} label="Utilización" value={`${utilizacion}%`} target=">80%" status={utilizacion >= 80 ? 'good' : utilizacion >= 70 ? 'warn' : 'bad'} />
+      <KPICard icon={Home} label="Cumplimiento" value={`${cumplimiento}%`} target=">95%" status={cumplimiento >= 95 ? 'good' : cumplimiento >= 90 ? 'warn' : 'bad'} />
+      <KPICard icon={Clock} label="On-Time" value={onTime ? `${onTime}%` : '--'} target=">90%" status={!onTime ? 'neutral' : onTime >= 90 ? 'good' : onTime >= 85 ? 'warn' : 'bad'} />
+      <KPICard icon={Users} label="Returning" value="78%" target=">70%" status="good" />
+    </div>
+  )
 
-      {/* North Star Metric */}
-      <div style={{
-        background: '#1E293B',
-        borderRadius: 24,
-        padding: 32,
-        marginBottom: 24,
-        color: 'white',
-        position: 'relative',
-        overflow: 'hidden'
-      }}>
-        <div style={{ position: 'absolute', top: -50, right: -50, width: 200, height: 200, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
-        <div style={{ position: 'absolute', bottom: -30, left: -30, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.05)' }} />
-        
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <DollarSign style={{ width: 20, height: 20, opacity: 0.8 }} />
-            <span style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.8 }}>
-              North Star Metric
-            </span>
-          </div>
-          
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
-            <span style={{ fontSize: 56, fontWeight: 800, letterSpacing: '-0.03em' }}>
-              ${revenuePerHH}
-            </span>
-            <span style={{ fontSize: 20, opacity: 0.8 }}>/ HH</span>
-          </div>
-          
-          <p style={{ fontSize: 14, opacity: 0.7, marginTop: 8 }}>
-            Revenue por Hora-Hombre trabajada
-          </p>
-          
-          <div style={{ 
-            display: 'inline-flex', 
-            alignItems: 'center', 
-            gap: 6, 
-            background: 'rgba(255,255,255,0.2)', 
-            padding: '6px 12px', 
-            borderRadius: 20,
-            marginTop: 16
-          }}>
-            <TrendingUp style={{ width: 16, height: 16 }} />
-            <span style={{ fontWeight: 600 }}>+{revenuePerHHDelta}%</span>
-            <span style={{ opacity: 0.8, fontSize: 12 }}>vs mes anterior</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Alerta TODO */}
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: 12, 
-        background: C.amberLight, 
-        border: `1px solid ${C.amber}`,
-        borderRadius: 16, 
-        padding: '12px 16px',
-        marginBottom: 24
-      }}>
-        <AlertTriangle style={{ width: 20, height: 20, color: C.amber }} />
-        <p style={{ color: C.amber, fontSize: 13, fontWeight: 500 }}>
-          <strong>TODO:</strong> Integrar datos de Revenue desde facturación para calcular $/HH real
-        </p>
-      </div>
-
-      {/* KPIs Grid */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', 
-        gap: 16,
-        marginBottom: 24 
-      }}>
-        <KPICard 
-          icon={Clock}
-          label="Utilización"
-          value={`${utilizacion}%`}
-          target=">80%"
-          status={utilizacion >= 80 ? 'good' : utilizacion >= 70 ? 'warn' : 'bad'}
-          description="HH Programadas / HH Disponibles"
-        />
-        <KPICard 
-          icon={Home}
-          label="Cumplimiento"
-          value={`${cumplimiento}%`}
-          target=">95%"
-          status={cumplimiento >= 95 ? 'good' : cumplimiento >= 90 ? 'warn' : 'bad'}
-          description="Limpiezas completadas / programadas"
-        />
-        <KPICard 
-          icon={Clock}
-          label="On-Time"
-          value={onTime ? `${onTime}%` : '--'}
-          target=">90%"
-          status={!onTime ? 'neutral' : onTime >= 90 ? 'good' : onTime >= 85 ? 'warn' : 'bad'}
-          description="Llegadas a tiempo"
-        />
-        <KPICard 
-          icon={Users}
-          label="Returning"
-          value="78%"
-          target=">70%"
-          status="good"
-          description="Clientes que repiten"
-        />
-      </div>
-
-      {/* Quick Stats */}
-      <div style={{
-        background: C.white,
-        borderRadius: 24,
-        border: `1px solid ${C.border}`,
-        padding: 24
-      }}>
-        <h3 style={{ fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 16 }}>
-          Esta Semana
-        </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
-          <QuickStat label="Limpiezas" value={data?.current?.limpiezasTotal || 0} />
-          <QuickStat label="HH Reales" value={`${data?.current?.hhReales || 0}h`} />
-          <QuickStat label="Casas" value={data?.current?.casasDistintas || 0} />
-          <QuickStat label="Cleaners" value={data?.current?.cleanersUnicos || 0} />
-          <QuickStat label="HH/Casa" value={`${data?.current?.hhPromCasa || 0}h`} />
-          <QuickStat label="Limp/Casa" value={data?.current?.limpiezasPorCasa || 0} />
-        </div>
+  const week = (
+    <div style={{ background: C.white, borderRadius: 12, border: `1px solid ${C.border}`, padding: '14px 16px' }}>
+      <h3 style={{ fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 10 }}>Esta semana</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+        <QuickStat label="Limpiezas" value={data?.current?.limpiezasTotal || 0} />
+        <QuickStat label="HH reales" value={`${data?.current?.hhReales || 0}h`} />
+        <QuickStat label="Casas" value={data?.current?.casasDistintas || 0} />
+        <QuickStat label="Cleaners" value={data?.current?.cleanersUnicos || 0} />
+        <QuickStat label="HH/casa" value={`${data?.current?.hhPromCasa || 0}h`} />
+        <QuickStat label="Limp/casa" value={data?.current?.limpiezasPorCasa || 0} />
       </div>
     </div>
   )
+
+  return <CommandToday extraCard={northStar} kpis={kpis} week={week} onRefresh={loadData} />
 }
 
-function KPICard({ icon: Icon, label, value, target, status, description }: {
+function KPICard({ icon: Icon, label, value, target, status }: {
   icon: any
   label: string
   value: string
   target: string
   status: 'good' | 'warn' | 'bad' | 'neutral'
-  description: string
 }) {
   const colors = {
-    good: { bg: C.greenLight, border: C.green, text: C.green },
-    warn: { bg: C.amberLight, border: C.amber, text: C.amber },
-    bad: { bg: C.redLight, border: C.red, text: C.red },
-    neutral: { bg: C.bg, border: C.border, text: C.muted }
+    good: { bg: '#ECFDF5', border: '#A7F3D0', text: '#047857' },
+    warn: { bg: '#FFFBEB', border: '#FDE68A', text: '#B45309' },
+    bad: { bg: '#FEF2F2', border: '#FECACA', text: '#B91C1C' },
+    neutral: { bg: C.white, border: C.border, text: C.muted }
   }
   const c = colors[status]
-
   return (
-    <div style={{
-      background: c.bg,
-      border: `1px solid ${c.border}`,
-      borderRadius: 20,
-      padding: 20,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <Icon style={{ width: 18, height: 18, color: c.text }} />
-        <span style={{ fontSize: 12, fontWeight: 600, color: C.slate }}>{label}</span>
+    <div style={{ background: c.bg, border: `1px solid ${c.border}`, borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+      <Icon style={{ width: 18, height: 18, color: c.text, flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: 12, fontWeight: 500, color: C.slate }}>{label}</p>
+        <p style={{ fontSize: 11, color: C.muted }}>Meta {target}</p>
       </div>
-      <p style={{ fontSize: 32, fontWeight: 800, color: c.text, letterSpacing: '-0.02em' }}>
-        {value}
-      </p>
-      <p style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>
-        Target: {target}
-      </p>
-      <p style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>
-        {description}
-      </p>
+      <p style={{ fontSize: 24, fontWeight: 700, color: c.text, letterSpacing: '-0.02em' }}>{value}</p>
     </div>
   )
 }

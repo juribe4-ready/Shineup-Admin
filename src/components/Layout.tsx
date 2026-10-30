@@ -3,7 +3,7 @@ import { Profile } from '../supabase'
 import {
   Target, Radio, TrendingUp, BarChart3, Activity, CalendarDays, ListChecks, HardHat,
   AlertTriangle, Package, Users, Upload, Settings, SlidersHorizontal, Layers, CalendarClock,
-  DollarSign, ChevronLeft, ChevronRight, LogOut,
+  DollarSign, LogOut,
 } from 'lucide-react'
 
 const C = {
@@ -102,7 +102,7 @@ const worldStyle = (w: 'os' | 'admin') => w === 'os'
   : { bg: 'rgba(251,191,36,0.16)', fg: '#FEF3C7' }
 
 export default function Layout({ profile, page, onNavigate, onSignOut, children, badges = {} }: Props) {
-  const [collapsed, setCollapsed] = useState(false)
+  const collapsed = false // el menú no se contrae
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   const [sheet, setSheet] = useState<string | null>(null)
 
@@ -131,9 +131,9 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
       <button onClick={() => go(item.key)} title={collapsed ? item.label : undefined}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', gap: 10, justifyContent: collapsed ? 'center' : 'flex-start',
-          padding: collapsed ? '9px 8px' : '7px 10px', margin: '1px 0', borderRadius: 8, border: 'none', cursor: 'pointer', textAlign: 'left',
+          padding: collapsed ? '7px 8px' : '5px 10px', margin: '0', borderRadius: 8, border: 'none', cursor: 'pointer', textAlign: 'left',
           background: active ? 'rgba(129,140,248,0.30)' : 'transparent',
-          color: active ? '#FFFFFF' : '#D5DDEA', fontSize: 13, fontWeight: active ? 600 : 500, transition: 'background .15s',
+          color: active ? '#FFFFFF' : '#D5DDEA', fontSize: 12.5, fontWeight: active ? 600 : 500, transition: 'background .15s',
         }}
         onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
         onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}>
@@ -146,11 +146,11 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
 
   const WorldHeader = ({ w, label }: { w: 'os' | 'admin'; label: string }) => collapsed
     ? <div style={{ height: 1, background: 'rgba(255,255,255,0.12)', margin: '12px 8px' }} />
-    : <div style={{ margin: '14px 0 4px', padding: '6px 10px', borderRadius: 8, fontSize: 10.5, fontWeight: 800, letterSpacing: '0.1em', background: worldStyle(w).bg, color: worldStyle(w).fg }}>{label}</div>
+    : <div style={{ margin: '10px 0 2px', padding: '5px 10px', borderRadius: 8, fontSize: 10.5, fontWeight: 800, letterSpacing: '0.1em', background: worldStyle(w).bg, color: worldStyle(w).fg }}>{label}</div>
 
   const GroupBlock = ({ g }: { g: NavGroup }) => (
     <div>
-      {!collapsed && g.world === 'os' && <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#A8B3C7', padding: '8px 12px 3px' }}>{g.label}</div>}
+      {!collapsed && g.world === 'os' && <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#A8B3C7', padding: '6px 12px 2px' }}>{g.label}</div>}
       <div style={{ marginLeft: collapsed ? 0 : 16, paddingLeft: collapsed ? 0 : 8, borderLeft: collapsed ? 'none' : '1.5px solid rgba(255,255,255,0.12)', marginTop: g.world === 'admin' ? 6 : 0 }}>
         {g.items.map(i => <NavBtn key={i.key} item={i} />)}
       </div>
@@ -165,28 +165,25 @@ export default function Layout({ profile, page, onNavigate, onSignOut, children,
       {/* SIDEBAR (escritorio) */}
       {!isMobile && (
         <div style={{ width: sideW, minWidth: sideW, background: C.side, display: 'flex', flexDirection: 'column', transition: 'width .25s cubic-bezier(.4,0,.2,1)', overflow: 'hidden' }}>
-          <div style={{ padding: collapsed ? '18px 10px 12px' : '20px 20px 14px', display: 'flex', alignItems: 'flex-start', gap: 8, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <div style={{ padding: collapsed ? '14px 10px 10px' : '14px 18px 10px', display: 'flex', alignItems: 'flex-start', gap: 8, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
             {collapsed ? (
               <span style={{ flex: 1, textAlign: 'center', color: 'white', fontSize: 22, fontWeight: 800 }}>S<span style={{ color: '#FBBF24' }}>U</span></span>
             ) : (
               <div style={{ flex: 1 }}>
-                <span style={{ display: 'block', color: 'white', fontSize: 26, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1 }}>Shine<span style={{ color: '#FBBF24' }}>UP</span></span>
-                <span style={{ display: 'block', color: '#C7D2FE', fontSize: 14, fontWeight: 700, marginTop: 4 }}>Admin</span>
+                <span style={{ display: 'block', color: 'white', fontSize: 24, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1 }}>Shine<span style={{ color: '#FBBF24' }}>UP</span></span>
+                <span style={{ display: 'block', color: '#C7D2FE', fontSize: 13, fontWeight: 700, marginTop: 3 }}>Admin</span>
               </div>
             )}
-            <button onClick={() => setCollapsed(c => !c)} style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              {collapsed ? <ChevronRight style={{ width: 15, height: 15, color: 'rgba(255,255,255,0.6)' }} /> : <ChevronLeft style={{ width: 15, height: 15, color: 'rgba(255,255,255,0.6)' }} />}
-            </button>
           </div>
 
-          <div style={{ flex: 1, overflowY: 'auto', padding: '4px 12px 12px' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '2px 12px 8px', scrollbarWidth: 'none' as any }}>
             {osGroups.length > 0 && <WorldHeader w="os" label="OPERATING SYSTEM" />}
             {osGroups.map(g => <GroupBlock key={g.key} g={g} />)}
             {adminGroups.length > 0 && <WorldHeader w="admin" label="ADMIN" />}
             {adminGroups.map(g => <GroupBlock key={g.key} g={g} />)}
           </div>
 
-          <div style={{ padding: '12px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', gap: 10, justifyContent: collapsed ? 'center' : 'flex-start' }}>
+          <div style={{ padding: '8px 12px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', gap: 10, justifyContent: collapsed ? 'center' : 'flex-start' }}>
             <div style={{ width: 32, height: 32, borderRadius: 9, background: C.primary, color: 'white', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{initials}</div>
             {!collapsed && (
               <>

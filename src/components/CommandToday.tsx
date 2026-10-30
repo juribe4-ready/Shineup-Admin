@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 
 const C = { primary: '#6366F1', ink: '#0F172A', slate: '#475569', muted: '#94A3B8', border: '#E2E8F0', bg: '#F8FAFC', white: '#FFFFFF', green: '#059669', red: '#DC2626', amber: '#B45309' }
-const card: React.CSSProperties = { background: C.white, border: `1px solid ${C.border}`, borderRadius: 12, padding: '14px 16px' }
+const card: React.CSSProperties = { background: C.white, border: `1px solid ${C.border}`, borderRadius: 12, padding: '12px 16px' }
 const lbl: React.CSSProperties = { fontSize: 12, color: '#64748B', fontWeight: 500 }
-const big: React.CSSProperties = { fontSize: 28, fontWeight: 700, letterSpacing: '-0.02em', color: C.ink, margin: '3px 0' }
+const big: React.CSSProperties = { fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', color: C.ink, margin: '3px 0' }
 
 const todayDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
 const getMonday = (d: Date) => { const dow = (d.getDay() + 6) % 7; const m = new Date(d); m.setDate(d.getDate() - dow); return m }
@@ -16,7 +16,7 @@ const STATUS: Record<string, { t: string; bg: string; fg: string }> = {
   'In Progress': { t: 'En curso', bg: '#EEF0FF', fg: '#4338CA' },
 }
 
-export default function CommandToday() {
+export default function CommandToday({ extraCard, kpis, week, onRefresh }: { extraCard?: React.ReactNode; kpis?: React.ReactNode; week?: React.ReactNode; onRefresh?: () => void }) {
   const [loading, setLoading] = useState(true)
   const [cleanings, setCleanings] = useState<Cl[]>([])
   const [stats, setStats] = useState({ total: 0, done: 0, inProgress: 0 })
@@ -64,8 +64,8 @@ export default function CommandToday() {
   const list = [...cleanings].sort((a, b) => (a.scheduledTime || '').localeCompare(b.scheduledTime || '')).slice(0, 8)
 
   return (
-    <div style={{ marginBottom: 20 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(215px, 1fr))', gap: 14, marginBottom: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14 }}>
         <div style={{ ...card, borderColor: '#C7D2FE', background: 'linear-gradient(180deg,#EEF0FF,#fff)' }}>
           <p style={lbl}>Generado hoy</p>
           <p style={big}>{loading ? '…' : money(billing?.totalRevenue || 0)}</p>
@@ -90,17 +90,24 @@ export default function CommandToday() {
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}><span style={lbl}>Facturado</span><b style={{ color: C.ink }}>{money(billing?.invoicedAmount || 0)}</b></div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}><span style={lbl}>Cobrado</span><b style={{ color: C.green }}>{money(billing?.paidAmount || 0)}</b></div>
         </div>
+        {extraCard}
       </div>
 
-      <div style={card}>
-        <p style={{ fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 8 }}>Limpiezas de hoy</p>
+      {kpis}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, alignItems: 'start' }}>
+      <div style={{ ...card, padding: '12px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <p style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>Limpiezas de hoy</p>
+          {onRefresh && <button onClick={onRefresh} style={{ fontSize: 12, color: C.primary, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Actualizar</button>}
+        </div>
         {loading ? <p style={{ fontSize: 13, color: C.muted }}>Cargando…</p> : list.length === 0 ? <p style={{ fontSize: 13, color: C.muted }}>No hay limpiezas para hoy.</p> : (
           <div>
             {list.map(c => {
               const st = STATUS[c.status] || { t: 'Programada', bg: '#F1F5F9', fg: '#475569' }
               const unassigned = !c.staffListText || c.staffListText === 'Sin asignar'
               return (
-                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderTop: `1px solid #F1F5F9`, fontSize: 13 }}>
+                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderTop: `1px solid #F1F5F9`, fontSize: 13 }}>
                   <b style={{ flex: 1, minWidth: 0, color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.propertyText || 'Sin nombre'}</b>
                   <span style={{ color: unassigned ? C.amber : '#64748B', fontSize: 12, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{unassigned ? 'Sin asignar' : c.staffListText}</span>
                   <span style={{ color: '#64748B', fontSize: 12, width: 64, textAlign: 'right' }}>{fmtTime(c.scheduledTime)}</span>
@@ -110,6 +117,8 @@ export default function CommandToday() {
             })}
           </div>
         )}
+      </div>
+      {week}
       </div>
     </div>
   )
