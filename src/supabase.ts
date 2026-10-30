@@ -20,6 +20,7 @@ export interface Profile {
   full_name: string | null
   initials: string | null
   active: boolean
+  laundry_access?: boolean
   invited_at: string
   created_at: string
 }
