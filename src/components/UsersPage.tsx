@@ -35,6 +35,24 @@ interface StaffRecord {
   id: string; name: string; email: string; initials: string; role: string
 }
 
+function LaundryToggle({ user, onToggle }: { user: Profile; onToggle: (u: Profile) => void }) {
+  // Admin y manager siempre entran a Laundry: no necesitan interruptor
+  if (user.role === 'admin' || user.role === 'manager') {
+    return <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg" style={{ background: '#F1F5F9', color: C.slate }}>Siempre</span>
+  }
+  if (user.role !== 'cleaner') {
+    return <span className="text-[11px] font-medium" style={{ color: C.muted }}>—</span>
+  }
+  const on = !!user.laundry_access
+  return (
+    <button onClick={() => onToggle(user)} className="flex items-center gap-2 active:scale-95 transition-all">
+      {on
+        ? <><ToggleRight className="w-6 h-6" style={{ color: '#0E7490' }} /><span className="text-[11px] font-bold" style={{ color: '#0E7490' }}>Con acceso</span></>
+        : <><ToggleLeft className="w-6 h-6" style={{ color: C.muted }} /><span className="text-[11px] font-bold" style={{ color: C.muted }}>Sin acceso</span></>}
+    </button>
+  )
+}
+
 interface Props {
   profile: Profile
   onSignOut: () => void
@@ -201,9 +219,10 @@ export default function UsersPage({ profile: _profile, onSignOut: _onSignOut }: 
         {/* DESKTOP TABLE */}
         <div className="rounded-3xl overflow-hidden shadow-sm hidden sm:block" style={{ background: C.white, border: `1px solid ${C.border}` }}>
           <div className="grid grid-cols-12 px-6 py-3 text-[10px] font-black uppercase tracking-widest" style={{ background: C.bg, color: C.muted, borderBottom: `1px solid ${C.border}` }}>
-            <div className="col-span-4">Usuario</div>
+            <div className="col-span-3">Usuario</div>
             <div className="col-span-2">Rol</div>
-            <div className="col-span-3">Staff Airtable</div>
+            <div className="col-span-2">Staff Airtable</div>
+            <div className="col-span-2">Laundry</div>
             <div className="col-span-2">Estado</div>
             <div className="col-span-1 text-right">Acciones</div>
           </div>
@@ -224,7 +243,7 @@ export default function UsersPage({ profile: _profile, onSignOut: _onSignOut }: 
                 const linkedStaff = staffList.find(s => s.id === user.staff_airtable_id)
                 return (
                   <div key={user.id} className="grid grid-cols-12 px-6 py-4 items-center hover:bg-slate-50 transition-colors">
-                    <div className="col-span-4 flex items-center gap-3">
+                    <div className="col-span-3 flex items-center gap-3">
                       <div className="w-9 h-9 rounded-2xl flex items-center justify-center font-black text-[13px] shrink-0"
                         style={{ background: roleStyle.bg, color: roleStyle.color }}>
                         {user.initials || user.email[0].toUpperCase()}
@@ -245,7 +264,7 @@ export default function UsersPage({ profile: _profile, onSignOut: _onSignOut }: 
                         <option value="monitor">Monitoring (solo lectura)</option>
                       </select>
                     </div>
-                    <div className="col-span-3">
+                    <div className="col-span-2">
                       {editingUser?.id === user.id ? (
                         <div className="flex items-center gap-2">
                           <select onChange={e => updateStaffId(user, e.target.value)} defaultValue=""
@@ -273,10 +292,9 @@ export default function UsersPage({ profile: _profile, onSignOut: _onSignOut }: 
                       )}
                     </div>
                     <div className="col-span-2">
-                      <button onClick={() => toggleLaundry(user)} className="text-[10px] font-bold px-2 py-1 rounded-lg mr-2"
-                        style={{ background: user.laundry_access ? '#CFFAFE' : '#F1F5F9', color: user.laundry_access ? '#0E7490' : C.muted }}>
-                        🧺 Laundry {user.laundry_access ? 'ON' : 'OFF'}
-                      </button>
+                      <LaundryToggle user={user} onToggle={toggleLaundry} />
+                    </div>
+                    <div className="col-span-2">
                       <button onClick={() => toggleActive(user)} className="flex items-center gap-2 active:scale-95 transition-all">
                         {user.active
                           ? <><ToggleRight className="w-6 h-6" style={{ color: C.green }} /><span className="text-[11px] font-bold" style={{ color: C.green }}>Activo</span></>
@@ -343,11 +361,8 @@ export default function UsersPage({ profile: _profile, onSignOut: _onSignOut }: 
                       style={{ background: '#FEF3C7', color: C.amber }}>+ Vincular
                     </button>
                   )}
-                  <button onClick={() => toggleLaundry(user)} className="text-[10px] font-bold px-2 py-1 rounded-lg mr-2"
-                        style={{ background: user.laundry_access ? '#CFFAFE' : '#F1F5F9', color: user.laundry_access ? '#0E7490' : C.muted }}>
-                        🧺 Laundry {user.laundry_access ? 'ON' : 'OFF'}
-                      </button>
-                      <button onClick={() => toggleActive(user)} className="flex items-center gap-1.5 ml-auto">
+                  <LaundryToggle user={user} onToggle={toggleLaundry} />
+                  <button onClick={() => toggleActive(user)} className="flex items-center gap-1.5 ml-auto">
                     {user.active
                       ? <><ToggleRight className="w-5 h-5" style={{ color: C.green }} /><span className="text-[11px] font-bold" style={{ color: C.green }}>Activo</span></>
                       : <><ToggleLeft className="w-5 h-5" style={{ color: C.muted }} /><span className="text-[11px] font-bold" style={{ color: C.muted }}>Inactivo</span></>}
