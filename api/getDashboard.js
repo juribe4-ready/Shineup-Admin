@@ -401,6 +401,19 @@ export default async function handler(req, res) {
       };
     }
 
+    // Costo por hora por persona (campo «Cost/Hour» en Staff). Lectura aparte y tolerante: si el campo no existe aún, no pasa nada.
+    const costMap = {};
+    try {
+      const cr = await fetch(
+        `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblgHwN1wX6u3ZtNY?fields[]=${encodeURIComponent('Cost/Hour')}`,
+        { headers: { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` } }
+      );
+      if (cr.ok) {
+        const cd = await cr.json();
+        for (const s of (cd.records || [])) { const v = Number(s.fields?.['Cost/Hour']); if (Number.isFinite(v) && v > 0) costMap[s.id] = v; }
+      }
+    } catch (e) { console.error('[getDashboard] Cost/Hour read skipped:', e.message); }
+
     // Fetch Labor from Properties for all unique property IDs
     const propertyIds = [...new Set(filtered.map(r => {
       const p = r.fields['Property'];
@@ -515,6 +528,7 @@ export default async function handler(req, res) {
         rating: ratingVal,
         labor,
         staffList,
+        laborStaff: staffIds.filter(id => (staffMap[id]?.role || '').toLowerCase().includes('cleaner')).map(id => ({ id, rate: costMap[id] ?? null })),
         staffListText,
         googleMapsUrl,
         thumbnail,
