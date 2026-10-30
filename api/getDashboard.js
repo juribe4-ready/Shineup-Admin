@@ -403,16 +403,18 @@ export default async function handler(req, res) {
 
     // Costo por hora por persona (campo «Cost/Hour» en Staff). Lectura aparte y tolerante: si el campo no existe aún, no pasa nada.
     const costMap = {};
+    let costRead = 'no leído';
     try {
       const cr = await fetch(
         `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblgHwN1wX6u3ZtNY?fields[]=${encodeURIComponent('Cost/Hour')}`,
         { headers: { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` } }
       );
+      costRead = cr.ok ? 'ok' : `error ${cr.status}`;
       if (cr.ok) {
         const cd = await cr.json();
         for (const s of (cd.records || [])) { const v = Number(s.fields?.['Cost/Hour']); if (Number.isFinite(v) && v > 0) costMap[s.id] = v; }
       }
-    } catch (e) { console.error('[getDashboard] Cost/Hour read skipped:', e.message); }
+    } catch (e) { costRead = 'falló: ' + e.message; console.error('[getDashboard] Cost/Hour read skipped:', e.message); }
 
     // Turnos del día (tabla «Turnos»: una fila por persona con Inicio/Fin). Lectura tolerante: si falla, el front estima por casas.
     const shifts = [];
@@ -427,7 +429,7 @@ export default async function handler(req, res) {
           const sid = Array.isArray(r.fields['Persona']) ? r.fields['Persona'][0] : null;
           if (!sid || !r.fields['Inicio']) continue;
           if (!(staffMap[sid]?.role || '').toLowerCase().includes('cleaner')) continue;
-          shifts.push({ staffId: sid, start: r.fields['Inicio'], end: r.fields['Fin'] || null, closed: !!r.fields['Cerrado'], rate: costMap[sid] ?? null });
+          shifts.push({ staffId: sid, name: staffMap[sid]?.name || '', start: r.fields['Inicio'], end: r.fields['Fin'] || null, closed: !!r.fields['Cerrado'], rate: costMap[sid] ?? null });
         }
         off = sd.offset || null;
       } while (off);
@@ -547,7 +549,7 @@ export default async function handler(req, res) {
         rating: ratingVal,
         labor,
         staffList,
-        laborStaff: staffIds.filter(id => (staffMap[id]?.role || '').toLowerCase().includes('cleaner')).map(id => ({ id, rate: costMap[id] ?? null })),
+        laborStaff: staffIds.filter(id => (staffMap[id]?.role || '').toLowerCase().includes('cleaner')).map(id => ({ id, name: staffMap[id]?.name || '', rate: costMap[id] ?? null })),
         staffListText,
         googleMapsUrl,
         thumbnail,
@@ -647,7 +649,7 @@ export default async function handler(req, res) {
       completionRate: cleanings.length > 0 ? Math.round((stats.done / cleanings.length) * 100) : 0,
     };
 
-    return res.status(200).json({ cleanings, timeline, stats, globalMetrics, shifts, date: effectiveDate });
+    return res.status(200).json({ cleanings, timeline, stats, globalMetrics, shifts, debug: { costRead, ratesFound: Object.keys(costMap).length, cleanersTotal: Object.values(staffMap).filter(x => (x.role || '').toLowerCase().includes('cleaner')).length, cleanersWithoutRate: Object.entries(staffMap).filter(([id, x]) => (x.role || '').toLowerCase().includes('cleaner') && costMap[id] == null).map(([, x]) => x.name), shiftsToday: shifts.length }, date: effectiveDate });
   } catch (err) {
     console.error('[getDashboard] Error:', err);
     return res.status(500).json({ error: err.message });
