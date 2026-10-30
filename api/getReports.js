@@ -37,6 +37,9 @@ async function getIncidents(headers, staffMap, propMap) {
       propertyId: propId||null, propertyName: propMap[propId]||'Sin propiedad',
       photoUrls: f['MediaURL'] ? [f['MediaURL']] : (Array.isArray(f['Photos']) ? f['Photos'].map(p=>p?.url).filter(Boolean) : []),
       reportedBy: Array.isArray(f['Reported By']) ? (staffMap[f['Reported By'][0]]||'') : (f['Reported By']||''),
+      // Categoría (Lavandería / Mobiliario / Infraestructura…) y detalle; vacío en incidentes antiguos
+      category: f['Categoria']||'', incidentType: f['Tipo']||'', item: f['Item']||'',
+      closeComment: f['Close Comment']||f['CloseComment']||'',
     }
   })
 }
