@@ -9,7 +9,7 @@ const todayDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Amer
 const getMonday = (d: Date) => { const dow = (d.getDay() + 6) % 7; const m = new Date(d); m.setDate(d.getDate() - dow); return m }
 const money = (n: number) => '$' + Math.round(n || 0).toLocaleString('en-US')
 
-interface Cl { id: string; propertyText: string; status: string; scheduledTime: string | null; startTime?: string | null; endTime?: string | null; staffListText: string }
+interface Cl { id: string; propertyText: string; status: string; scheduledTime: string | null; startTime?: string | null; endTime?: string | null; staffListText: string; laborStaff?: { id: string; rate: number | null }[] }
 interface Bl { id: string; price: number | null; staffCount: number; status: string | null }
 
 const STATUS: Record<string, { t: string; bg: string; fg: string }> = {
@@ -79,7 +79,7 @@ export default function CommandToday({ extraCard, kpis, week, onRefresh }: { ext
   const laborOf = (c: Cl): number | null => {
     if (!c.startTime) return null
     const end = c.endTime ? new Date(c.endTime).getTime() : now
-    return rateNow * Math.max(1, billOf(c.id)?.staffCount || 1) * Math.max(0, (end - new Date(c.startTime).getTime()) / 3600000)
+    return laborCost(c, Math.max(1, billOf(c.id)?.staffCount || 1), rateNow, Math.max(0, (end - new Date(c.startTime).getTime()) / 3600000))
   }
 
   return (
@@ -162,6 +162,9 @@ const etHour = (ms: number) => {
   return h + m / 60
 }
 const RATE_KEY = 'shineup-labor-rate'
+// Costo de labor de una limpieza entre dos instantes (horas). Con Cost/Hour por persona si existe; si no, tarifa única × cleaners.
+const laborCost = (c: { laborStaff?: { id: string; rate: number | null }[] }, n: number, defRate: number, hours: number) =>
+  c.laborStaff && c.laborStaff.length ? c.laborStaff.reduce((a, p) => a + (p.rate ?? defRate) * hours, 0) : defRate * n * hours
 const readRate = () => { try { return Number(localStorage.getItem(RATE_KEY)) || 18 } catch { return 18 } }
 
 function LaborChart({ cleanings, bills, now, loading, rate, saveRate }: { cleanings: Cl[]; bills: Bl[]; now: number; loading: boolean; rate: number; saveRate: (v: number) => void }) {
@@ -170,14 +173,14 @@ function LaborChart({ cleanings, bills, now, loading, rate, saveRate }: { cleani
     const nowH = etHour(now)
     const jobs = cleanings.filter(c => c.startTime).map(c => {
       const b = bills.find(x => x.id === c.id)
-      return { s: etHour(new Date(c.startTime as string).getTime()), e: c.endTime ? etHour(new Date(c.endTime).getTime()) : nowH, done: !!c.endTime, price: b?.price || 0, n: Math.max(1, b?.staffCount || 1) }
+      return { c, s: etHour(new Date(c.startTime as string).getTime()), e: c.endTime ? etHour(new Date(c.endTime).getTime()) : nowH, done: !!c.endTime, price: b?.price || 0, n: Math.max(1, b?.staffCount || 1) }
     })
     if (!jobs.length) return null
     const target = cleanings.reduce((t, c) => t + (bills.find(x => x.id === c.id)?.price || 0), 0)
     // Eje: desde la primera hora trabajada hasta las 10pm como mínimo (crece si se trabaja más tarde)
     const x0 = Math.max(0, Math.min(6, Math.floor(Math.min(...jobs.map(j => j.s))))), x1 = Math.max(22, Math.ceil(Math.max(nowH, ...jobs.map(j => j.e))))
     const revAt = (t: number) => jobs.reduce((a, j) => a + (j.done && j.e <= t ? j.price : 0), 0)
-    const costAt = (t: number) => jobs.reduce((a, j) => a + rate * j.n * Math.max(0, Math.min(t, j.e) - j.s), 0)
+    const costAt = (t: number) => jobs.reduce((a, j) => a + laborCost(j.c, j.n, rate, Math.max(0, Math.min(t, j.e) - j.s)), 0)
     const rev: [number, number][] = [], cost: [number, number][] = []
     for (let t = x0; t <= Math.min(x1, nowH) + 1e-9; t += 0.25) { rev.push([t, revAt(t)]); cost.push([t, costAt(t)]) }
     const hours = Array.from({ length: x1 - x0 }, (_, i) => { const a = x0 + i, b = Math.min(a + 1, nowH); return { h: a, rev: a >= nowH ? 0 : revAt(b) - revAt(a), cost: a >= nowH ? 0 : costAt(b) - costAt(a) } })
@@ -242,12 +245,12 @@ function LaborChart({ cleanings, bills, now, loading, rate, saveRate }: { cleani
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
         <p style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>Ingreso vs labor · hoy</p>
         <label style={{ ...lbl, display: 'flex', alignItems: 'center', gap: 6 }}>
-          Costo por hora de cleaner $
+          Tarifa base $/h (si falta Cost/Hour)
           <input type="number" min={0} step={0.5} value={rate} onChange={e => saveRate(Math.max(0, Number(e.target.value) || 0))} style={{ width: 64, padding: '3px 6px', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12, fontFamily: 'inherit' }} />
         </label>
       </div>
       {body}
-      <p style={{ fontSize: 10, color: C.muted, marginTop: 6 }}>Labor = tarifa × cleaners × horas trabajadas (desde que inicia cada limpieza). El ingreso cuenta cuando la limpieza termina. Tarifa única editable (aún no por persona).</p>
+      <p style={{ fontSize: 10, color: C.muted, marginTop: 6 }}>Labor = tarifa × cleaners × horas trabajadas (desde que inicia cada limpieza). El ingreso cuenta cuando la limpieza termina. Usa el Cost/Hour de cada cleaner (Staff); si alguien no lo tiene, usa la tarifa base.</p>
     </div>
   )
 }
