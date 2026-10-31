@@ -350,12 +350,86 @@ function parseUrlsField(field) {
   return field.split('\n').map(u => u.trim()).filter(Boolean);
 }
 
+// ── Turnos (pantalla Field): leer y corregir la tabla «Turnos» por día ──────────
+const TURNOS_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE}/Turnos`;
+const isoOk = (t) => typeof t === 'string' && !isNaN(new Date(t).getTime());
+const stampET = () => new Date().toLocaleString('en-US', { timeZone: 'America/New_York', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+async function handleShifts(req, res, action) {
+  const H = { 'Authorization': `Bearer ${AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' };
+  try {
+    if (action === 'shiftsDay') {
+      const date = req.query.date;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return res.status(400).json({ error: 'date invalida' });
+      // Staff (nombre, rol, Cost/Hour tolerante)
+      const staff = {};
+      let sr = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblgHwN1wX6u3ZtNY?fields[]=Name&fields[]=Initials&fields[]=Role&fields[]=${encodeURIComponent('Cost/Hour')}`, { headers: H });
+      if (!sr.ok) sr = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblgHwN1wX6u3ZtNY?fields[]=Name&fields[]=Initials&fields[]=Role`, { headers: H });
+      const sd = await sr.json();
+      for (const r of (sd.records || [])) {
+        const v = Number(r.fields?.['Cost/Hour']);
+        staff[r.id] = { id: r.id, name: r.fields?.Name || '', initials: r.fields?.Initials || '', role: String(r.fields?.Role || ''), rate: Number.isFinite(v) && v > 0 ? v : null };
+      }
+      const formula = encodeURIComponent(`IS_SAME({Fecha},'${date}','day')`);
+      let records = [], off = null;
+      do {
+        const r = await fetch(`${TURNOS_URL}?pageSize=100&filterByFormula=${formula}${off ? `&offset=${off}` : ''}`, { headers: H });
+        if (!r.ok) throw new Error(`Airtable ${r.status}: ${(await r.text()).slice(0, 200)}`);
+        const d = await r.json(); records = records.concat(d.records || []); off = d.offset || null;
+      } while (off);
+      const shifts = records.filter(r => String(r.fields['Fecha'] || '').startsWith(date)).map(r => {
+        const sid = Array.isArray(r.fields['Persona']) ? r.fields['Persona'][0] : null;
+        return { id: r.id, staffId: sid, name: staff[sid]?.name || r.fields['Turno'] || '?', role: staff[sid]?.role || '', rate: staff[sid]?.rate ?? null,
+          start: r.fields['Inicio'] || null, end: r.fields['Fin'] || null, closed: !!r.fields['Cerrado'], registeredBy: r.fields['Registrado por'] || '', notes: r.fields['Notas'] || '' };
+      }).sort((a, b) => String(a.start).localeCompare(String(b.start)));
+      return res.status(200).json({ date, shifts, staff: Object.values(staff).sort((a, b) => a.name.localeCompare(b.name)) });
+    }
+
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Metodo no permitido' });
+    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    const by = String(body.by || 'Admin').replace(/[\r\n]/g, ' ').slice(0, 60);
+    const log = (prev, line) => String((String(prev || '') ? String(prev) + '\n' : '') + line).slice(-800);
+
+    if (action === 'shiftSave') {
+      const { id, start, end, closed, notes } = body;
+      if (!/^rec[A-Za-z0-9]{14}$/.test(id || '') || !isoOk(start)) return res.status(400).json({ error: 'datos invalidos' });
+      const fields = { 'Inicio': new Date(start).toISOString() };
+      if (end) {
+        if (!isoOk(end)) return res.status(400).json({ error: 'fin invalido' });
+        if (new Date(end) < new Date(start)) return res.status(400).json({ error: 'El fin es antes del inicio' });
+        fields['Fin'] = new Date(end).toISOString();
+      } else fields['Fin'] = null;
+      fields['Cerrado'] = !!closed && !!end;
+      fields['Notas'] = log(notes, `Editado por ${by} (Admin) · ${stampET()}`);
+      const r = await fetch(`${TURNOS_URL}/${id}`, { method: 'PATCH', headers: H, body: JSON.stringify({ fields }) });
+      if (!r.ok) throw new Error(`Airtable ${r.status}: ${(await r.text()).slice(0, 200)}`);
+      return res.status(200).json({ ok: true });
+    }
+
+    if (action === 'shiftAdd') {
+      const { date, staffId, start, end } = body;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !/^rec[A-Za-z0-9]{14}$/.test(staffId || '') || !isoOk(start) || (end && (!isoOk(end) || new Date(end) < new Date(start)))) return res.status(400).json({ error: 'datos invalidos' });
+      const fields = { 'Turno': `${String(body.label || '').slice(0, 20)} ${date}`.trim(), 'Fecha': date, 'Persona': [staffId], 'Inicio': new Date(start).toISOString(), 'Registrado por': by, 'Cerrado': !!end, 'Notas': `Agregado por ${by} (Admin) · ${stampET()}` };
+      if (end) fields['Fin'] = new Date(end).toISOString();
+      const r = await fetch(TURNOS_URL, { method: 'POST', headers: H, body: JSON.stringify({ fields }) });
+      if (!r.ok) throw new Error(`Airtable ${r.status}: ${(await r.text()).slice(0, 200)}`);
+      return res.status(200).json({ ok: true });
+    }
+    return res.status(400).json({ error: 'accion desconocida' });
+  } catch (err) {
+    console.error('[getDashboard] shifts error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { action } = req.query;
+  if (action === 'shiftsDay' || action === 'shiftSave' || action === 'shiftAdd') return handleShifts(req, res, action);
   
   // Router para diferentes acciones
   if (action === 'executive') {
