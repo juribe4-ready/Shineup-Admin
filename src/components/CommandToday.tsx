@@ -8,6 +8,8 @@ const big: React.CSSProperties = { fontSize: 26, fontWeight: 700, letterSpacing:
 
 const todayDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
 const getMonday = (d: Date) => { const dow = (d.getDay() + 6) % 7; const m = new Date(d); m.setDate(d.getDate() - dow); return m }
+const shiftDay = (d: string, n: number) => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.toLocaleDateString('en-CA') }
+const navBtn: React.CSSProperties = { background: '#fff', color: '#475569', border: '1px solid #E2E8F0', borderRadius: 8, padding: '4px 10px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
 const money = (n: number) => '$' + Math.round(n || 0).toLocaleString('en-US')
 
 interface Cl { id: string; propertyText: string; status: string; scheduledTime: string | null; startTime?: string | null; endTime?: string | null; staffListText: string; laborStaff?: { id: string; name?: string; rate: number | null }[] }
@@ -20,6 +22,7 @@ const STATUS: Record<string, { t: string; bg: string; fg: string }> = {
 }
 
 export default function CommandToday({ extraCard, kpis, week, onRefresh }: { extraCard?: React.ReactNode; kpis?: React.ReactNode; week?: React.ReactNode; onRefresh?: () => void }) {
+  const [date, setDate] = useState(todayDate())
   const [loading, setLoading] = useState(true)
   const [cleanings, setCleanings] = useState<Cl[]>([])
   const [stats, setStats] = useState({ total: 0, done: 0, inProgress: 0 })
@@ -27,16 +30,20 @@ export default function CommandToday({ extraCard, kpis, week, onRefresh }: { ext
   const [bills, setBills] = useState<Bl[]>([])
   const [shifts, setShifts] = useState<Sh[]>([])
   const [debug, setDebug] = useState<any>(null)
-  const [now, setNow] = useState(Date.now())
+  const [nowTick, setNow] = useState(Date.now())
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(t) }, [])
+  const isToday = date === todayDate()
+  const now = isToday ? nowTick : new Date(`${date}T23:59:59`).getTime()
+  const dayWord = isToday ? 'hoy' : 'ese día'
   const [capPct, setCapPct] = useState<number | null>(null)
   const [strCount, setStrCount] = useState(0)
   const [flexCount, setFlexCount] = useState(0)
   const [incToday, setIncToday] = useState(0)
 
   useEffect(() => {
-    const today = todayDate()
-    const monStr = getMonday(new Date()).toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+    const today = date
+    setLoading(true)
+    const monStr = getMonday(new Date(date + 'T12:00:00')).toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
     ;(async () => {
       try {
         const [d, b, s, i] = await Promise.all([
@@ -65,7 +72,7 @@ export default function CommandToday({ extraCard, kpis, week, onRefresh }: { ext
       } catch {}
       finally { setLoading(false) }
     })()
-  }, [])
+  }, [date])
 
   const pct = stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0
   const fmtTime = (iso: string | null) => iso ? new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—'
@@ -86,18 +93,26 @@ export default function CommandToday({ extraCard, kpis, week, onRefresh }: { ext
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14 }}>
+            <div style={{ ...card, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <button onClick={() => setDate(d => shiftDay(d, -1))} aria-label="Día anterior" style={navBtn}>‹</button>
+        <input type="date" value={date} onChange={e => e.target.value && setDate(e.target.value)} style={{ padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} />
+        <button onClick={() => setDate(d => shiftDay(d, 1))} aria-label="Día siguiente" style={navBtn}>›</button>
+        {!isToday && <button onClick={() => setDate(todayDate())} style={{ ...navBtn, color: C.primary, borderColor: '#C7D2FE', background: '#EEF0FF' }}>Hoy</button>}
+        <span style={lbl}>{new Date(date + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}{isToday ? '' : ' · vista histórica'}</span>
+      </div>
+
+<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14 }}>
         <div style={{ ...card, borderColor: '#C7D2FE', background: 'linear-gradient(180deg,#EEF0FF,#fff)' }}>
-          <p style={lbl}>Generado hoy</p>
+          <p style={lbl}>Generado {dayWord}</p>
           <p style={big}>{loading ? '…' : money(billing?.totalRevenue || 0)}</p>
           <p style={{ fontSize: 12, color: C.green, fontWeight: 500 }}>{stats.done} de {stats.total} limpiezas terminadas</p>
           <div style={{ height: 8, borderRadius: 99, background: '#E2E8F0', margin: '8px 0 6px', overflow: 'hidden' }}><div style={{ width: `${pct}%`, height: '100%', background: C.primary }} /></div>
           <p style={lbl}>{stats.inProgress} en curso</p>
         </div>
         <div style={card}>
-          <p style={lbl}>Alertas de hoy</p>
+          <p style={lbl}>Alertas de {isToday ? 'hoy' : 'ese día'}</p>
           <p style={{ ...big, color: incToday > 0 ? C.amber : C.ink }}>{loading ? '…' : incToday}</p>
-          <p style={{ fontSize: 12, color: '#64748B' }}>incidentes reportados hoy</p>
+          <p style={{ fontSize: 12, color: '#64748B' }}>incidentes reportados {dayWord}</p>
         </div>
         <div style={card}>
           <p style={lbl}>Capacidad de la semana</p>
@@ -106,7 +121,7 @@ export default function CommandToday({ extraCard, kpis, week, onRefresh }: { ext
           <p style={lbl}>Bloques STR: {strCount} · Flex / otros: {flexCount}</p>
         </div>
         <div style={card}>
-          <p style={lbl}>Cobros de hoy</p>
+          <p style={lbl}>Cobros de {isToday ? 'hoy' : 'ese día'}</p>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}><span style={lbl}>Por cobrar</span><b style={{ color: C.amber }}>{money(billing?.unpaidAmount || 0)}</b></div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}><span style={lbl}>Facturado</span><b style={{ color: C.ink }}>{money(billing?.invoicedAmount || 0)}</b></div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}><span style={lbl}>Cobrado</span><b style={{ color: C.green }}>{money(billing?.paidAmount || 0)}</b></div>
@@ -116,13 +131,13 @@ export default function CommandToday({ extraCard, kpis, week, onRefresh }: { ext
 
       {kpis}
 
-      <LaborChart cleanings={cleanings} bills={bills} model={model} now={now} loading={loading} />
-      <HoursCard model={model} loading={loading} debug={debug} />
+      <LaborChart cleanings={cleanings} bills={bills} model={model} now={now} loading={loading} dayWord={dayWord} />
+      <HoursCard model={model} loading={loading} debug={debug} dayWord={dayWord} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, alignItems: 'start' }}>
       <div style={{ ...card, padding: '12px 16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-          <p style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>Limpiezas de hoy · {list.length}</p>
+          <p style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>Limpiezas de {isToday ? 'hoy' : 'ese día'} · {list.length}</p>
           {onRefresh && <button onClick={onRefresh} style={{ fontSize: 12, color: C.primary, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Actualizar</button>}
         </div>
         {loading ? <p style={{ fontSize: 13, color: C.muted }}>Cargando…</p> : list.length === 0 ? <p style={{ fontSize: 13, color: C.muted }}>No hay limpiezas para hoy.</p> : (
@@ -184,7 +199,7 @@ function buildModel(cleanings: Cl[], shifts: Sh[], now: number) {
   return { avgRate, people, tot, byShift: people.length > 0 }
 }
 
-function LaborChart({ cleanings, bills, model, now, loading }: { cleanings: Cl[]; bills: Bl[]; model: ReturnType<typeof buildModel>; now: number; loading: boolean }) {
+function LaborChart({ cleanings, bills, model, now, loading, dayWord }: { cleanings: Cl[]; bills: Bl[]; model: ReturnType<typeof buildModel>; now: number; loading: boolean; dayWord: string }) {
   const rate = model.avgRate
 
   const d = useMemo(() => {
@@ -215,7 +230,7 @@ function LaborChart({ cleanings, bills, model, now, loading }: { cleanings: Cl[]
   const W = 700, H = 170, pl = 46, pr = 84, pt = 10, pb = 20
   const body = (() => {
     if (loading) return <p style={{ fontSize: 13, color: C.muted }}>Cargando…</p>
-    if (!d) return <p style={{ fontSize: 13, color: C.muted }}>Aún no hay limpiezas iniciadas hoy. La gráfica aparece cuando empiece la primera.</p>
+    if (!d) return <p style={{ fontSize: 13, color: C.muted }}>Aún no hay limpiezas iniciadas ese día. La gráfica aparece cuando empiece la primera.</p>
     const ymax = Math.max(d.target, d.lastR, d.lastC, 50) * 1.08
     const plotR = W - pr
     const X = (t: number) => pl + ((t - d.x0) / (d.x1 - d.x0)) * (plotR - pl)
@@ -268,7 +283,7 @@ function LaborChart({ cleanings, bills, model, now, loading }: { cleanings: Cl[]
   return (
     <div style={card}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-        <p style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>Ingreso vs labor · hoy</p>
+        <p style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>Ingreso vs labor · {dayWord}</p>
       </div>
       {body}
       <p style={{ fontSize: 10, color: C.muted, marginTop: 6 }}>Labor = Cost/Hour de cada cleaner × horas de turno (solo cleaners). Margen por hora = (ingreso − labor) ÷ horas-persona de turno. El ingreso cuenta al terminar cada limpieza.</p>
@@ -278,7 +293,7 @@ function LaborChart({ cleanings, bills, model, now, loading }: { cleanings: Cl[]
 
 
 // ── Horas y costo del turno: limpiando / traslado / tiempo muerto ─────────────
-function HoursCard({ model, loading, debug }: { model: ReturnType<typeof buildModel>; loading: boolean; debug: any }) {
+function HoursCard({ model, loading, debug, dayWord }: { model: ReturnType<typeof buildModel>; loading: boolean; debug: any; dayWord: string }) {
   const t = model.tot
   const groups = [
     { k: 'Limpiando', ms: t.clean, cost: t.cleanC, color: C.primary, note: 'dentro de las casas' },
@@ -289,11 +304,11 @@ function HoursCard({ model, loading, debug }: { model: ReturnType<typeof buildMo
   return (
     <div style={card}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-        <p style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>Horas y costo del turno · hoy</p>
+        <p style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>Horas y costo del turno · {dayWord}</p>
         <p style={lbl}>{model.byShift ? `${model.people.length} cleaners · ${fmtH(t.total)} en total · ${money(totalCost)}` : '—'}</p>
       </div>
       {loading ? <p style={{ fontSize: 13, color: C.muted }}>Cargando…</p> : !model.byShift ? (
-        <p style={{ fontSize: 13, color: C.muted }}>Aún no hay turnos de cleaners registrados hoy (se registran en Ops, pestaña Turno).</p>
+        <p style={{ fontSize: 13, color: C.muted }}>Aún no hay turnos de cleaners registrados ese día (se registran en Ops, pestaña Turno, o en Field).</p>
       ) : (
         <>
           <div style={{ display: 'flex', height: 10, borderRadius: 99, overflow: 'hidden', background: '#E2E8F0', marginBottom: 10 }}>
