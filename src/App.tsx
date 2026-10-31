@@ -7,6 +7,7 @@ import UsersPage from './components/UsersPage'
 import OperationsPage from './components/OperationsPage'
 import AnalysisPage from './components/AnalysisPage'
 import CommandCenterPage from './components/CommandCenterPage'
+import FieldPage from './components/FieldPage'
 import ImportPage from './components/ImportPage'
 import SettingsPage from './components/SettingsPage'
 import RulesPage from './components/RulesPage'
@@ -88,7 +89,7 @@ export default function App() {
       {effectivePage === 'cco_ruptures'     && <OperationsPage profile={profile} initialTab="inventory" />}
       {effectivePage === 'plan_week'        && <PlanningPage />}
       {effectivePage === 'plan_predispatch' && <PreDispatchPage />}
-      {effectivePage === 'plan_field'       && <ComingSoon title="Field" />}
+      {effectivePage === 'plan_field'       && <FieldPage by={(profile as any).full_name || profile.email || 'Admin'} />}
       {effectivePage === 'tars_rules'       && <RulesPage />}
       {effectivePage === 'system_settings' && <SettingsPage />}
       {effectivePage === 'tars_squads'      && <SquadsPage />}
