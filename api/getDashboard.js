@@ -368,7 +368,7 @@ async function handleShifts(req, res, action) {
       const sd = await sr.json();
       for (const r of (sd.records || [])) {
         const v = Number(r.fields?.['Cost/Hour']);
-        staff[r.id] = { id: r.id, name: r.fields?.Name || '', initials: r.fields?.Initials || '', role: String(r.fields?.Role || ''), rate: Number.isFinite(v) && v > 0 ? v : null };
+        staff[r.id] = { id: r.id, name: r.fields?.Name || '', initials: r.fields?.Initials || '', role: String(r.fields?.Role || ''), rate: Number.isFinite(v) && v > 0 ? v : 0 };
       }
       const formula = encodeURIComponent(`IS_SAME({Fecha},'${date}','day')`);
       let records = [], off = null;
@@ -383,6 +383,43 @@ async function handleShifts(req, res, action) {
           start: r.fields['Inicio'] || null, end: r.fields['Fin'] || null, closed: !!r.fields['Cerrado'], registeredBy: r.fields['Registrado por'] || '', notes: r.fields['Notas'] || '' };
       }).sort((a, b) => String(a.start).localeCompare(String(b.start)));
       return res.status(200).json({ date, shifts, staff: Object.values(staff).sort((a, b) => a.name.localeCompare(b.name)) });
+    }
+
+    if (action === 'laborRange') {
+      const { from, to } = req.query;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(to || '') || from > to) return res.status(400).json({ error: 'rango invalido' });
+      const rates = {}, cleaners = {};
+      let sr = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblgHwN1wX6u3ZtNY?fields[]=Name&fields[]=Role&fields[]=${encodeURIComponent('Cost/Hour')}`, { headers: H });
+      if (!sr.ok) sr = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblgHwN1wX6u3ZtNY?fields[]=Name&fields[]=Role`, { headers: H });
+      const sd = await sr.json();
+      for (const r of (sd.records || [])) {
+        const v = Number(r.fields?.['Cost/Hour']);
+        rates[r.id] = Number.isFinite(v) && v > 0 ? v : 0;
+        if (String(r.fields?.Role || '').toLowerCase().includes('cleaner')) cleaners[r.id] = r.fields?.Name || '';
+      }
+      const dayShift = (d, n) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+      const formula = encodeURIComponent(`AND(IS_AFTER({Fecha},'${dayShift(from, -1)}'),IS_BEFORE({Fecha},'${dayShift(to, 1)}'))`);
+      let records = [], off = null;
+      do {
+        const r = await fetch(`${TURNOS_URL}?pageSize=100&filterByFormula=${formula}${off ? `&offset=${off}` : ''}`, { headers: H });
+        if (!r.ok) throw new Error(`Airtable ${r.status}: ${(await r.text()).slice(0, 200)}`);
+        const d = await r.json(); records = records.concat(d.records || []); off = d.offset || null;
+      } while (off);
+      const days = {};
+      let openPast = 0;
+      const todayET = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+      for (const r of records) {
+        const day = String(r.fields['Fecha'] || '').slice(0, 10);
+        const sid = Array.isArray(r.fields['Persona']) ? r.fields['Persona'][0] : null;
+        if (!day || day < from || day > to || !sid || !(sid in cleaners) || !r.fields['Inicio']) continue;
+        const st = Date.parse(r.fields['Inicio']);
+        let en = r.fields['Fin'] ? Date.parse(r.fields['Fin']) : NaN;
+        if (isNaN(en)) { if (day === todayET) en = Date.now(); else { openPast++; en = st; } }
+        const hrs = Math.max(0, en - st) / 3600000;
+        const d = days[day] || (days[day] = { date: day, hours: 0, cost: 0, people: 0, open: 0 });
+        d.hours += hrs; d.cost += hrs * (rates[sid] || 0); d.people += 1; if (!r.fields['Fin']) d.open += 1;
+      }
+      return res.status(200).json({ from, to, days: Object.values(days).sort((a, b) => a.date.localeCompare(b.date)), openPast });
     }
 
     if (req.method !== 'POST') return res.status(405).json({ error: 'Metodo no permitido' });
@@ -429,7 +466,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { action } = req.query;
-  if (action === 'shiftsDay' || action === 'shiftSave' || action === 'shiftAdd') return handleShifts(req, res, action);
+  if (action === 'shiftsDay' || action === 'shiftSave' || action === 'shiftAdd' || action === 'laborRange') return handleShifts(req, res, action);
   
   // Router para diferentes acciones
   if (action === 'executive') {
@@ -447,7 +484,10 @@ export default async function handler(req, res) {
     let allRecords = [];
     let offset = null;
     do {
-      const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblabOdNknnjrYUU1?pageSize=100&sort[0][field]=Scheduled%20Time&sort[0][direction]=asc${offset ? `&offset=${offset}` : ''}`;
+      // Solo ±2 días alrededor de la fecha pedida (antes se leía TODA la tabla en cada carga → lento). El filtro exacto sigue abajo.
+      const dayShift = (n) => { const x = new Date(effectiveDate + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+      const nearFormula = encodeURIComponent(`AND(IS_AFTER({Date},'${dayShift(-2)}'),IS_BEFORE({Date},'${dayShift(2)}'))`);
+      const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblabOdNknnjrYUU1?pageSize=100&filterByFormula=${nearFormula}&sort[0][field]=Scheduled%20Time&sort[0][direction]=asc${offset ? `&offset=${offset}` : ''}`;
       const airtableRes = await fetch(url, {
         headers: { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` }
       });
@@ -503,7 +543,7 @@ export default async function handler(req, res) {
           const sid = Array.isArray(r.fields['Persona']) ? r.fields['Persona'][0] : null;
           if (!sid || !r.fields['Inicio']) continue;
           if (!(staffMap[sid]?.role || '').toLowerCase().includes('cleaner')) continue;
-          shifts.push({ staffId: sid, name: staffMap[sid]?.name || '', start: r.fields['Inicio'], end: r.fields['Fin'] || null, closed: !!r.fields['Cerrado'], rate: costMap[sid] ?? null });
+          shifts.push({ staffId: sid, name: staffMap[sid]?.name || '', start: r.fields['Inicio'], end: r.fields['Fin'] || null, closed: !!r.fields['Cerrado'], rate: costMap[sid] ?? 0 });
         }
         off = sd.offset || null;
       } while (off);
@@ -623,7 +663,7 @@ export default async function handler(req, res) {
         rating: ratingVal,
         labor,
         staffList,
-        laborStaff: staffIds.filter(id => (staffMap[id]?.role || '').toLowerCase().includes('cleaner')).map(id => ({ id, name: staffMap[id]?.name || '', rate: costMap[id] ?? null })),
+        laborStaff: staffIds.filter(id => (staffMap[id]?.role || '').toLowerCase().includes('cleaner')).map(id => ({ id, name: staffMap[id]?.name || '', rate: costMap[id] ?? 0 })),
         staffListText,
         googleMapsUrl,
         thumbnail,
