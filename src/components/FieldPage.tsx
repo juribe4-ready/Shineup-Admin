@@ -31,16 +31,21 @@ export default function FieldPage({ by }: { by: string }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(t) }, [])
 
+  const loadShifts = useCallback(async () => {
+    const a = await fetch(`/api/getDashboard?action=shiftsDay&date=${date}`)
+    const ja = await a.json().catch(() => ({}))
+    if (!a.ok) throw new Error(ja.error || `Error ${a.status}`)
+    setShifts(ja.shifts || []); setStaff(ja.staff || [])
+  }, [date])
   const load = useCallback(async () => {
     setLoading(true); setErr('')
     try {
-      const [a, b] = await Promise.all([fetch(`/api/getDashboard?action=shiftsDay&date=${date}`), fetch(`/api/getDashboard?date=${date}`)])
-      const ja = await a.json().catch(() => ({}))
-      if (!a.ok) throw new Error(ja.error || `Error ${a.status}`)
-      setShifts(ja.shifts || []); setStaff(ja.staff || [])
-      if (b.ok) { const jb = await b.json(); setCleanings(jb.cleanings || []) } else setCleanings([])
+      const cl = fetch(`/api/getDashboard?date=${date}`).then(async b => { if (b.ok) { const jb = await b.json(); setCleanings(jb.cleanings || []) } else setCleanings([]) }).catch(() => setCleanings([]))
+      await loadShifts()
+      setLoading(false)   // turnos listos: no esperamos las limpiezas (solo afinan el reparto limpiando/traslado)
+      await cl
     } catch (e: any) { setErr(e.message || 'No se pudo cargar') } finally { setLoading(false) }
-  }, [date])
+  }, [date, loadShifts])
   useEffect(() => { load() }, [load])
 
   const isToday = date === todayET()
@@ -53,13 +58,12 @@ export default function FieldPage({ by }: { by: string }) {
     const iv = cleanings.filter(c => c.startTime && (c.laborStaff || []).some(p => p.id === s.staffId)).map(c => ({ s: new Date(c.startTime as string).getTime(), e: c.endTime ? new Date(c.endTime).getTime() : ref }))
     const sp = splitShift(startMs, endMs, iv)
     const counts = isCleaner(s.role)
-    const cost = counts && s.rate != null ? (s.rate * sp.total) / 3600000 : null
+    const cost = counts ? ((s.rate || 0) * sp.total) / 3600000 : null
     return { s, sp, counts, cost, open: !s.end }
   }), [shifts, cleanings, ref, endOfDay])
 
   const tot = rows.filter(r => r.counts).reduce((t, r) => ({ total: t.total + r.sp.total, clean: t.clean + r.sp.clean, travel: t.travel + r.sp.travel, dead: t.dead + r.sp.dead, cost: t.cost + (r.cost || 0) }), { total: 0, clean: 0, travel: 0, dead: 0, cost: 0 })
-  const noRate = rows.filter(r => r.counts && r.s.rate == null).map(r => r.s.name)
-
+  
   async function post(action: string, body: any) {
     const r = await fetch(`/api/getDashboard?action=${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, by }) })
     const j = await r.json().catch(() => ({}))
@@ -101,23 +105,23 @@ export default function FieldPage({ by }: { by: string }) {
                   <div style={{ ...grid, fontSize: 13, borderTop: '1px solid #F1F5F9', padding: '7px 0', opacity: r.counts ? 1 : 0.6 }}>
                     <span style={{ minWidth: 0 }}>
                       <b style={{ color: C.ink }}>{r.s.name}</b> {r.s.closed ? '🔒' : <span style={{ color: C.green, fontSize: 11 }}>⏱ en turno</span>}
-                      <span style={{ display: 'block', fontSize: 10, color: C.muted }}>{r.s.role || 'sin rol'}{!r.counts ? ' · no cuenta en costos' : r.s.rate == null ? ' · sin Cost/Hour' : ` · ${money(r.s.rate)}/h`}</span>
+                      <span style={{ display: 'block', fontSize: 10, color: C.muted }}>{r.s.role || 'sin rol'}{!r.counts ? ' · no cuenta en costos' : ` · ${money(r.s.rate || 0)}/h`}</span>
                     </span>
                     <span style={r_}>{fmtT(r.s.start)}</span><span style={r_}>{r.s.end ? fmtT(r.s.end) : '—'}</span>
                     <span style={{ ...r_, fontWeight: 600 }}>{fmtH(r.sp.total)}</span><span style={r_}>{fmtH(r.sp.clean)}</span><span style={r_}>{fmtH(r.sp.travel)}</span><span style={r_}>{fmtH(r.sp.dead)}</span>
                     <span style={{ ...r_, fontWeight: 600 }}>{r.cost == null ? '—' : money(r.cost)}</span>
                     <span style={r_}><button style={btn('#fff', C.primary, C.border)} onClick={() => setEdit(edit === r.s.id ? null : r.s.id)}>{edit === r.s.id ? 'Cerrar' : 'Editar'}</button></span>
                   </div>
-                  {edit === r.s.id && <EditRow s={r.s} date={date} onSave={async (start, end, closed) => { try { await post('shiftSave', { id: r.s.id, start, end, closed, notes: r.s.notes }); setEdit(null); await load() } catch (e: any) { setErr(e.message) } }} />}
+                  {edit === r.s.id && <EditRow s={r.s} date={date} onSave={async (start, end, closed) => { try { setEdit(null); setShifts(prev => prev.map(x => x.id === r.s.id ? { ...x, start, end, closed: !!closed && !!end } : x)); await post('shiftSave', { id: r.s.id, start, end, closed, notes: r.s.notes }); loadShifts().catch(() => {}) } catch (e: any) { setErr(e.message); loadShifts().catch(() => {}) } }} />}
                 </div>
               ))}
             </div>
           </div>
         )}
-        <p style={{ fontSize: 10, color: C.muted, marginTop: 8 }}>Costo = Cost/Hour × horas de turno (solo cleaners). Traslado = hueco entre limpiezas hasta {TRAVEL_CAP_MIN} min; lo que exceda es tiempo muerto.{noRate.length ? ` Sin Cost/Hour: ${noRate.join(', ')}.` : ''}</p>
+        <p style={{ fontSize: 10, color: C.muted, marginTop: 8 }}>Costo = Cost/Hour × horas de turno (solo cleaners). Traslado = hueco entre limpiezas hasta {TRAVEL_CAP_MIN} min; lo que exceda es tiempo muerto.</p>
       </div>
 
-      <AddShift date={date} staff={staff.filter(s => isCleaner(s.role) && !shifts.some(x => x.staffId === s.id))} onAdd={async (staffId, name, start, end) => { try { await post('shiftAdd', { date, staffId, label: name.split(' ')[0], start, end }); await load() } catch (e: any) { setErr(e.message) } }} />
+      <AddShift date={date} staff={staff.filter(s => isCleaner(s.role) && !shifts.some(x => x.staffId === s.id))} onAdd={async (staffId, name, start, end) => { try { await post('shiftAdd', { date, staffId, label: name.split(' ')[0], start, end }); await loadShifts() } catch (e: any) { setErr(e.message) } }} />
     </div>
   )
 }
