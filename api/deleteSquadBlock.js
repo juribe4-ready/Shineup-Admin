@@ -36,6 +36,14 @@ async function parseBody(req) {
   })
 }
 
+// Offset de Columbus (America/New_York) PARA ESA FECHA: -04:00 en verano (EDT), -05:00 en invierno (EST).
+// Antes estaba fijo en -04:00 y al cambiar la hora todas las limpiezas se corrían 1 hora antes.
+function etOff(dateStr) {
+  const d = new Date(String(dateStr).slice(0, 10) + 'T12:00:00Z')
+  const h = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false }).format(d)) % 24
+  return (h - 12) === -5 ? '-05:00' : '-04:00'
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
@@ -109,7 +117,7 @@ export default async function handler(req, res) {
             if (propRes.ok) {
               const propData = await propRes.json()
               const defaultTime = propData.fields?.['Default Start Time']
-              if (defaultTime) resetTime = `${date}T${defaultTime}:00.000-04:00`
+              if (defaultTime) resetTime = `${date}T${defaultTime}:00.000${etOff(date)}`
             }
           }
 
@@ -125,7 +133,7 @@ export default async function handler(req, res) {
                   // Format in Eastern time, apply to the new date (in case date changed)
                   const t = new Date(apptTime)
                   const hhmm = t.toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })
-                  resetTime = `${date}T${hhmm}:00.000-04:00`
+                  resetTime = `${date}T${hhmm}:00.000${etOff(date)}`
                 }
               }
             }

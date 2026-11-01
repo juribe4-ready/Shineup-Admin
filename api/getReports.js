@@ -218,6 +218,14 @@ async function getBilling(headers, query) {
 }
 
 
+// Offset de Columbus (America/New_York) PARA ESA FECHA: -04:00 en verano (EDT), -05:00 en invierno (EST).
+// Antes estaba fijo en -04:00 y al cambiar la hora todas las limpiezas se corrían 1 hora antes.
+function etOff(dateStr) {
+  const d = new Date(String(dateStr).slice(0, 10) + 'T12:00:00Z')
+  const h = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false }).format(d)) % 24
+  return (h - 12) === -5 ? '-05:00' : '-04:00'
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
@@ -379,8 +387,8 @@ async function createTurnoAppointments(headers, body) {
       // Use property's Default Start Time if available; otherwise default to 10:00 ET (14:00 UTC)
       const defaultTime = propDefaultTimes[p.propertyId]
       const timeUTC = defaultTime
-        ? `${date}T${defaultTime}:00.000-04:00`  // HH:MM from Properties → Eastern time
-        : `${date}T14:00:00.000Z`                 // fallback: 10:00 ET
+        ? `${date}T${defaultTime}:00.000${etOff(date)}`  // HH:MM from Properties → Eastern time
+        : `${date}T10:00:00.000${etOff(date)}`   // fallback: 10:00 ET
       const fields = {
         'Requested Date & Time': timeUTC,
         'Status': 'Confirmed',
@@ -516,7 +524,7 @@ async function resequenceSquadDay(headers, body) {
         if (propRes.ok) {
           const propData = await propRes.json()
           const defaultTime = propData.fields?.['Default Start Time']
-          if (defaultTime) return new Date(`${date}T${defaultTime}:00.000-04:00`)
+          if (defaultTime) return new Date(`${date}T${defaultTime}:00.000${etOff(date)}`)
         }
       }
       const apptId = Array.isArray(cf.Appointment) ? cf.Appointment[0] : (cf.Appointment || null)
@@ -528,7 +536,7 @@ async function resequenceSquadDay(headers, body) {
           if (apptTime) {
             const t = new Date(apptTime)
             const hhmm = t.toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })
-            return new Date(`${date}T${hhmm}:00.000-04:00`)
+            return new Date(`${date}T${hhmm}:00.000${etOff(date)}`)
           }
         }
       }
@@ -556,7 +564,7 @@ async function resequenceSquadDay(headers, body) {
     // Fallback to squadStartHour only if truly no Property/Appointment original time exists
     if (!anchor) {
       const anchorHour = typeof squadStartHour === 'number' ? squadStartHour : 8
-      anchor = new Date(`${date}T${String(anchorHour).padStart(2, '0')}:00:00.000-04:00`)
+      anchor = new Date(`${date}T${String(anchorHour).padStart(2, '0')}:00:00.000${etOff(date)}`)
     }
 
     const sequenced = sequenceJobs(jobs, anchor, cfg)
