@@ -12,6 +12,19 @@ function etOff(dateStr) {
   return (h - 12) === -5 ? '-05:00' : '-04:00'
 }
 
+// Airtable devuelve máximo 100 registros por petición: hay que seguir el "offset" o las propiedades
+// que quedan después de la 100 salían sin hora ni precio por defecto.
+async function fetchAllProps(query, token) {
+  let all = [], offset = null
+  do {
+    const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tbl1iETmcFP460oWN?${query}&pageSize=100${offset ? `&offset=${offset}` : ''}`, { headers: { Authorization: `Bearer ${token}` } })
+    const d = await r.json()
+    if (!r.ok) throw new Error(d?.error?.message || `Airtable ${r.status}`)
+    all = all.concat(d.records || []); offset = d.offset || null
+  } while (offset)
+  return { records: all }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
@@ -162,11 +175,7 @@ async function handleGetWeekSummary(req, res) {
     const data = { records: allRecords }
 
     // Fetch properties to get Labor
-    const propsRes = await fetch(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE}/tbl1iETmcFP460oWN?fields[]=Name&fields[]=Labor`,
-      { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
-    )
-    const propsData = await propsRes.json()
+    const propsData = await fetchAllProps('fields[]=Name&fields[]=Labor', AIRTABLE_TOKEN)
     const propsMap = {}
     for (const p of (propsData.records || [])) {
       propsMap[p.id] = {
@@ -330,11 +339,7 @@ async function handleLaunchWeek(req, res) {
     // Fetch properties for Labor, Default Start Time, Price, Default Cleaning Type, Usage
     const propsFieldsParam = ['Name', 'Labor', 'Default Start Time', 'Default End Time', 'Price', 'Default Cleaning Type', 'Usage']
       .map(f => `fields[]=${encodeURIComponent(f)}`).join('&')
-    const propsRes = await fetch(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE}/tbl1iETmcFP460oWN?${propsFieldsParam}`,
-      { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
-    )
-    const propsData = await propsRes.json()
+    const propsData = await fetchAllProps(propsFieldsParam, AIRTABLE_TOKEN)
     const propsMap = {}
     for (const p of (propsData.records || [])) {
       propsMap[p.id] = { 

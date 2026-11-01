@@ -18,8 +18,13 @@ async function buildMaps(headers) {
     if (sr.ok) { const sd = await sr.json(); for (const s of (sd.records||[])) staffMap[s.id] = s.fields?.Name || s.fields?.Initials || '?' }
   } catch {}
   try {
-    const pr = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${PROPS_TABLE}?fields[]=Name`, { headers })
-    if (pr.ok) { const pd = await pr.json(); for (const p of (pd.records||[])) propMap[p.id] = p.fields?.Name || '?' }
+    let off = null
+    do {
+      const pr = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${PROPS_TABLE}?fields[]=Name&pageSize=100${off ? `&offset=${off}` : ''}`, { headers })
+      if (!pr.ok) break
+      const pd = await pr.json(); for (const p of (pd.records||[])) propMap[p.id] = p.fields?.Name || '?'
+      off = pd.offset || null
+    } while (off)
   } catch {}
   return { staffMap, propMap }
 }
