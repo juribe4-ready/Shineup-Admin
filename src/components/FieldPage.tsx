@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { splitShift, fmtH, TRAVEL_CAP_MIN } from './splitTime'
+import WeekPayPage from './WeekPayPage'
 
 const C = { primary: '#6366F1', ink: '#0F172A', slate: '#475569', muted: '#94A3B8', border: '#E2E8F0', white: '#FFFFFF', green: '#059669', red: '#DC2626', amber: '#B45309' }
 const card: React.CSSProperties = { background: C.white, border: `1px solid ${C.border}`, borderRadius: 12, padding: '12px 16px' }
@@ -29,6 +30,7 @@ export default function FieldPage({ by }: { by: string }) {
   const [err, setErr] = useState('')
   const [edit, setEdit] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now())
+  const [view, setView] = useState<'day' | 'week'>('day')
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(t) }, [])
 
   const loadShifts = useCallback(async () => {
@@ -72,6 +74,11 @@ export default function FieldPage({ by }: { by: string }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button style={view === 'day' ? btn(C.primary) : btn('#fff', C.slate, C.border)} onClick={() => setView('day')}>Día</button>
+        <button style={view === 'week' ? btn(C.primary) : btn('#fff', C.slate, C.border)} onClick={() => setView('week')}>Semana · pagos</button>
+      </div>
+      {view === 'week' ? <WeekPayPage by={by} /> : <>
       <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <button style={btn('#fff', C.slate, C.border)} onClick={() => setDate(shiftDay(date, -1))}>‹</button>
         <input type="date" value={date} onChange={e => e.target.value && setDate(e.target.value)} style={inp} />
@@ -122,6 +129,7 @@ export default function FieldPage({ by }: { by: string }) {
       </div>
 
       <AddShift date={date} staff={staff.filter(s => isCleaner(s.role) && !shifts.some(x => x.staffId === s.id))} onAdd={async (staffId, name, start, end) => { try { await post('shiftAdd', { date, staffId, label: name.split(' ')[0], start, end }); await loadShifts() } catch (e: any) { setErr(e.message) } }} />
+      </>}
     </div>
   )
 }
