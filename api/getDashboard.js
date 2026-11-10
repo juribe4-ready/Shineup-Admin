@@ -385,6 +385,32 @@ async function handleShifts(req, res, action) {
       return res.status(200).json({ date, shifts, staff: Object.values(staff).sort((a, b) => a.name.localeCompare(b.name)) });
     }
 
+    if (action === 'shiftsRange') {
+      // Semana de pagos: todos los turnos del rango con tarifa (solo lectura)
+      const { from, to } = req.query;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(to || '') || from > to) return res.status(400).json({ error: 'rango invalido' });
+      const staff = {};
+      let sr = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblgHwN1wX6u3ZtNY?fields[]=Name&fields[]=Role&fields[]=${encodeURIComponent('Cost/Hour')}`, { headers: H });
+      if (!sr.ok) sr = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblgHwN1wX6u3ZtNY?fields[]=Name&fields[]=Role`, { headers: H });
+      const sd = await sr.json();
+      for (const r of (sd.records || [])) { const v = Number(r.fields?.['Cost/Hour']); staff[r.id] = { name: r.fields?.Name || '', role: String(r.fields?.Role || ''), rate: Number.isFinite(v) && v > 0 ? v : 0 }; }
+      const dayShift = (d, n) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+      const formula = encodeURIComponent(`AND(IS_AFTER({Fecha},'${dayShift(from, -1)}'),IS_BEFORE({Fecha},'${dayShift(to, 1)}'))`);
+      let records = [], off = null;
+      do {
+        const r = await fetch(`${TURNOS_URL}?pageSize=100&filterByFormula=${formula}${off ? `&offset=${off}` : ''}`, { headers: H });
+        if (!r.ok) throw new Error(`Airtable ${r.status}: ${(await r.text()).slice(0, 200)}`);
+        const d = await r.json(); records = records.concat(d.records || []); off = d.offset || null;
+      } while (off);
+      const shifts = records.map(r => {
+        const sid = Array.isArray(r.fields['Persona']) ? r.fields['Persona'][0] : null;
+        const day = String(r.fields['Fecha'] || '').slice(0, 10);
+        return { id: r.id, staffId: sid, name: staff[sid]?.name || r.fields['Turno'] || '?', role: staff[sid]?.role || '', rate: staff[sid]?.rate ?? null, date: day,
+          start: r.fields['Inicio'] || null, end: r.fields['Fin'] || null, closed: !!r.fields['Cerrado'], notes: r.fields['Notas'] || '' };
+      }).filter(x => x.date >= from && x.date <= to && x.start).sort((a, b) => a.date.localeCompare(b.date) || String(a.start).localeCompare(String(b.start)));
+      return res.status(200).json({ from, to, shifts });
+    }
+
     if (action === 'laborRange') {
       const { from, to } = req.query;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(to || '') || from > to) return res.status(400).json({ error: 'rango invalido' });
@@ -466,7 +492,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { action } = req.query;
-  if (action === 'shiftsDay' || action === 'shiftSave' || action === 'shiftAdd' || action === 'laborRange') return handleShifts(req, res, action);
+  if (action === 'shiftsDay' || action === 'shiftSave' || action === 'shiftAdd' || action === 'laborRange' || action === 'shiftsRange') return handleShifts(req, res, action);
   
   // Router para diferentes acciones
   if (action === 'executive') {
