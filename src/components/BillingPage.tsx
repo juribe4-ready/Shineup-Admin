@@ -84,6 +84,15 @@ export default function BillingPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [applying, setApplying] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  // Facturar la semana: carga la semana elegida, deja solo "Sin cobrar" y las deja seleccionadas para confirmar con la barra de acción
+  const wkMon = (d: Date) => { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x }
+  const wkIso = (d: Date) => d.toLocaleDateString('en-CA')
+  const [billWeek, setBillWeek] = useState(() => { const m = wkMon(new Date()); m.setDate(m.getDate() - 7); return wkIso(m) })
+  const [pendingWeekSelect, setPendingWeekSelect] = useState(false)
+  const billWeekEnd = (() => { const x = new Date(billWeek + 'T12:00:00'); x.setDate(x.getDate() + 6); return wkIso(x) })()
+  const shiftBillWeek = (n: number) => setBillWeek(w => { const x = new Date(w + 'T12:00:00'); x.setDate(x.getDate() + 7 * n); return wkIso(x) })
+  const fmtD = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+  const startWeekBilling = () => { setDateFrom(billWeek); setDateTo(billWeekEnd); setQuickRange('custom'); setPropFilter('all'); setClientFilter('all'); setSourceFilter('all'); setStatusFilter('unpaid'); setSelected(new Set()); setPendingWeekSelect(true) }
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
@@ -164,6 +173,12 @@ export default function BillingPage() {
 
   // ---- Selección ----
   const selectableIds = filtered.filter(c => c.hasPrice).map(c => c.id) // solo tiene sentido marcar las que ya tienen precio
+  useEffect(() => {
+    if (pendingWeekSelect && !loading && dateFrom === billWeek && dateTo === billWeekEnd) {
+      setSelected(new Set(cleanings.filter(c => c.hasPrice && c.status === 'Done' && c.paymentStatus === 'unpaid').map(c => c.id)))
+      setPendingWeekSelect(false)
+    }
+  }, [pendingWeekSelect, loading, cleanings, dateFrom, dateTo, billWeek, billWeekEnd])
   const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id))
   const toggleAll = () => {
     setSelected(allSelected ? new Set() : new Set(selectableIds))
@@ -298,6 +313,15 @@ export default function BillingPage() {
           ))}
         </div>
       )}
+
+      {/* Facturar la semana */}
+      <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', marginBottom:12, padding:'10px 14px', background:C.white, border:`1px solid ${C.border}`, borderRadius:12 }}>
+        <button onClick={startWeekBilling} style={{ height:36, padding:'0 14px', borderRadius:9, border:'none', background:C.primary, color:'white', fontWeight:700, fontSize:12, cursor:'pointer' }}>Facturar la semana</button>
+        <button onClick={()=>shiftBillWeek(-1)} style={{ ...sel(false), height:32 }}>‹</button>
+        <span style={{ fontSize:12, fontWeight:700, color:C.ink }}>{fmtD(billWeek)} – {fmtD(billWeekEnd)}</span>
+        <button onClick={()=>shiftBillWeek(1)} style={{ ...sel(false), height:32 }}>›</button>
+        <span style={{ fontSize:11, color:C.muted }}>Carga esa semana, deja las terminadas sin cobrar ya seleccionadas y tú confirmas con “Marcar Facturado”.</span>
+      </div>
 
       {/* Status filter pills */}
       <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' }}>

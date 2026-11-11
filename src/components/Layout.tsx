@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Profile } from '../supabase'
 import {
-  Target, Radio, TrendingUp, BarChart3, Activity, CalendarDays, ListChecks, HardHat,
+  Target, Radio, TrendingUp, BarChart3, Calendar, CalendarDays, ListChecks, HardHat,
   AlertTriangle, Package, Users, Upload, Settings, SlidersHorizontal, Layers, CalendarClock,
   DollarSign, LogOut,
 } from 'lucide-react'
@@ -23,8 +23,8 @@ export type PageKey =
   | 'cco_monitoring'
   | 'scorecard'
   | 'earn_stats'
-  | 'earn_cascade'
   | 'plan_week'
+  | 'plan_calendar'
   | 'plan_predispatch'
   | 'plan_field'
   | 'cco_incidents'
@@ -49,10 +49,10 @@ const GROUPS: NavGroup[] = [
   { key: 'data', label: 'Data', world: 'os', Icon: BarChart3, items: [
     { key: 'scorecard', label: 'Scorecard', Icon: TrendingUp },
     { key: 'earn_stats', label: 'Stats', Icon: BarChart3 },
-    { key: 'earn_cascade', label: 'Weekly Cascade', Icon: Activity },
   ] },
   { key: 'process', label: 'Process', world: 'os', Icon: ListChecks, items: [
     { key: 'plan_week', label: 'Week Launch', Icon: CalendarDays },
+    { key: 'plan_calendar', label: 'Calendar', Icon: Calendar },
     { key: 'plan_predispatch', label: 'Pre-dispatch', Icon: ListChecks },
     { key: 'plan_field', label: 'Field', Icon: HardHat },
     { key: 'cco_incidents', label: 'Incidents', Icon: AlertTriangle },
@@ -71,8 +71,8 @@ const GROUPS: NavGroup[] = [
 
 const PAGE_TITLES: Record<PageKey, string> = {
   home: 'Command Center', command: 'Command Center', cco_monitoring: 'Monitoring',
-  scorecard: 'Scorecard', earn_stats: 'Stats', earn_cascade: 'Weekly Cascade',
-  plan_week: 'Week Launch', plan_predispatch: 'Pre-dispatch', plan_field: 'Field',
+  scorecard: 'Scorecard', earn_stats: 'Stats',
+  plan_week: 'Week Launch', plan_calendar: 'Calendar', plan_predispatch: 'Pre-dispatch', plan_field: 'Field',
   cco_incidents: 'Incidents', cco_ruptures: 'Ruptures',
   users: 'Users', import: 'Import', system_settings: 'Settings',
   tars_rules: 'Rules', tars_squads: 'Squads', tars_blocks: 'Squad Blocks', earn_billing: 'Billing',
@@ -80,8 +80,8 @@ const PAGE_TITLES: Record<PageKey, string> = {
 
 const PAGE_SUBTITLES: Record<PageKey, string> = {
   home: 'Today & this week', command: 'Today & this week at a glance', cco_monitoring: 'Live cleanings map & status',
-  scorecard: 'Trends, the week and the day', earn_stats: 'Productivity & performance stats', earn_cascade: 'Plan vs real, weekly cost cascade',
-  plan_week: 'Launch the week & assign squads', plan_predispatch: 'Staff, equipment & warnings — night before', plan_field: 'Team hours: cleaning, travel & idle',
+  scorecard: 'Weekly numbers vs targets', earn_stats: 'Productivity, clients & houses',
+  plan_week: 'Launch the week & assign squads', plan_calendar: 'Week at a glance — squads & load per day', plan_predispatch: 'Staff, equipment & warnings — night before', plan_field: 'Team hours: cleaning, travel & idle',
   cco_incidents: 'Reported issues', cco_ruptures: 'Inventory breaks',
   users: 'User management', import: 'Turno · Guesty · Hospitable', system_settings: 'Company info & general preferences',
   tars_rules: 'Prime time, STR-only days, ESD calibration', tars_squads: 'Team roster, hours & capacity', tars_blocks: 'Structural capacity calendar',

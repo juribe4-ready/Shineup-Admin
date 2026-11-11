@@ -1,5 +1,6 @@
 import { Profile } from '../supabase'
 import DashboardPage from './DashboardPage'
+import SquadTimeline from './SquadTimeline'
 import IncidentsPage from './IncidentsPage'
 import InventoryPage from './InventoryPage'
 import { Radio, AlertTriangle, Package } from 'lucide-react'
@@ -241,6 +242,7 @@ export default function OperationsPage({ profile, initialTab = 'live' }: Props) 
         }
       `}</style>
 
+      {activeTab === 'live'      && <SquadTimeline date={date} />}
       {activeTab === 'live'      && <DashboardPage profile={profile} externalDate={date} />}
       {activeTab === 'incidents' && <IncidentsPage />}
       {activeTab === 'inventory' && <InventoryPage />}

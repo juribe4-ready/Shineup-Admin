@@ -859,6 +859,15 @@ export default function StatsPage() {
         </div>
       </div>
 
+      {/* Índice rápido: salta a cada sección */}
+      <div className="flex gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none' as any }}>
+        {[['st-resumen','Resumen'],['st-operacion','Operación'],['st-graficas','Gráficas'],['st-casas','Casas'],['st-labor','Labor']].map(([id,t]) => (
+          <button key={id} onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className="px-3 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap" style={{ background: C.white, border: `1.5px solid ${C.border}`, color: C.slate }}>{t}</button>
+        ))}
+      </div>
+
+      <div id="st-resumen" />
       {/* Executive Dashboard */}
       {executiveDashboard && (
         <div className="rounded-2xl overflow-hidden" style={{ background: `linear-gradient(135deg, ${C.ink}05, ${C.primary}08)`, border: `2px solid ${C.primary}30` }}>
@@ -1011,6 +1020,7 @@ export default function StatsPage() {
         </div>
       )}
 
+      <div id="st-operacion" />
       {/* Row 1: Completadas, Duración Total, Retrasos, Incidentes, Rupturas */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         <KpiCard icon={<TrendingUp className="w-3.5 h-3.5" />} label="Completadas" value={`${filteredMetrics.done}`} subtitle={`de ${filteredMetrics.total}`} color={C.green} />
@@ -1124,6 +1134,7 @@ export default function StatsPage() {
         </div>
       </div>
 
+      <div id="st-graficas" />
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Daily Chart */}
@@ -1203,6 +1214,7 @@ export default function StatsPage() {
         <WaterfallChart data={waterfallData} lateStats={{ lateRate: filteredMetrics.lateRate, lateHours }} />
       </div>
 
+      <div id="st-casas" />
       {/* Properties Table */}
       <div className="rounded-2xl overflow-hidden" style={{ background: C.white, border: `1px solid ${C.border}` }}>
         <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: `1px solid ${C.border}` }}>
@@ -1239,6 +1251,7 @@ export default function StatsPage() {
         </div>
       </div>
 
+      <div id="st-labor" />
       {/* Labor Analysis Section */}
       <div className="rounded-2xl overflow-hidden" style={{ background: `linear-gradient(135deg, ${C.purple}08, ${C.primary}08)`, border: `1px solid ${C.border}` }}>
         <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: `1px solid ${C.border}` }}>
