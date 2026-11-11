@@ -7,6 +7,8 @@ import UsersPage from './components/UsersPage'
 import OperationsPage from './components/OperationsPage'
 import AnalysisPage from './components/AnalysisPage'
 import CommandCenterPage from './components/CommandCenterPage'
+import ScorecardPage from './components/ScorecardPage'
+import CalendarPage from './components/CalendarPage'
 import FieldPage from './components/FieldPage'
 import ImportPage from './components/ImportPage'
 import SettingsPage from './components/SettingsPage'
@@ -83,32 +85,23 @@ export default function App() {
 
   return (
     <Layout profile={profile} page={effectivePage} onNavigate={handleNavigate} onSignOut={handleSignOut}>
-      {effectivePage === 'scorecard'        && <ComingSoon title="Scorecard" />}
+      {effectivePage === 'scorecard'        && <ScorecardPage />}
       {effectivePage === 'cco_monitoring'   && <OperationsPage profile={profile} initialTab="live" />}
       {effectivePage === 'cco_incidents'    && <OperationsPage profile={profile} initialTab="incidents" />}
       {effectivePage === 'cco_ruptures'     && <OperationsPage profile={profile} initialTab="inventory" />}
       {effectivePage === 'plan_week'        && <PlanningPage />}
+      {effectivePage === 'plan_calendar'    && <CalendarPage />}
       {effectivePage === 'plan_predispatch' && <PreDispatchPage />}
       {effectivePage === 'plan_field'       && <FieldPage by={(profile as any).full_name || profile.email || 'Admin'} />}
       {effectivePage === 'tars_rules'       && <RulesPage />}
       {effectivePage === 'system_settings' && <SettingsPage />}
       {effectivePage === 'tars_squads'      && <SquadsPage />}
       {effectivePage === 'tars_blocks'      && <SquadBlocksPage />}
-      {effectivePage === 'earn_cascade'     && <AnalysisPage initialTab="cascade" />}
       {effectivePage === 'earn_stats'       && <AnalysisPage initialTab="stats" />}
       {effectivePage === 'earn_billing'     && <AnalysisPage initialTab="billing" />}
-      {(effectivePage === 'command' || effectivePage === 'home') && <CommandCenterPage />}
+      {(effectivePage === 'command' || effectivePage === 'home') && <CommandCenterPage onNavigate={handleNavigate} />}
       {effectivePage === 'users'            && <UsersPage profile={profile} onSignOut={handleSignOut} />}
       {effectivePage === 'import'           && <ImportPage />}
     </Layout>
-  )
-}
-
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 24px', color: '#94A3B8', fontFamily: "'Inter', sans-serif" }}>
-      <p style={{ fontSize: 14, fontWeight: 600 }}>{title} — coming soon</p>
-      <p style={{ fontSize: 12, marginTop: 4 }}>This page is part of the planned roadmap</p>
-    </div>
   )
 }
