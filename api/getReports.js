@@ -125,6 +125,22 @@ async function getBilling(headers, query) {
     console.log('[getBilling] clientsMap:', Object.keys(clientsMap).length, 'entries, sample:', JSON.stringify(Object.entries(clientsMap).slice(0,3)))
   } catch(e) { console.error('[getBilling] clients error:', e.message) }
 
+  // Tarifas (Cost/Hour) de los cleaners, para estimar el labor de cada limpieza (solo lectura)
+  const rateMap = {}
+  try {
+    let so = null
+    do {
+      const sr = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblgHwN1wX6u3ZtNY?pageSize=100${so ? `&offset=${so}` : ''}`, { headers })
+      if (!sr.ok) break
+      const sd = await sr.json()
+      for (const st of (sd.records || [])) {
+        const v = Number(st.fields?.['Cost/Hour']); const role = String(st.fields?.['Role'] || '').toLowerCase()
+        if (Number.isFinite(v) && v > 0 && role.includes('cleaner')) rateMap[st.id] = v
+      }
+      so = sd.offset || null
+    } while (so)
+  } catch (e) { console.error('[getBilling] staff rates error:', e.message) }
+
   // Enrich with Client Name and Source from Appointments (best-effort, won't affect cleaning list)
   const cleaningIdSet = new Set(allRecords.map(r => r.id))
   const apptMap = {}
@@ -194,6 +210,12 @@ async function getBilling(headers, query) {
       status,
       rating: f['Rating'] || null,
       price, hoursWorked, hoursTotal, staffCount,
+      laborCost: (() => {
+        if (!hoursWorked) return null
+        const ids = (Array.isArray(f['Assigned Staff']) ? f['Assigned Staff'] : []).filter(x => rateMap[x])
+        if (ids.length) return Math.round(ids.reduce((t, x) => t + rateMap[x] * hoursWorked, 0) * 100) / 100
+        return null // sin cleaners asignados (o sin tarifa) no se calcula labor
+      })(),
       hasPrice: !!f['Price'],
       turnoProject: f['Turno Project'] || null,
     }

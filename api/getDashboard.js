@@ -55,8 +55,11 @@ async function handleExecutive(req, res) {
     // Fetch all cleanings (necesitamos varias semanas para comparar)
     let allRecords = [];
     let offset = null;
+    const rngA = getWeekRange(prevWeek), rngB = getWeekRange(currentWeek);
+    const dShift = (d, n) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+    const execFormula = encodeURIComponent(`AND(IS_AFTER({Date},'${dShift(rngA.start, -1)}'),IS_BEFORE({Date},'${dShift(rngB.end, 1)}'))`);
     do {
-      const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblabOdNknnjrYUU1?pageSize=100${offset ? `&offset=${offset}` : ''}`;
+      const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblabOdNknnjrYUU1?pageSize=100&filterByFormula=${execFormula}${offset ? `&offset=${offset}` : ''}`;
       const airtableRes = await fetch(url, {
         headers: { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` }
       });
@@ -102,7 +105,7 @@ async function handleExecutive(req, res) {
       
       // HH Reales (duración de Done, dividida por cleaners para obtener HH individuales)
       const doneCleanings = weekCleanings.filter(r => r.fields['Status'] === 'Done');
-      let hhReales = 0;
+      let hhReales = 0, revDone = 0;
       for (const r of doneCleanings) {
         const start = r.fields['Start Time'];
         const end = r.fields['End Time'];
@@ -116,6 +119,7 @@ async function handleExecutive(req, res) {
           }).length;
           const effectiveCleaners = Math.max(cleanerCount, 1);
           hhReales += duration * effectiveCleaners;
+          revDone += Number(r.fields['Price']) || 0;
         }
       }
       
@@ -183,7 +187,8 @@ async function handleExecutive(req, res) {
       return {
         week: weekStr,
         range,
-        hhDisponibles: 352, // TODO: Hacer dinámico
+        hhDisponibles: 48 * cleanersUnicos, // 48 h/semana por cleaner activo (definicion de Juan)
+        revHH: hhReales > 0 ? Math.round(revDone / hhReales * 100) / 100 : null,
         hhProgramadas: Math.round(hhProgramadas * 10) / 10,
         hhReales: Math.round(hhReales * 10) / 10,
         casasDistintas,
@@ -385,6 +390,7 @@ async function handleShifts(req, res, action) {
       return res.status(200).json({ date, shifts, staff: Object.values(staff).sort((a, b) => a.name.localeCompare(b.name)) });
     }
 
+    if (action === 'scorecard') return await handleScorecard(req, res);
     if (action === 'shiftsRange') {
       // Semana de pagos: todos los turnos del rango con tarifa (solo lectura)
       const { from, to } = req.query;
@@ -485,6 +491,211 @@ async function handleShifts(req, res, action) {
   }
 }
 
+
+// ───────── Scorecard con datos reales (solo lectura) ─────────
+// GET ?action=scorecard&from=YYYY-MM-DD&to=YYYY-MM-DD  → semanas (lun-dom, recortadas al rango) + total del periodo
+const CAP_HOURS_PER_CLEANER = 48; // horas por cleaner por semana (definicion de Juan)
+const median = (a) => { const v = a.filter(x => x !== null && x !== undefined && Number.isFinite(x)).sort((x, y) => x - y); if (!v.length) return null; const m = Math.floor(v.length / 2); return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2; };
+const dAdd = (d, n) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+const mondayOf = (d) => { const x = new Date(d + 'T12:00:00Z'); return dAdd(d, -((x.getUTCDay() + 6) % 7)); };
+
+async function airtableAll(url, H) {
+  let records = [], off = null, pages = 0;
+  do {
+    const r = await fetch(`${url}${url.includes('?') ? '&' : '?'}pageSize=100${off ? `&offset=${off}` : ''}`, { headers: H });
+    if (!r.ok) throw new Error(`Airtable ${r.status}: ${(await r.text()).slice(0, 200)}`);
+    const d = await r.json(); records = records.concat(d.records || []); off = d.offset || null; pages++;
+  } while (off && pages < 60);
+  return records;
+}
+
+const isoWeekNum = (d) => { const x = new Date(d + 'T12:00:00Z'); const day = (x.getUTCDay() + 6) % 7; x.setUTCDate(x.getUTCDate() - day + 3); const j = new Date(Date.UTC(x.getUTCFullYear(), 0, 4)); return 1 + Math.round(((x - j) / 86400000 - 3 + ((j.getUTCDay() + 6) % 7)) / 7); };
+const monthEnd = (d) => { const x = new Date(d.slice(0, 7) + '-01T12:00:00Z'); x.setUTCMonth(x.getUTCMonth() + 1); x.setUTCDate(0); return x.toISOString().slice(0, 10); };
+
+async function handleScorecard(req, res) {
+  const { from, to } = req.query;
+  const gran = ['week', 'day', 'month'].includes(req.query.gran) ? req.query.gran : 'week';
+  const fSquad = req.query.squad || '', fClient = req.query.client || '', fProp = req.query.property || '', fType = req.query.type || '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(to || '') || from > to) return res.status(400).json({ error: 'rango invalido' });
+  const H = { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` };
+  const warnings = [];
+  const fetchFrom = dAdd(mondayOf(from), -95); // retencion necesita ~90 dias hacia atras
+  const cf = encodeURIComponent(`AND(IS_AFTER({Date},'${dAdd(fetchFrom, -1)}'),IS_BEFORE({Date},'${dAdd(to, 1)}'))`);
+  const inc = encodeURIComponent(`AND(IS_AFTER({Creation Date},'${dAdd(from, -1)}'),IS_BEFORE({Creation Date},'${dAdd(to, 2)}'))`);
+  const tf = encodeURIComponent(`AND(IS_AFTER({Fecha},'${dAdd(from, -1)}'),IS_BEFORE({Fecha},'${dAdd(to, 1)}'))`);
+  const staffUrl = (withRate) => `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblgHwN1wX6u3ZtNY?fields[]=Name&fields[]=Role${withRate ? `&fields[]=${encodeURIComponent('Cost/Hour')}` : ''}`;
+  const [cleanings, staffRecs, incRecs, turnoRecs, clientRecs] = await Promise.all([
+    airtableAll(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblabOdNknnjrYUU1?filterByFormula=${cf}`, H),
+    airtableAll(staffUrl(true), H).catch(() => airtableAll(staffUrl(false), H)),
+    airtableAll(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Incidents?filterByFormula=${inc}`, H).catch(e => { warnings.push('Incidents: ' + e.message); return []; }),
+    airtableAll(`${TURNOS_URL}?filterByFormula=${tf}`, H).catch(e => { warnings.push('Turnos: ' + e.message); return []; }),
+    airtableAll(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Clients`, H).catch(() => []),
+  ]);
+
+  const clientName = {};
+  for (const c of clientRecs) { const f = c.fields || {}; const n = f['Full name'] || f['Name'] || f['Client Name'] || f['First Name'] || f['full name'] || null; if (n) clientName[c.id] = n; }
+  const staff = {};
+  for (const r of staffRecs) { const v = Number(r.fields?.['Cost/Hour']); staff[r.id] = { name: r.fields?.Name || '', cleaner: String(r.fields?.Role || '').toLowerCase().includes('cleaner'), rate: Number.isFinite(v) && v > 0 ? v : 0 }; }
+  const noRate = new Set();
+
+  const dur = (f) => { if (!f['Start Time'] || !f['End Time']) return null; const h = (new Date(f['End Time']) - new Date(f['Start Time'])) / 3600000; return h > 0 && h < 16 ? h : null; };
+  const allRows = cleanings.map(r => {
+    const f = r.fields || {};
+    const date = String(f['Date'] || '').slice(0, 10);
+    const ids = (Array.isArray(f['Assigned Staff']) ? f['Assigned Staff'] : []).filter(id => staff[id]?.cleaner);
+    const lab = Array.isArray(f['Labor (from Property)']) ? f['Labor (from Property)'][0] : f['Labor (from Property)'];
+    const raw = Array.isArray(f['Client']) && f['Client'].length ? f['Client'][f['Client'].length - 1] : null;
+    const cl = raw ? (/^rec[A-Za-z0-9]{8,}$/.test(raw) ? (clientName[raw] || raw) : raw) : (f['Client Name Text'] || null);
+    return { date, done: f['Status'] === 'Done', price: Number(f['Price']) || 0, hasPrice: !!f['Price'], d: dur(f), ids, n: ids.length || Number(f['#Cleaners']) || 1,
+      std: (Number(lab) || 0) / 60, sched: f['Scheduled Time'] || null, start: f['Start Time'] || null, end: f['End Time'] || null,
+      client: cl, property: f['Property Text'] || null, type: f['Cleaning Type Text'] || null, status: f['Status'] };
+  }).filter(c => c.date && c.status !== 'Cancelled');
+
+  const inRange = (d) => d >= from && d <= to;
+  const options = {
+    clients: [...new Set(allRows.filter(c => inRange(c.date)).map(c => c.client).filter(Boolean))].sort(),
+    properties: [...new Set(allRows.filter(c => inRange(c.date)).map(c => c.property).filter(Boolean))].sort(),
+    squads: Object.values(allRows.filter(c => inRange(c.date) && c.ids.length).reduce((m, c) => { const k = [...c.ids].sort().join('+'); m[k] = { key: k, label: [...c.ids].sort().map(id => (staff[id]?.name || '').split(' ')[0]).join(' + ') }; return m; }, {})).sort((a, b) => a.label.localeCompare(b.label)),
+    types: [...new Set(allRows.filter(c => inRange(c.date)).map(c => c.type).filter(Boolean))].sort(),
+  };
+  const rows = allRows.filter(c => (!fSquad || [...c.ids].sort().join('+') === fSquad) && (!fClient || c.client === fClient) && (!fProp || c.property === fProp) && (!fType || c.type === fType));
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
+  // cubetas del periodo
+  const buckets = [];
+  if (gran === 'day') { for (let d = from; d <= to && buckets.length < 120; d = dAdd(d, 1)) buckets.push({ start: d, end: d }); }
+  else if (gran === 'month') { for (let m = from.slice(0, 7) + '-01'; m <= to && buckets.length < 36; m = dAdd(monthEnd(m), 1)) buckets.push({ start: m < from ? from : m, end: monthEnd(m) > to ? to : monthEnd(m), full: m >= from && monthEnd(m) <= to }); }
+  else { for (let m = mondayOf(from); m <= to && buckets.length < 60; m = dAdd(m, 7)) buckets.push({ start: m < from ? from : m, end: dAdd(m, 6) > to ? to : dAdd(m, 6), full: m >= from && dAdd(m, 6) <= to, mon: m }); }
+  const labelOf = (bk) => {
+    const mon = (d) => new Date(d + 'T12:00:00Z').toLocaleDateString('es-ES', { month: 'short', timeZone: 'UTC' });
+    if (gran === 'day') return `${new Date(bk.start + 'T12:00:00Z').toLocaleDateString('es-ES', { weekday: 'short', timeZone: 'UTC' })} ${Number(bk.start.slice(8))} ${mon(bk.start)}`;
+    if (gran === 'month') return `${mon(bk.start)} ${bk.start.slice(0, 4)}`;
+    return `W${isoWeekNum(bk.start)} · ${Number(bk.start.slice(8))}–${Number(bk.end.slice(8))} ${mon(bk.end)}`;
+  };
+
+  const turnos = turnoRecs.map(r => ({ date: String(r.fields?.['Fecha'] || '').slice(0, 10), start: r.fields?.['Inicio'], end: r.fields?.['Fin'] })).filter(t => t.date && t.start && t.end);
+  const lateDeltas = [];
+  const overlapDays = (a, b, c, d) => { const s = a > c ? a : c, e = b < d ? b : d; return s > e ? 0 : Math.round((new Date(e + 'T12:00:00Z') - new Date(s + 'T12:00:00Z')) / 86400000) + 1; };
+
+  const calc = (a, b) => {
+    const cs = rows.filter(c => c.date >= a && c.date <= b);
+    const done = cs.filter(c => c.done);
+    const withDur = done.filter(c => c.d !== null);
+    const hh = withDur.reduce((t, c) => t + c.d * c.n, 0);
+    const rev = withDur.reduce((t, c) => t + c.price, 0);
+    const ingreso = done.reduce((t, c) => t + c.price, 0);
+    const prog = cs.reduce((t, c) => t + c.price, 0);
+    let labor = 0;
+    for (const c of withDur) { for (const id of c.ids) { if (!staff[id].rate) noRate.add(staff[id].name); labor += staff[id].rate * c.d; } }
+    const stdOnly = withDur.filter(c => c.std > 0).reduce((t, c) => t + c.std, 0);
+    const realForStd = withDur.filter(c => c.std > 0).reduce((t, c) => t + c.d * c.n, 0);
+    const pastCs = cs.filter(c => c.date <= today);
+    // capacidad: 48 h por cleaner activo cada semana, proporcional a los dias del bucket
+    let capUnits = 0; const cleanersAll = new Set();
+    for (let m = mondayOf(a); m <= b; m = dAdd(m, 7)) {
+      const set = new Set(rows.filter(c => c.date >= m && c.date <= dAdd(m, 6)).flatMap(c => c.ids));
+      capUnits += set.size * overlapDays(a, b, m, dAdd(m, 6)) / 7;
+      rows.filter(c => c.date >= a && c.date <= b).forEach(c => c.ids.forEach(x => cleanersAll.add(x)));
+    }
+    const sched = done.filter(c => c.sched && c.start);
+    let late = 0; for (const c of sched) { const dm = (new Date(c.start) - new Date(c.sched)) / 60000; lateDeltas.push(dm); if (dm > 15) late++; }
+    const tw = turnos.filter(t => t.date >= a && t.date <= b);
+    const shiftH = tw.reduce((t, x) => t + Math.max(0, (new Date(x.end) - new Date(x.start)) / 3600000), 0);
+    const nInc = incRecs.filter(r => { const d = String(r.fields?.['Creation Date'] || '').slice(0, 10); return d >= a && d <= b; }).length;
+    // traslado: hueco entre el fin de una casa y el inicio de la siguiente del mismo squad (mismos cleaners) el mismo dia, 
+    const groups = {};
+    for (const c of done) { if (!c.start || !c.end || !c.ids.length) continue; (groups[c.date + '|' + [...c.ids].sort().join('+')] ||= []).push(c); }
+    let gapSum = 0, gapN = 0;
+    for (const g of Object.values(groups)) { g.sort((x, y) => new Date(x.start) - new Date(y.start)); for (let i = 0; i + 1 < g.length; i++) { const gap = (new Date(g[i + 1].start) - new Date(g[i].end)) / 60000; if (gap > 0) { gapSum += gap; gapN++; } } }
+    // retencion (sin filtros): clientes de (E-90, E-30] que tambien aparecen en (E-30, E]
+    const E = b > today ? today : b;
+    const A = new Set(allRows.filter(c => c.client && c.date > dAdd(E, -90) && c.date <= dAdd(E, -30)).map(c => c.client));
+    const B = new Set(allRows.filter(c => c.client && c.date > dAdd(E, -30) && c.date <= E).map(c => c.client));
+    let kept = 0; A.forEach(x => { if (B.has(x)) kept++; });
+    const r1 = (x, k = 10) => x === null ? null : Math.round(x * k) / k;
+    return {
+      limpiezas: cs.length, terminadas: done.length, conTiempo: withDur.length,
+      ingreso: r1(ingreso, 100), programado: r1(prog, 100),
+      revHH: hh > 0 ? r1(rev / hh, 100) : null,
+      margenHH: hh > 0 ? r1((rev - labor) / hh, 100) : null,
+      util: capUnits > 0 && shiftH > 0 ? r1(shiftH / (CAP_HOURS_PER_CLEANER * capUnits) * 100) : null,
+      carga: capUnits > 0 ? r1(hh / (CAP_HOURS_PER_CLEANER * capUnits) * 100) : null,
+      hhFact: r1(hh, 10), cleaners: cleanersAll.size, capacidadH: Math.round(CAP_HOURS_PER_CLEANER * capUnits),
+      productivo: shiftH > 0 ? r1(hh / shiftH * 100) : null, turnoH: r1(shiftH, 10),
+      traslado: gapN ? r1(gapSum / gapN) : null, nTraslados: gapN,
+      ritmo: stdOnly > 0 ? r1(realForStd / stdOnly * 100) : null,
+      onTime: sched.length ? r1((1 - late / sched.length) * 100) : null, conHora: sched.length,
+      cumplimiento: pastCs.length ? r1(done.length / pastCs.length * 100) : null,
+      incidentes: done.length ? r1(nInc / done.length * 100) : null, nIncidentes: nInc,
+      retencion: A.size >= 5 ? r1(kept / A.size * 100) : null, retBase: A.size,
+    };
+  };
+
+  const weekRows = buckets.map(bk => ({ label: labelOf(bk), start: bk.start, end: bk.end, partial: gran === 'day' ? false : !bk.full, future: bk.start > today, ...calc(bk.start, bk.end) }));
+  const total = calc(from, to);
+
+  const keys = ['ingreso', 'revHH', 'margenHH', 'util', 'carga', 'productivo', 'traslado', 'ritmo', 'onTime', 'cumplimiento', 'incidentes', 'retencion'];
+  const full = weekRows.filter(w => !w.partial && !w.future);
+  const suggested = {}; for (const k of keys) { const v = full.map(w => w[k]).filter(x => x !== null); suggested[k] = { median: median(v), min: v.length ? Math.min(...v) : null, max: v.length ? Math.max(...v) : null, weeks: v.length }; }
+  lateDeltas.sort((x, y) => x - y);
+  const stdUnmatched = rows.filter(c => c.done && c.d !== null && c.std === 0 && inRange(c.date)).length;
+  if (noRate.size) warnings.push(`Sin Cost/Hour (cuenta $0 de labor): ${[...noRate].join(', ')}`);
+  const med = median(lateDeltas);
+  if (med !== null && Math.abs(med) > 60) warnings.push(`On-time: la diferencia tipica entre Scheduled Time y Start Time es ${Math.round(med)} min; puede haber desfase horario en Scheduled Time`);
+  if (fClient || fProp || fType) warnings.push('Con filtros activos, Retención sigue calculándose sobre todos los clientes');
+
+  return res.status(200).json({ from, to, gran, weeks: weekRows, total, suggested, options, vto: { revHH: 50, traslado: 5 }, capPerCleaner: CAP_HOURS_PER_CLEANER,
+    debug: { cleaningsLeidas: cleanings.length, enRango: rows.filter(c => inRange(c.date)).length, turnos: turnos.length, incidentes: incRecs.length, clientesConNombre: Object.keys(clientName).length, mediaMinInicioVsProgramado: med === null ? null : Math.round(med), conPrecioFaltante: rows.filter(c => inRange(c.date) && c.done && !c.hasPrice).length, sinEstandar: stdUnmatched }, warnings });
+}
+
+// ───────── Calendar: limpiezas de un rango (lectura) ─────────
+async function handleWeekCal(req, res) {
+  const { from, to } = req.query;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(to || '') || from > to) return res.status(400).json({ error: 'rango invalido' });
+  const H = { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` };
+  try {
+    const f = encodeURIComponent(`AND(IS_AFTER({Date},'${dAdd(from, -1)}'),IS_BEFORE({Date},'${dAdd(to, 1)}'))`);
+    const [recs, staffRecs] = await Promise.all([
+      airtableAll(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblabOdNknnjrYUU1?filterByFormula=${f}`, H),
+      airtableAll(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblgHwN1wX6u3ZtNY?fields[]=Name&fields[]=Role`, H),
+    ]);
+    const staff = {}; for (const r of staffRecs) staff[r.id] = { name: r.fields?.Name || '', cleaner: String(r.fields?.Role || '').toLowerCase().includes('cleaner') };
+    const cleanings = recs.map(r => {
+      const x = r.fields || {};
+      const ids = (Array.isArray(x['Assigned Staff']) ? x['Assigned Staff'] : []).filter(id => staff[id]?.cleaner);
+      return { id: r.id, date: String(x['Date'] || '').slice(0, 10), property: x['Property Text'] || 'Sin nombre', time: x['Scheduled Time'] || null, status: x['Status'] || 'Programmed',
+        price: Number(x['Price']) || 0, type: x['Cleaning Type Text'] || null, cleaners: ids.map(id => ({ id, name: staff[id].name })) };
+    }).filter(c => c.date >= from && c.date <= to);
+    return res.status(200).json({ from, to, cleanings });
+  } catch (e) { return res.status(500).json({ error: e.message }); }
+}
+
+
+// ───────── Notion: Rocks e Issues (solo lectura) ─────────
+const NOTION_ROCKS_DB = '3979a6b3e51780ffa5b8c72cde411039';
+const NOTION_ISSUES_DB = '3979a6b3e51780b4b590f6b4cc6b42a2';
+async function handleNotion(req, res) {
+  const token = process.env.NOTION_TOKEN;
+  if (!token) return res.status(200).json({ configured: false, error: 'Falta la variable NOTION_TOKEN en Vercel' });
+  const H = { 'Authorization': `Bearer ${token}`, 'Notion-Version': '2022-06-28', 'Content-Type': 'application/json' };
+  const query = async (db) => {
+    const r = await fetch(`https://api.notion.com/v1/databases/${db}/query`, { method: 'POST', headers: H, body: JSON.stringify({ page_size: 100 }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(`${r.status} ${j.message || ''}`.trim());
+    return j.results || [];
+  };
+  const txt = (p) => (p?.title || p?.rich_text || []).map(x => x.plain_text).join('');
+  const sel = (p) => p?.select?.name || null;
+  try {
+    const [rr, ir] = await Promise.all([query(NOTION_ROCKS_DB), query(NOTION_ISSUES_DB)]);
+    const rocks = rr.map(r => { const f = r.properties || {}; const pct = f['% Completado']?.rollup; return { id: r.id, title: txt(f['Title']), state: sel(f['State']), trim: sel(f['Trim']), motor: sel(f['Motor']), velocidad: sel(f['Velocidad']), deadline: f['Deadline']?.date?.start || null, exit: txt(f['Exit metric']), pct: typeof pct?.number === 'number' ? pct.number : null, url: r.url }; })
+      .filter(r => r.state !== 'Completed' && r.state !== 'Cancelado/Fusionado');
+    const issues = ir.map(r => { const f = r.properties || {}; return { id: r.id, name: txt(f['Name']), estado: sel(f['Estado']), prioridad: sel(f['Prioridad']), deadline: f['Fecha limite']?.date?.start || null, accion: txt(f['Accion']), url: r.url }; })
+      .filter(i => i.estado === 'Abierto' || i.estado === 'En discusion');
+    return res.status(200).json({ configured: true, rocks, issues });
+  } catch (e) { return res.status(200).json({ configured: true, error: e.message }); }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -492,7 +703,9 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { action } = req.query;
-  if (action === 'shiftsDay' || action === 'shiftSave' || action === 'shiftAdd' || action === 'laborRange' || action === 'shiftsRange') return handleShifts(req, res, action);
+  if (action === 'weekCal') return handleWeekCal(req, res);
+  if (action === 'notion') return handleNotion(req, res);
+  if (action === 'shiftsDay' || action === 'shiftSave' || action === 'shiftAdd' || action === 'laborRange' || action === 'shiftsRange' || action === 'scorecard') return handleShifts(req, res, action);
   
   // Router para diferentes acciones
   if (action === 'executive') {
