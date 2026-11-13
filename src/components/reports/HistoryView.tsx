@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { C, Card, Delta, Err, Loading, btn, selStyle, money, money1, pctS, hm, todayET, addDays, mondayOf, monthStart, monthEnd, addMonths, fmtShort, useApi, useIsMobile } from './shared'
+import { C, Card, Delta, Err, Loading, btn, selStyle, money, money1, pctS, hm, todayET, addDays, mondayOf, monthStart, monthEnd, addMonths, fmtShort, useApi, useIsMobile, useNames } from './shared'
 
 export type Nav = { from: string; to: string; property?: string; client?: string }
 const PRESETS: [string, string][] = [['today', 'Hoy'], ['yest', 'Ayer'], ['week', 'Esta semana'], ['lweek', 'Semana pasada'], ['month', 'Este mes'], ['lmonth', 'Mes pasado'], ['90', '90 días'], ['year', 'Este año'], ['all', 'Todo']]
@@ -24,7 +24,7 @@ const isVideo = (u: string) => /\.(mp4|mov|webm|m4v)(\?|$)/i.test(u)
 function Photo({ u, i }: { u: string; i: number }) {
   const [bad, setBad] = useState(false)
   const tile: React.CSSProperties = { height: 84, borderRadius: 9, background: '#E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#475569', textDecoration: 'none', overflow: 'hidden' }
-  if (isVideo(u) || bad) return <a href={u} target="_blank" rel="noreferrer" style={tile}>{isVideo(u) ? '▶ Video' : '📷'} {i + 1}</a>
+  if (isVideo(u) || bad) return <a href={u} target="_blank" rel="noreferrer" style={tile}>{isVideo(u) ? 'Video' : 'Foto'} {i + 1}</a>
   return <a href={u} target="_blank" rel="noreferrer" style={tile}><img src={u} alt={`foto ${i + 1}`} loading="lazy" onError={() => setBad(true)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></a>
 }
 
@@ -48,11 +48,11 @@ export default function HistoryView({ init, onBack, onDebug, backLabel }: { init
   const [pg, setPg] = useState(1)
   const per = 25
   const span = Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86400000) + 1
-  const list = useApi('houses', {}, [], undefined)
+  const hn = useNames('property')
   const cur = useApi('visits', { from, to, property, client }, [from, to, property, client], onDebug)
   const showPrev = span <= 120 && preset !== 'all'
   const prev = useApi(showPrev ? 'visits' : null, { from: addDays(from, -span), to: addDays(from, -1), property, client }, [from, to, property, client, showPrev])
-  const houses: { name: string; client: string }[] = list.data?.houses || []
+  const houses: { name: string; client: string }[] = hn.names
   const clients = useMemo(() => [...new Set(houses.map(h => h.client).filter(Boolean))].sort(), [houses])
   const propOpts = useMemo(() => houses.filter(h => !client || h.client === client).map(h => h.name), [houses, client])
   const all: any[] = cur.data?.visits || []
@@ -116,7 +116,7 @@ export default function HistoryView({ init, onBack, onDebug, backLabel }: { init
         {rows.length === 0 && <div style={{ padding: 16, fontSize: 13, color: C.muted }}>No hay limpiezas con este filtro. Cambia el periodo (arriba) o quita filtros.</div>}
         {mobile ? <div>{shown.map(v => <div key={v.id} onClick={() => setSelId(v.id === selId ? null : v.id)} style={{ padding: '10px 14px', borderTop: '1px solid #F1F5F9', background: v.id === selId ? C.primaryLight : 'transparent' }}>
           <div style={{ display: 'flex', gap: 8 }}><b style={{ textTransform: 'capitalize' }}>{dow(v.date)} {fmtShort(v.date)}</b><span style={{ flex: 1, color: C.primaryDark, fontWeight: 700 }}>{v.property}</span><b style={{ color: mgc(v.margen) }}>{v.margen === null ? '—' : money(v.margen)}</b></div>
-          <div style={{ fontSize: 11.5, color: C.muted }}>{[v.squad, v.dur ? hm(v.dur) : '', `Ing ${money(v.price)}`, v.margen !== null ? `Labor ${money(v.cost)}` : '', v.photos.length ? `📷 ${v.photos.length}` : ''].filter(Boolean).join(' · ')}</div></div>)}</div>
+          <div style={{ fontSize: 11.5, color: C.muted }}>{[v.squad, v.dur ? hm(v.dur) : '', `Ing ${money(v.price)}`, v.margen !== null ? `Labor ${money(v.cost)}` : '', v.photos.length ? `${v.photos.length}` : ''].filter(Boolean).join(' · ')}</div></div>)}</div>
           : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead><tr>{['Fecha', 'Casa', 'Cliente', 'Cleaners', '#', 'Horario', 'Duración', 'Ingresos', 'Labor', 'Margen', 'Mg %', 'Mg/HH', 'Fotos', 'Estado'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
             <tbody>{shown.map(v => { const on = v.id === selId; const hh = v.margen !== null && v.dur ? v.dur * (v.n || 1) : 0
@@ -124,7 +124,7 @@ export default function HistoryView({ init, onBack, onDebug, backLabel }: { init
                 <td style={{ ...td, fontWeight: 700 }}><span style={{ textTransform: 'capitalize' }}>{dow(v.date)}</span> {fmtShort(v.date)}</td><td style={{ ...td, fontWeight: 700, color: C.primaryDark }}>{v.property}</td><td style={{ ...td, color: C.slate }}>{v.client || '—'}</td>
                 <td style={td}>{v.squad || '—'}</td><td style={td}>{v.n}</td><td style={td}>{v.start ? `${tm(v.start)}–${tm(v.end)}` : tm(v.sched) || '—'}</td><td style={td}>{v.dur ? hm(v.dur) : '—'}</td>
                 <td style={td}>{money(v.price)}</td><td style={td}>{v.margen === null ? '—' : money(v.cost)}</td><td style={{ ...td, fontWeight: 700, color: mgc(v.margen) }}>{v.margen === null ? '—' : money(v.margen)}</td>
-                <td style={td}>{v.margen === null || !v.price ? '—' : pctS(v.margen / v.price * 100)}</td><td style={td}>{hh ? money1(v.margen / hh) : '—'}</td><td style={td}>{v.photos.length ? `📷 ${v.photos.length}` : '—'}</td>
+                <td style={td}>{v.margen === null || !v.price ? '—' : pctS(v.margen / v.price * 100)}</td><td style={td}>{hh ? money1(v.margen / hh) : '—'}</td><td style={td}>{v.photos.length ? `${v.photos.length}` : '—'}</td>
                 <td style={td}><span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '2px 8px', background: v.status === 'Done' ? C.greenBg : C.amberBg, color: v.status === 'Done' ? C.green : C.amber }}>{v.status === 'Done' ? 'Terminada' : v.status}</span></td></tr> })}
               {rows.length > 0 && <tr style={{ background: C.bg, fontWeight: 700 }}><td style={td} colSpan={7}>Total ({T.n} terminadas)</td><td style={td}>{money(T.ing)}</td><td style={td}>{money(T.lab)}</td><td style={{ ...td, color: mgc(T.mg) }}>{money(T.mg)}</td><td style={td}>{pctS(T.pct)}</td><td style={td}>{money1(T.mgHH)}</td><td colSpan={2} /></tr>}</tbody></table></div>}
         {pages > 1 && <div style={{ display: 'flex', gap: 6, justifyContent: 'center', padding: 10, flexWrap: 'wrap' }}>{Array.from({ length: Math.min(pages, 12) }, (_, i) => i + 1).map(n => <button key={n} onClick={() => setPg(n)} style={{ ...btn(page === n), height: 28, padding: '0 10px' }}>{n}</button>)}{pages > 12 && <span style={{ fontSize: 12, color: C.muted, alignSelf: 'center' }}>… {pages}</span>}</div>}

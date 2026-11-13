@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { C, Card, Seg, Err, Loading, money, money1, pctS, hm, todayET, mondayOf, addDays, addMonths, monthStart, monthEnd, rangeLabel, fmtShort, api, useApi } from './shared'
+import { C, Card, Seg, Err, Loading, money, money1, pctS, hm, todayET, mondayOf, addDays, addMonths, monthStart, monthEnd, rangeLabel, fmtShort, api, useApi, useNames } from './shared'
 
 const nz = (x: string) => (x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 type Mode = 'periodos' | 'property' | 'client'
@@ -81,14 +81,14 @@ function Entidades({ entity, onDebug }: { entity: 'property' | 'client'; onDebug
   const [q, setQ] = useState('')
   const [days, setDays] = useState('30')
   const to = addDays(todayET(), -1), from = addDays(to, -(Number(days) - 1))
-  const list = useApi(entity === 'property' ? 'houses' : 'rank', entity === 'property' ? {} : { entity: 'client', from, to }, [entity], onDebug)
-  const opts: string[] = useMemo(() => entity === 'property' ? (list.data?.houses || []).map((h: any) => h.name) : (list.data?.rows || []).map((r: any) => r.name), [list.data, entity])
+  const nm = useNames(entity, onDebug)
+  const opts: string[] = useMemo(() => nm.names.map(x => x.name), [nm.names])
   const hits = q.trim() ? opts.filter(o => nz(o).includes(nz(q.trim())) && !picked.includes(o)).slice(0, 6) : []
   const cmp = useApi(picked.length ? 'compare' : null, { entity, names: picked.join('|'), from, to }, [entity, picked.join('|'), from, to], onDebug)
   useEffect(() => { setPicked([]); setQ('') }, [entity])
   const items = (picked.length ? cmp.data?.items : null) as any[] | null
   const metrics: { l: string; k: string; f: (n: any) => string; good: 'max' | 'min' }[] = [
-    { l: 'Limpiezas', k: 'limpiezas', f: n => String(n), good: 'max' }, { l: 'Cobrado', k: 'ingreso', f: money, good: 'max' }, { l: 'Costo (est.)', k: 'costo', f: money, good: 'min' },
+    { l: 'Limpiezas', k: 'limpiezas', f: n => String(n), good: 'max' }, { l: 'Ingresos', k: 'ingreso', f: money, good: 'max' }, { l: 'Labor', k: 'costo', f: money, good: 'min' },
     { l: 'Margen', k: 'margen', f: money, good: 'max' }, { l: 'Margen %', k: 'mgPct', f: pctS, good: 'max' }, { l: 'Margen / HH', k: 'mgHH', f: money1, good: 'max' },
     { l: 'Duración prom.', k: 'durProm', f: hm, good: 'min' }, { l: 'A tiempo', k: 'onTime', f: n => n === null || n === undefined ? '—' : Math.round(n) + '%', good: 'max' },
   ]
@@ -98,7 +98,7 @@ function Entidades({ entity, onDebug }: { entity: 'property' | 'client'; onDebug
       <span style={{ fontSize: 12, color: C.muted }}>Elige hasta 6 {entity === 'property' ? 'casas' : 'clientes'}</span>
     </div>
     <div style={{ position: 'relative', marginBottom: 10 }}>
-      <input value={q} onChange={e => setQ(e.target.value)} disabled={picked.length >= 6} placeholder={`🔍 Agregar ${entity === 'property' ? 'casa' : 'cliente'}…`} style={{ width: '100%', height: 44, borderRadius: 12, border: `1.5px solid ${C.border}`, padding: '0 14px', fontSize: 14, boxSizing: 'border-box' }} />
+      <input value={q} onChange={e => setQ(e.target.value)} disabled={picked.length >= 6} placeholder={`Agregar ${entity === 'property' ? 'casa' : 'cliente'}…`} style={{ width: '100%', height: 44, borderRadius: 12, border: `1.5px solid ${C.border}`, padding: '0 14px', fontSize: 14, boxSizing: 'border-box' }} />
       {hits.length > 0 && <Card style={{ position: 'absolute', zIndex: 20, left: 0, right: 0, top: 48, padding: 4 }}>{hits.map(h => <div key={h} onClick={() => { setPicked(p => [...p, h]); setQ('') }} style={{ padding: '9px 12px', cursor: 'pointer', fontSize: 14 }}>{h}</div>)}</Card>}
     </div>
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>{picked.map(p => <span key={p} style={{ background: C.primaryLight, color: C.primaryDark, borderRadius: 999, padding: '5px 6px 5px 12px', fontSize: 13, fontWeight: 600 }}>{p} <button onClick={() => setPicked(x => x.filter(y => y !== p))} style={{ border: 'none', background: 'none', cursor: 'pointer', color: C.primaryDark, fontSize: 14 }}>✕</button></span>)}</div>

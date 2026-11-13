@@ -25,14 +25,19 @@ export function useIsMobile() {
   return m
 }
 
+const CACHE = new Map<string, { t: number; j: any }>()
 export async function api(kind: string, params: Record<string, string | number | undefined>, extra?: { action?: string }) {
   const q = new URLSearchParams({ action: extra?.action || 'reports', kind })
   Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== '') q.set(k, String(v)) })
-  const r = await fetch('/api/getDashboard?' + q.toString())
+  const key = q.toString()
+  const hit = CACHE.get(key)
+  if (hit && Date.now() - hit.t < 120000 && !params.fresh) return hit.j
+  const r = await fetch('/api/getDashboard?' + key)
   const text = await r.text()
   let j: any = null
   try { j = JSON.parse(text) } catch { /* ignore */ }
   if (!r.ok) throw new Error((j && j.error) || `Error ${r.status}: ${text.slice(0, 120)}`)
+  CACHE.set(key, { t: Date.now(), j })
   return j
 }
 
@@ -81,3 +86,11 @@ export const btn = (on = false): React.CSSProperties => ({ height: 38, padding: 
 export const selStyle: React.CSSProperties = { height: 38, padding: '0 10px', borderRadius: 10, border: `1.5px solid ${C.border}`, background: C.white, fontSize: 13, color: C.ink, maxWidth: 200 }
 export const Err = ({ msg }: { msg: string }) => msg ? <div style={{ background: C.redBg, color: C.red, borderRadius: 10, padding: 10, fontSize: 13, marginBottom: 10 }}>Error: {msg}</div> : null
 export const Loading = ({ on }: { on: boolean }) => on ? <div style={{ fontSize: 12, color: C.muted, margin: '6px 0' }}>Cargando…</div> : null
+
+// Lista de nombres (casas o clientes) para buscadores y filtros: sale del ranking (mismo cache), sin consulta extra pesada
+export function useNames(entity: 'property' | 'client', onDebug?: (d: any) => void) {
+  const to = addDays(todayET(), -1), from = addDays(to, -29)
+  const r = useApi('rank', { entity, from, to }, [entity], onDebug)
+  const names: { name: string; client: string; last: string | null }[] = (r.data?.rows || []).map((x: any) => ({ name: x.name, client: x.client || '', last: x.last }))
+  return { names, loading: r.loading, err: r.err }
+}
