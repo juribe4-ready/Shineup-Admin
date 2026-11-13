@@ -62,12 +62,41 @@ function toRow(r, staff, clientName, withMedia) {
 }
 const valid = (row) => row.date && row.status !== 'Cancelled';
 
+// Labor real por día (Turnos pagados): horas × Cost/Hour de cada persona
+async function loadTurnos(from, to, staff) {
+  const tr = await all(`${TURNOS}?filterByFormula=${encodeURIComponent(between('Fecha', from, to))}`).catch(() => []);
+  const today = todayET(); const byDay = {};
+  for (const r of tr) {
+    const day = String(r.fields?.['Fecha'] || '').slice(0, 10);
+    const sid = Array.isArray(r.fields?.['Persona']) ? r.fields['Persona'][0] : null;
+    if (!day || !sid || !staff[sid]?.cleaner || !r.fields?.['Inicio']) continue;
+    const st = Date.parse(r.fields['Inicio']); let en = r.fields['Fin'] ? Date.parse(r.fields['Fin']) : NaN;
+    if (isNaN(en)) { if (day === today) en = Date.now(); else continue; }
+    const h = Math.max(0, en - st) / 3600000;
+    const t = byDay[day] || (byDay[day] = { h: 0, cost: 0 });
+    t.h += h; t.cost += h * (staff[sid].rate || 0);
+  }
+  return { byDay, n: tr.length };
+}
+// UNA sola verdad: si el día tiene Turnos, el labor del día = Turnos y se REPARTE entre las limpiezas terminadas de ese día
+// (en proporción a horas × tarifa). Así la suma de las casas = el labor del día en Margen.
+function allocate(rows, turnoByDay, staff) {
+  const byDay = {};
+  for (const c of rows) if (c.done) (byDay[c.date] ||= []).push(c);
+  for (const [d, cs] of Object.entries(byDay)) {
+    const T = turnoByDay[d]; if (!T || !(T.cost > 0)) continue;
+    const w = cs.map(c => ((c.ids.reduce((t, id) => t + (staff[id]?.rate || 0), 0)) || 1) * (c.d ?? 2.5));
+    const W = w.reduce((t, x) => t + x, 0) || 1;
+    cs.forEach((c, i) => { c.cost = T.cost * w[i] / W; c.alloc = true; });
+  }
+}
+
 function agg(rows) {
   const done = rows.filter(c => c.done);
   const wd = done.filter(c => c.d !== null);
   const hh = wd.reduce((t, c) => t + c.d * c.n, 0);
   const ingreso = done.reduce((t, c) => t + c.price, 0);
-  const costo = wd.reduce((t, c) => t + c.cost, 0);
+  const costo = done.reduce((t, c) => t + c.cost, 0); // cost ya viene repartido desde Turnos cuando existen (ver allocate)
   const sched = done.filter(c => c.sched && c.start);
   let late = 0; for (const c of sched) if ((new Date(c.start) - new Date(c.sched)) / 60000 > 15) late++;
   return {
@@ -87,27 +116,15 @@ async function margin(q) {
   let pFrom, pTo;
   if (isMonth) { pTo = dAdd(from, -1); pFrom = pTo.slice(0, 7) + '-01'; } else { pFrom = dAdd(from, -span); pTo = dAdd(from, -1); }
   const filtered = !!(q.squad || q.client || q.property);
-  const [{ staff, clientName }, cl, tr] = await Promise.all([
-    loadStaffClients(),
-    all(`${CLEAN}?filterByFormula=${encodeURIComponent(between('Date', pFrom, to))}`),
-    all(`${TURNOS}?filterByFormula=${encodeURIComponent(between('Fecha', pFrom, to))}`).catch(() => []),
-  ]);
+  const [{ staff, clientName }, cl] = await Promise.all([loadStaffClients(), all(`${CLEAN}?filterByFormula=${encodeURIComponent(between('Date', pFrom, to))}`)]);
+  const tur = await loadTurnos(pFrom, to, staff);
+  const turnoByDay = tur.byDay;
   let rows = cl.map(r => toRow(r, staff, clientName)).filter(valid);
+  allocate(rows, turnoByDay, staff);
   if (q.squad) rows = rows.filter(c => [...c.ids].sort().join('+') === q.squad);
   if (q.client) rows = rows.filter(c => c.client === q.client);
   if (q.property) rows = rows.filter(c => c.property === q.property);
   const today = todayET();
-  const turnoByDay = {};
-  for (const r of tr) {
-    const day = String(r.fields?.['Fecha'] || '').slice(0, 10);
-    const sid = Array.isArray(r.fields?.['Persona']) ? r.fields['Persona'][0] : null;
-    if (!day || !sid || !staff[sid]?.cleaner || !r.fields?.['Inicio']) continue;
-    const st = Date.parse(r.fields['Inicio']); let en = r.fields['Fin'] ? Date.parse(r.fields['Fin']) : NaN;
-    if (isNaN(en)) { if (day === today) en = Date.now(); else continue; }
-    const h = Math.max(0, en - st) / 3600000;
-    const t = turnoByDay[day] || (turnoByDay[day] = { h: 0, cost: 0 });
-    t.h += h; t.cost += h * (staff[sid].rate || 0);
-  }
   const durs = rows.filter(c => c.done && c.d !== null).map(c => c.d);
   const avgDur = durs.length ? durs.reduce((t, x) => t + x, 0) / durs.length : 2.5;
   const rates = Object.values(staff).filter(x => x.cleaner && x.rate > 0).map(x => x.rate);
@@ -119,14 +136,14 @@ async function margin(q) {
       const cs = rows.filter(c => c.date === d), done = cs.filter(c => c.done), wd = done.filter(c => c.d !== null);
       const cobrado = done.reduce((t, c) => t + c.price, 0);
       const hh = wd.reduce((t, c) => t + c.d * c.n, 0);
-      const costB = wd.reduce((t, c) => t + c.cost, 0);
+      const costB = done.reduce((t, c) => t + c.cost, 0);
       const t = turnoByDay[d];
       const useTurno = !filtered && t && t.cost > 0;
       const costo = useTurno ? t.cost : costB;
       const pend = d >= today ? cs.filter(c => !c.done) : [];
       const pc = pend.reduce((t, c) => t + c.price, 0), pk = pend.reduce((t, c) => t + estCost(c), 0);
       const proy = pend.length ? { cobrado: r2(pc), costo: r2(pk), margen: r2(pc - pk), limpiezas: pend.length } : null;
-      days.push({ date: d, proy, cobrado: r2(cobrado), costo: r2(costo), margen: r2(cobrado - costo), limpiezas: done.length, programadas: cs.length, hh: r2(hh), horas: r2(useTurno ? t.h : hh), fuente: done.length || useTurno ? (useTurno ? 'turnos' : 'est.') : '' });
+      days.push({ date: d, proy, cobrado: r2(cobrado), costo: r2(costo), margen: r2(cobrado - costo), limpiezas: done.length, programadas: cs.length, hh: r2(hh), horas: r2(useTurno ? t.h : hh), fuente: done.length || useTurno ? (useTurno || done.some(c => c.alloc) ? 'turnos' : 'est.') : '' });
     }
     return days;
   };
@@ -138,7 +155,7 @@ async function margin(q) {
   const days = build(from, to), prevDays = build(pFrom, pTo);
   return { body: { today, avgDur: r2(avgDur), from, to, prevFrom: pFrom, prevTo: pTo, isMonth, filtered, days, prevDays, total: sum(days), prevTotal: sum(prevDays),
     options: { clients: [...new Set(rows.filter(c => c.date >= from).map(c => c.client).filter(Boolean))].sort(), properties: [...new Set(rows.filter(c => c.date >= from).map(c => c.property).filter(Boolean))].sort() },
-    debug: { avgDurProyeccion: r2(avgDur), tarifaPromedio: r2(avgRate), cleaningsLeidas: cl.length, turnosLeidos: tr.length, diasConTurno: Object.keys(turnoByDay).length, nota: filtered ? 'Con filtros el costo usa horas limpiando (estimado)' : 'Costo = turnos pagados; sin turnos = horas limpiando (est.)' } } };
+    debug: { avgDurProyeccion: r2(avgDur), tarifaPromedio: r2(avgRate), cleaningsLeidas: cl.length, turnosLeidos: tur.n, diasConTurno: Object.keys(turnoByDay).length, nota: filtered ? 'Con filtros el costo usa horas limpiando (estimado)' : 'Costo = turnos pagados; sin turnos = horas limpiando (est.)' } } };
 }
 
 // ── Ranking / lista de casas o clientes ──────────────────────────
@@ -149,6 +166,7 @@ async function rank(q) {
   const lookFrom = dAdd(to, -120) < pFrom ? dAdd(to, -120) : pFrom;
   const [{ staff, clientName }, cl] = await Promise.all([loadStaffClients(), all(`${CLEAN}?filterByFormula=${encodeURIComponent(between('Date', lookFrom, to))}`)]);
   const rows = cl.map(r => toRow(r, staff, clientName)).filter(valid);
+  allocate(rows, (await loadTurnos(lookFrom, to, staff)).byDay, staff);
   const today = todayET();
   const groups = {};
   for (const c of rows) { const k = c[entity]; if (!k) continue; (groups[k] ||= []).push(c); }
@@ -205,11 +223,12 @@ async function visitsKind(q) {
   const { staff, clientName } = await loadStaffClients();
   const cl = await all(`${CLEAN}?filterByFormula=${encodeURIComponent(between('Date', from, to))}`);
   let rows = cl.map(r => toRow(r, staff, clientName, true)).filter(valid);
+  allocate(rows, (await loadTurnos(from, to, staff)).byDay, staff);
   if (q.property) rows = rows.filter(c => c.property === q.property);
   if (q.client) rows = rows.filter(c => c.client === q.client);
   rows.sort((a, b) => b.date.localeCompare(a.date) || String(a.sched || '').localeCompare(String(b.sched || '')));
   const total = rows.length;
-  const visits = rows.slice(0, 800).map(c => ({ id: c.id, date: c.date, property: c.property, client: c.client, status: c.status, squad: c.squad, n: c.n, dur: r2(c.d), price: c.price, cost: r2(c.cost), margen: c.done && c.d !== null ? r2(c.price - c.cost) : null,
+  const visits = rows.slice(0, 800).map(c => ({ id: c.id, date: c.date, property: c.property, client: c.client, status: c.status, squad: c.squad, n: c.n, dur: r2(c.d), price: c.price, cost: r2(c.cost), margen: c.done && (c.d !== null || c.alloc) ? r2(c.price - c.cost) : null, src: c.alloc ? 'turnos' : 'est.',
     start: c.start, end: c.end, sched: c.sched, type: c.type, photos: c.media || [] }));
   const names = [...new Set(rows.map(c => c.client).filter(Boolean))];
   return { body: { from, to, total, visits, debug: { filasLeidas: cl.length, mostradas: visits.length, clientesSinNombre: names.filter(n => /^rec[A-Za-z0-9]{8,}$/.test(n)).length, clientesEjemplo: names.slice(0, 5) } } };
@@ -223,9 +242,10 @@ async function compare(q) {
   const span = diffDays(from, to) + 1; const pFrom = dAdd(from, -span), pTo = dAdd(from, -1);
   const { staff, clientName } = await loadStaffClients();
   const dateF = between('Date', pFrom, to);
-  const f = entity === 'property' ? `AND(${dateF},OR(${names.map(n => `{Property Text}='${esc(n)}'`).join(',')}))` : dateF;
+  const f = dateF; // todo el rango (el labor del día se reparte entre TODAS las limpiezas del día) y luego se filtra en JS
   const cl = await all(`${CLEAN}?filterByFormula=${encodeURIComponent(f)}`);
   const rows = cl.map(r => toRow(r, staff, clientName)).filter(valid);
+  allocate(rows, (await loadTurnos(pFrom, to, staff)).byDay, staff);
   const today = todayET();
   const out = names.map(n => {
     const rs = rows.filter(c => c[entity] === n);
