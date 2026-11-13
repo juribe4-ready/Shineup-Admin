@@ -76,6 +76,17 @@ function isWeekend(dateStr: string) {
   return dow >= 5
 }
 
+function blockHours(b: { startTime: string; endTime: string }) {
+  if (!b.startTime || !b.endTime) return 0
+  const [sh, sm] = b.startTime.split(':').map(Number); const [eh, em] = b.endTime.split(':').map(Number)
+  const m = (eh * 60 + em) - (sh * 60 + sm)
+  return m > 0 ? m / 60 : 0
+}
+const hrs = (h: number) => (Math.round(h * 10) / 10) + ' h'
+const DAY_CAP = 8
+
+function todayStr() { return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) }
+
 function fmt$(n: number) {
   return '$' + Math.round(n).toLocaleString('en-US')
 }
@@ -93,7 +104,8 @@ export default function PreDispatchPage() {
   const [isMobile, setIsMobile] = useState(
     typeof window !== 'undefined' && window.innerWidth < 768
   )
-  const [mobileStart, setMobileStart] = useState(0)
+  const [mDay, setMDay] = useState(todayStr())
+  const [sheet, setSheet] = useState<{ cleaningId: string } | null>(null)
 
   const [draggedCleaningId, setDraggedCleaningId] = useState<string | null>(null)
   const [draggedBlockId, setDraggedBlockId] = useState<string | null>(null)
@@ -114,8 +126,8 @@ export default function PreDispatchPage() {
   }
 
   const dates = Array.from({ length: 7 }, (_, i) => addDaysToISO(weekStart, i))
-  const visibleDates = isMobile ? dates.slice(mobileStart, mobileStart + 3) : dates
-  const gridCols = isMobile ? '100px repeat(3, 1fr)' : '140px repeat(7, 1fr)'
+  const visibleDates = dates
+  const gridCols = '140px repeat(7, 1fr)'
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -166,6 +178,14 @@ export default function PreDispatchPage() {
 
   const busiest = dates.reduce((best, d) =>
     (jobsByDate[d]?.total || 0) > (jobsByDate[best]?.total || 0) ? d : best, dates[0])
+
+  const avisos: string[] = []
+  for (const d of dates) {
+    const un = unassignedCleanings.filter(c => c.date === d).length
+    const dn = new Date(d + 'T12:00:00').toLocaleDateString('es', { weekday: 'long', day: 'numeric' })
+    if (un > 0) avisos.push(`${dn}: ${un} limpieza${un > 1 ? 's' : ''} sin squad`)
+    for (const sq of squads) { const h = blocks.filter(b => b.squadId === sq.id && b.date === d).reduce((t, b) => t + blockHours(b), 0); if (h >= 7) avisos.push(`${dn}: ${sq.name} con ${hrs(h)} de ${DAY_CAP} h`) }
+  }
 
   // ── Squad grouping ───────────────────────────────────────────────
   const flexibleSquads = squads.filter(s => s.type === 'Flexible').sort((a, b) => a.name.localeCompare(b.name))
@@ -307,7 +327,7 @@ export default function PreDispatchPage() {
             <Users className="w-5 h-5" style={{ color: C.primary }} />
           </div>
           <div>
-            <h2 className="font-black text-[20px]" style={{ color: C.ink }}>Pre-dispatch</h2>
+            <h2 className="font-black text-[20px]" style={{ color: C.ink }}>Dispatch</h2>
             <p className="text-[12px] font-medium" style={{ color: C.muted }}>Asigna squad a limpiezas ya lanzadas</p>
           </div>
         </div>
@@ -358,6 +378,72 @@ export default function PreDispatchPage() {
         </div>
       )}
 
+      {/* Avisos */}
+      {!loading && avisos.length > 0 && (
+        <div className="rounded-2xl px-4 py-3" style={{ background: C.amberLight, border: `1px solid ${C.amber}40` }}>
+          <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: C.amber }}>Avisos</p>
+          {avisos.slice(0, 6).map((a, i) => <p key={i} className="text-[12px]" style={{ color: C.slate }}>⚠ {a}</p>)}
+          {avisos.length > 6 && <p className="text-[11px]" style={{ color: C.muted }}>y {avisos.length - 6} más…</p>}
+        </div>
+      )}
+
+      {/* Mobile: un día a la vez */}
+      {isMobile && !loading && (() => {
+        const date = dates.includes(mDay) ? mDay : dates[0]
+        const dayClean = unassignedCleanings.filter(c => c.date === date)
+        const sqs = relevantSquads(date)
+        const used = (sid: string) => blocks.filter(b => b.squadId === sid && b.date === date).reduce((t, b) => t + blockHours(b), 0)
+        return (
+          <div className="flex flex-col gap-3">
+            <div className="flex gap-1.5" style={{ overflowX: 'auto' }}>
+              {dates.map(d => { const { short, num } = fmtDay(d); const on = d === date; const un = unassignedCleanings.filter(c => c.date === d).length
+                return <button key={d} onClick={() => setMDay(d)} className="rounded-2xl px-2.5 py-1.5 shrink-0 text-center" style={{ minWidth: 46, border: `1.5px solid ${on ? C.primary : C.border}`, background: on ? C.primary : C.white, color: on ? '#fff' : C.slate }}>
+                  <p className="text-[9px] font-black">{short}</p><p className="text-[15px] font-black">{num}</p>
+                  {un > 0 && <p className="text-[9px] font-black" style={{ color: on ? '#FDE68A' : C.amber }}>{un} sin</p>}
+                </button> })}
+            </div>
+            {dayClean.length > 0 && (
+              <div className="rounded-2xl p-3" style={{ background: C.amberLight, border: `1px solid ${C.amber}60` }}>
+                <p className="text-[12px] font-black mb-2" style={{ color: C.amber }}>Sin squad · {dayClean.length}</p>
+                {dayClean.map(c => { const time = timeFromScheduled(c.scheduledTime); const tc = colorForType(c.cleaningType)
+                  return <div key={c.id} className="flex items-center gap-2 rounded-xl px-2.5 py-2 mb-1.5" style={{ background: C.white, borderLeft: `4px solid ${tc.border}` }}>
+                    <div className="min-w-0 flex-1"><p className="text-[12px] font-bold truncate" style={{ color: C.ink }}>{c.propertyText}</p><p className="text-[10.5px]" style={{ color: C.muted }}>{[time, c.zip, c.cleaningType].filter(Boolean).join(' · ')}</p></div>
+                    <button disabled={pendingCleaningIds.has(c.id)} onClick={() => setSheet({ cleaningId: c.id })} className="px-3 py-1.5 rounded-xl text-[12px] font-black text-white" style={{ background: C.primary }}>{pendingCleaningIds.has(c.id) ? '…' : 'Asignar ›'}</button>
+                  </div> })}
+              </div>
+            )}
+            {sqs.map(sq => {
+              const bl = blocks.filter(b => b.squadId === sq.id && b.date === date).sort((a, b) => a.startTime.localeCompare(b.startTime)); const h = used(sq.id)
+              return <div key={sq.id} className="rounded-2xl p-3" style={{ background: C.white, border: `1px solid ${C.border}` }}>
+                <div className="flex items-center gap-2 mb-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: sq.color }} /><p className="text-[13px] font-black flex-1" style={{ color: C.ink }}>{sq.name}</p><p className="text-[11px] font-black" style={{ color: h >= 7 ? C.red : C.slate }}>{hrs(h)} / {DAY_CAP} h</p></div>
+                <div className="rounded-full mb-2" style={{ height: 5, background: '#EEF2F7', overflow: 'hidden' }}><div style={{ height: '100%', width: `${Math.min(100, h / DAY_CAP * 100)}%`, background: h >= 7 ? C.red : C.green }} /></div>
+                {bl.length === 0 && <p className="text-[11px]" style={{ color: C.muted }}>Sin limpiezas este día</p>}
+                {bl.map((b, i) => { const rc = cleanings.find(c => c.id === b.cleaningId); const tc = colorForType(rc?.cleaningType || null)
+                  return <div key={b.id} className="flex items-center gap-1.5 rounded-xl px-2 py-1.5 mb-1" style={{ background: tc.bg, border: `1px solid ${tc.border}40` }}>
+                    <div className="min-w-0 flex-1"><p className="text-[11px] font-black truncate" style={{ color: tc.text }}>{b.startTime} · {pillDuration(b.startTime, b.endTime)}</p><p className="text-[10.5px] truncate" style={{ color: C.slate }}>{rc?.propertyText || b.notes}</p></div>
+                    {b.cleaningId && bl.length > 1 && <>
+                      <button disabled={i === 0} onClick={() => handleReorderBlocks(sq.id, date, b.id, bl[i - 1].id)} className="w-7 h-7 rounded-lg text-[12px]" style={{ border: `1px solid ${C.border}`, background: C.white, opacity: i === 0 ? .3 : 1 }}>▲</button>
+                      <button disabled={i === bl.length - 1} onClick={() => handleReorderBlocks(sq.id, date, b.id, bl[i + 1].id)} className="w-7 h-7 rounded-lg text-[12px]" style={{ border: `1px solid ${C.border}`, background: C.white, opacity: i === bl.length - 1 ? .3 : 1 }}>▼</button></>}
+                    <button onClick={() => handleDeleteBlock(b.id)} className="w-7 h-7 rounded-lg text-[12px]" style={{ border: `1px solid ${C.border}`, background: C.white, color: C.red }} title="Quitar del squad">✕</button>
+                  </div> })}
+              </div>
+            })}
+            {sheet && (() => { const cl = cleanings.find(c => c.id === sheet.cleaningId); if (!cl) return null
+              return <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(15,23,42,.5)' }} onClick={() => setSheet(null)}>
+                <div className="w-full rounded-t-3xl p-4" style={{ background: C.white, maxHeight: '75vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+                  <p className="text-[14px] font-black" style={{ color: C.ink }}>Asignar «{cl.propertyText}»</p>
+                  <p className="text-[11px] mb-3" style={{ color: C.muted }}>{fmtDay(cl.date).short} {fmtDay(cl.date).num} · se agrega al final con bloque de 2 h</p>
+                  {relevantSquads(cl.date).map(sq => { const h = blocks.filter(b => b.squadId === sq.id && b.date === cl.date).reduce((t, b) => t + blockHours(b), 0); const after = h + 2; const over = after > DAY_CAP
+                    return <button key={sq.id} onClick={() => { setSheet(null); handleDropCleaning(sq.id, cl.date, cl.id) }} className="w-full flex items-center gap-2 rounded-2xl px-3 py-2.5 mb-2 text-left" style={{ border: `1.5px solid ${over ? C.red + '60' : C.border}`, background: C.white }}>
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ background: sq.color }} /><span className="flex-1"><span className="block text-[13px] font-black" style={{ color: C.ink }}>{sq.name}</span><span className="block text-[11px]" style={{ color: C.muted }}>hoy {hrs(h)}</span></span>
+                      <span className="text-[11px] font-black" style={{ color: over ? C.red : C.green }}>{over ? '⚠ ' : '→ '}{hrs(after)} / {DAY_CAP} h</span>
+                    </button> })}
+                  <button onClick={() => setSheet(null)} className="w-full py-2 text-[13px] font-bold" style={{ color: C.slate }}>Cancelar</button>
+                </div></div> })()}
+          </div>
+        )
+      })()}
+
       {/* Type legend */}
       <div className="flex flex-wrap gap-3">
         {Object.entries(TYPE_COLORS).map(([type, tc]) => (
@@ -367,27 +453,11 @@ export default function PreDispatchPage() {
         ))}
       </div>
 
-      {/* Mobile day navigation */}
-      {isMobile && (
-        <div className="flex items-center justify-between">
-          <button onClick={() => setMobileStart(Math.max(0, mobileStart - 3))} disabled={mobileStart === 0}
-            className="px-3 py-1.5 rounded-xl text-[12px] font-bold" style={{ border: `1.5px solid ${C.border}`, color: mobileStart === 0 ? C.muted : C.slate, opacity: mobileStart === 0 ? 0.4 : 1 }}>
-            ← Anterior
-          </button>
-          <p className="text-[11px] font-bold" style={{ color: C.muted }}>
-            {new Date(visibleDates[0] + 'T12:00:00').toLocaleDateString('es', { day: 'numeric', month: 'short' })} — {new Date(visibleDates[visibleDates.length - 1] + 'T12:00:00').toLocaleDateString('es', { day: 'numeric', month: 'short' })}
-          </p>
-          <button onClick={() => setMobileStart(Math.min(4, mobileStart + 3))} disabled={mobileStart + 3 >= 7}
-            className="px-3 py-1.5 rounded-xl text-[12px] font-bold" style={{ border: `1.5px solid ${C.border}`, color: mobileStart + 3 >= 7 ? C.muted : C.slate, opacity: mobileStart + 3 >= 7 ? 0.4 : 1 }}>
-            Siguiente →
-          </button>
-        </div>
-      )}
-
+      {!isMobile && (<>
       {/* Grid — single overflow wrapper ensures ALL rows share the same column widths */}
       <div className="rounded-3xl overflow-hidden shadow-sm" style={{ background: C.white, border: `1px solid ${C.border}` }}>
         <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <div style={{ minWidth: isMobile ? 360 : 900 }}>
+          <div style={{ minWidth: 900 }}>
 
             {/* Day headers */}
             <div style={{ display: 'grid', gridTemplateColumns: gridCols, borderBottom: `1px solid ${C.border}` }}>
@@ -564,6 +634,9 @@ export default function PreDispatchPage() {
                                   </div>
                                 )
                               })}
+                              {dayBlocks.length > 0 && (() => { const h = dayBlocks.reduce((t, b) => t + blockHours(b), 0); return (
+                                <div className="mt-1"><div className="rounded-full" style={{ height: 4, background: '#EEF2F7', overflow: 'hidden' }}><div style={{ height: '100%', width: `${Math.min(100, h / DAY_CAP * 100)}%`, background: h >= 7 ? C.red : C.green }} /></div>
+                                  <p className="text-[8.5px] font-bold" style={{ color: h >= 7 ? C.red : C.muted }}>{hrs(h)} / {DAY_CAP} h</p></div>) })()}
                             </div>
                           )
                         })}
@@ -577,6 +650,7 @@ export default function PreDispatchPage() {
           </div>{/* end min-width wrapper */}
         </div>{/* end overflow-x: auto */}
       </div>{/* end rounded card */}
+      </>)}
 
       {saving && (
         <div className="fixed bottom-5 right-5 px-4 py-2 rounded-xl text-[12px] font-bold text-white shadow-lg" style={{ background: C.primary }}>

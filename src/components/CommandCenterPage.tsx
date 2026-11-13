@@ -20,6 +20,7 @@ export default function CommandCenterPage({ onNavigate }: { onNavigate?: (p: any
   const [billDay, setBillDay] = useState<any>(null)
   const [owed, setOwed] = useState<any>(null)
   const [inc, setInc] = useState<number | null>(null)
+  const [mg, setMg] = useState<any>(null)
   const [notion, setNotion] = useState<any>(null)
   const [showDetail, setShowDetail] = useState(false)
   const [showDebug, setShowDebug] = useState(false)
@@ -34,6 +35,8 @@ export default function CommandCenterPage({ onNavigate }: { onNavigate?: (p: any
     jget(`/api/getDashboard?date=${T}`).then(setDay)
     jget(`/api/getReports?type=billing&dateFrom=${T}&dateTo=${T}`).then(setBillDay)
     jget(`/api/getReports?type=billing&dateFrom=${addDays(T, -60)}&dateTo=${T}`).then(setOwed)
+    { const x = new Date(T + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() - ((x.getUTCDay() + 6) % 7)); const mon = x.toISOString().slice(0, 10); x.setUTCDate(x.getUTCDate() + 6)
+      jget(`/api/getDashboard?action=reports&kind=margin&from=${mon}&to=${x.toISOString().slice(0, 10)}`).then(setMg) }
     jget('/api/getDashboard?action=notion').then(j => setNotion(j || { error: 'sin respuesta' }))
     jget('/api/getReports?type=incidents').then(j => setInc(Array.isArray(j) ? j.filter((x: any) => x.creationDate && new Date(x.creationDate).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) === T).length : null))
   }, [tick])
@@ -116,6 +119,12 @@ export default function CommandCenterPage({ onNavigate }: { onNavigate?: (p: any
         </div>
       </div>
       <button onClick={() => go('scorecard')} style={{ ...link, alignSelf: 'flex-start' }}>Ver el Scorecard completo →</button>
+      <div style={{ ...card, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div><p style={{ fontSize: 12, color: '#64748B' }}>Margen de la semana</p>
+          <p style={{ fontSize: 26, fontWeight: 700, color: C.green, letterSpacing: '-0.02em' }}>{mg?.total ? money(mg.total.margen) : '…'}</p></div>
+        <p style={{ fontSize: 12, color: C.muted, flex: 1 }}>{mg?.total ? `${mg.total.mgPct ?? '—'}% de margen · ${mg.total.limpiezas} limpiezas` : ''}{mg?.prevTotal ? ` · semana pasada ${money(mg.prevTotal.margen)}` : ''}</p>
+        <button onClick={() => go('earn_stats')} style={link}>Ver Reports →</button>
+      </div>
 
       <p style={sec}>3 · Atención — lo que necesita una decisión</p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
