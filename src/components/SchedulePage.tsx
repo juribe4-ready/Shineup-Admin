@@ -111,19 +111,19 @@ export default function SchedulePage() {
       <Seg items={[['this', 'Esta semana'], ['next', 'Próxima']]} value={tab} onChange={v => setTab(v as any)} />
       <span style={{ fontWeight: 700, fontSize: 14 }}>{weekLabel(monday)}</span>
       <div style={{ marginLeft: 'auto', position: 'relative' }}>
-        <button style={{ ...btn(), background: C.primary, color: '#fff', borderColor: C.primary, fontWeight: 700 }} onClick={() => setShareOpen(o => !o)}>📤 Compartir semana ▾</button>
+        <button style={{ ...btn(), background: C.primary, color: '#fff', borderColor: C.primary, fontWeight: 700 }} onClick={() => setShareOpen(o => !o)}>Compartir semana ▾</button>
         {shareOpen && <Card style={{ position: 'absolute', right: 0, top: 44, zIndex: 30, width: 260, boxShadow: '0 10px 30px rgba(15,23,42,.15)' }}>
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>Para:</div>
           <select value={forWho} onChange={e => setForWho(e.target.value)} style={{ ...selStyle, width: '100%', marginBottom: 10 }}><option value="all">Todo el equipo</option>{people.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</select>
-          <button style={{ ...btn(), width: '100%', marginBottom: 6 }} onClick={exportPng}>🖼 Imagen PNG (WhatsApp)</button>
-          <button style={{ ...btn(), width: '100%' }} onClick={exportPdf}>📄 PDF</button>
+          <button style={{ ...btn(), width: '100%', marginBottom: 6 }} onClick={exportPng}>Imagen PNG (WhatsApp)</button>
+          <button style={{ ...btn(), width: '100%' }} onClick={exportPdf}>PDF</button>
           <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>Sin dinero. Incluye lanzadas y confirmadas.</div>
         </Card>}
       </div>
     </div>
     <Card style={{ padding: '10px 14px', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 13 }}>
       <span><b style={{ color: C.green }}>{cnt.l}</b> lanzadas</span><span><b style={{ color: C.amber }}>{cnt.c}</b> confirmadas por lanzar</span><span><b style={{ color: C.muted }}>{cnt.p}</b> por confirmar</span>
-      {cnt.c > 0 && <button style={{ ...btn(), marginLeft: 'auto', background: C.amberBg, borderColor: '#F59E0B', color: C.amber, fontWeight: 700 }} onClick={() => setLaunch({ ids: confirmedAll.map(i => i.id), label: `las ${confirmedAll.length} confirmadas de la semana` })}>🚀 Lanzar las {cnt.c} confirmadas</button>}
+      {cnt.c > 0 && <button style={{ ...btn(), marginLeft: 'auto', background: C.amberBg, borderColor: '#F59E0B', color: C.amber, fontWeight: 700 }} onClick={() => setLaunch({ ids: confirmedAll.map(i => i.id), label: `las ${confirmedAll.length} confirmadas de la semana` })}>Lanzar las {cnt.c} confirmadas</button>}
     </Card>
     {err && <div style={{ background: C.redBg, color: C.red, borderRadius: 10, padding: 10, fontSize: 13 }}>Error: {err}</div>}
     {loading && <div style={{ fontSize: 12, color: C.muted }}>Cargando…</div>}
@@ -149,9 +149,9 @@ export default function SchedulePage() {
         <p style={{ fontSize: 13, color: C.slate }}>Se crean <b>{launch.ids.length}</b> limpiezas con estado Scheduled.</p>
         <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '10px 0 6px' }}>Staff asignado (★ = por defecto)</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{staff.map(m => { const on = selStaff.includes(m.id); return <button key={m.id} onClick={() => setSelStaff(p => p.includes(m.id) ? p.filter(x => x !== m.id) : [...p, m.id])} style={{ padding: '6px 12px', borderRadius: 999, border: `1.5px solid ${on ? C.primary : C.border}`, background: on ? C.primary : C.bg, color: on ? '#fff' : C.slate, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{m.name.split(' ')[0] || m.initials}{m.defaultAssignment ? ' ★' : ''}</button> })}</div>
-        <p style={{ fontSize: 11, color: selStaff.length ? C.muted : C.amber, margin: '6px 0 0' }}>{selStaff.length ? `${selStaff.length} seleccionado(s): ${staff.filter(m => selStaff.includes(m.id)).map(m => m.name.split(' ')[0]).join(', ')}` : '⚠ No hay staff seleccionado'}</p>
+        <p style={{ fontSize: 11, color: selStaff.length ? C.muted : C.amber, margin: '6px 0 0' }}>{selStaff.length ? `${selStaff.length} seleccionado(s): ${staff.filter(m => selStaff.includes(m.id)).map(m => m.name.split(' ')[0]).join(', ')}` : 'No hay staff seleccionado'}</p>
         <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '12px 0 6px' }}>Rating por defecto (condición esperada)</div>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>{([[3, '😊 Bueno', '#047857'], [2, '😐 Normal', '#B45309'], [1, '😟 Malo', '#B91C1C']] as [number, string, string][]).map(([v, l, c]) => <button key={v} onClick={() => setRating(v)} style={{ flex: 1, padding: '8px 0', borderRadius: 10, border: `1.5px solid ${rating === v ? 'transparent' : C.border}`, background: rating === v ? c : C.bg, color: rating === v ? '#fff' : C.slate, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{l}</button>)}</div>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>{([[3, 'Bueno', '#047857'], [2, 'Normal', '#B45309'], [1, 'Malo', '#B91C1C']] as [number, string, string][]).map(([v, l, c]) => <button key={v} onClick={() => setRating(v)} style={{ flex: 1, padding: '8px 0', borderRadius: 10, border: `1.5px solid ${rating === v ? 'transparent' : C.border}`, background: rating === v ? c : C.bg, color: rating === v ? '#fff' : C.slate, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{l}</button>)}</div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button style={btn()} onClick={() => setLaunch(null)}>Cancelar</button><button disabled={launching} style={{ ...btn(), background: C.primary, color: '#fff', borderColor: C.primary, fontWeight: 700 }} onClick={doLaunch}>{launching ? 'Lanzando…' : 'Lanzar'}</button></div>
       </Card></div>}
   </div>

@@ -166,7 +166,7 @@ export default function WeekPayPage({ by }: { by: string }) {
                 </div>
               ))}
               <div style={{ display: 'grid', gridTemplateColumns: grid, gap: 8, alignItems: 'center', borderTop: `2px solid ${C.border}`, padding: '10px 0', fontSize: 13 }}>
-                <b>Total semana</b><span /><span /><span /><span /><span /><span /><span />
+                <b>Total semana</b>{days.map(d => { const ms = people.reduce((t, p) => t + (p.perDay[d] || 0), 0); const pay = people.reduce((t, p) => t + ((p.perDay[d] || 0) / 3600000) * p.rate, 0); return <span key={d} style={{ textAlign: 'center', fontWeight: 700, fontSize: 12 }}>{ms ? hmShort(ms) : '—'}{ms ? <span style={{ display: 'block', fontWeight: 500, fontSize: 10, color: C.muted }}>{money(pay)}</span> : null}</span> })}
                 <span style={{ textAlign: 'right', fontWeight: 700 }}>{hm(tot.ms)}</span><span /><span style={{ textAlign: 'right', fontWeight: 700, fontSize: 15 }}>{money(tot.pay)}</span><span />
               </div>
             </div>
