@@ -21,7 +21,9 @@ export default function SchedulePage() {
   const [err, setErr] = useState('')
   const [dbg, setDbg] = useState<any>(null)
   const [showDbg, setShowDbg] = useState(false)
-  const [staff, setStaff] = useState<{ id: string; name: string; defaultAssignment: boolean }[]>([])
+  const [staff, setStaff] = useState<{ id: string; name: string; initials?: string; defaultAssignment: boolean }[]>([])
+  const [selStaff, setSelStaff] = useState<string[]>([])
+  const [rating, setRating] = useState(2)
   const [launch, setLaunch] = useState<{ ids: string[]; label: string } | null>(null)
   const [launching, setLaunching] = useState(false)
   const [toast, setToast] = useState<{ m: string; ok: boolean } | null>(null)
@@ -47,7 +49,7 @@ export default function SchedulePage() {
     load(other).then(r => setNextCount({ l: r.out.filter(i => i.st === 'launched').length, c: r.out.filter(i => i.st === 'confirmed').length, p: r.out.filter(i => i.st === 'pending').length })).catch(() => setNextCount(null))
   }, [load, monday, sunday, tab, thisMon])
   useEffect(() => { refresh() }, [refresh])
-  useEffect(() => { getJ('/api/getAppointments?action=defaultStaff').then(j => setStaff(j.staff || [])).catch(() => {}) }, [])
+  useEffect(() => { getJ('/api/getAppointments?action=defaultStaff').then(j => { const st = j.staff || []; setStaff(st); setSelStaff(st.filter((x: any) => x.defaultAssignment).map((x: any) => x.id)) }).catch(() => {}) }, [])
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i))
   const cnt = { l: items.filter(i => i.st === 'launched').length, c: items.filter(i => i.st === 'confirmed').length, p: items.filter(i => i.st === 'pending').length }
@@ -62,7 +64,7 @@ export default function SchedulePage() {
     if (!launch) return
     setLaunching(true)
     try {
-      const r = await fetch('/api/getAppointments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ appointmentIds: launch.ids, defaultRating: 2, assignedStaffIds: staff.filter(s => s.defaultAssignment).map(s => s.id) }) })
+      const r = await fetch('/api/getAppointments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ appointmentIds: launch.ids, defaultRating: rating, assignedStaffIds: selStaff }) })
       const j = await r.json()
       if (j.success) { showT(`✓ ${j.created} limpiezas creadas`); setLaunch(null); refresh() } else showT(j.error || 'Error al lanzar', false)
     } catch { showT('Error de conexión', false) } finally { setLaunching(false) }
@@ -144,7 +146,12 @@ export default function SchedulePage() {
     {launch && <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.5)', zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <Card style={{ maxWidth: 420, width: '100%' }}>
         <b style={{ fontSize: 16 }}>¿Lanzar {launch.label}?</b>
-        <p style={{ fontSize: 13, color: C.slate }}>Se crean {launch.ids.length} limpiezas y se asignan a: {staff.filter(s => s.defaultAssignment).map(s => s.name.split(' ')[0]).join(', ') || 'nadie (sin staff por defecto)'}. Luego puedes reasignar en Dispatch.</p>
+        <p style={{ fontSize: 13, color: C.slate }}>Se crean <b>{launch.ids.length}</b> limpiezas con estado Scheduled.</p>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '10px 0 6px' }}>Staff asignado (★ = por defecto)</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{staff.map(m => { const on = selStaff.includes(m.id); return <button key={m.id} onClick={() => setSelStaff(p => p.includes(m.id) ? p.filter(x => x !== m.id) : [...p, m.id])} style={{ padding: '6px 12px', borderRadius: 999, border: `1.5px solid ${on ? C.primary : C.border}`, background: on ? C.primary : C.bg, color: on ? '#fff' : C.slate, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{m.name.split(' ')[0] || m.initials}{m.defaultAssignment ? ' ★' : ''}</button> })}</div>
+        <p style={{ fontSize: 11, color: selStaff.length ? C.muted : C.amber, margin: '6px 0 0' }}>{selStaff.length ? `${selStaff.length} seleccionado(s): ${staff.filter(m => selStaff.includes(m.id)).map(m => m.name.split(' ')[0]).join(', ')}` : '⚠ No hay staff seleccionado'}</p>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '12px 0 6px' }}>Rating por defecto (condición esperada)</div>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>{([[3, '😊 Bueno', '#047857'], [2, '😐 Normal', '#B45309'], [1, '😟 Malo', '#B91C1C']] as [number, string, string][]).map(([v, l, c]) => <button key={v} onClick={() => setRating(v)} style={{ flex: 1, padding: '8px 0', borderRadius: 10, border: `1.5px solid ${rating === v ? 'transparent' : C.border}`, background: rating === v ? c : C.bg, color: rating === v ? '#fff' : C.slate, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{l}</button>)}</div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button style={btn()} onClick={() => setLaunch(null)}>Cancelar</button><button disabled={launching} style={{ ...btn(), background: C.primary, color: '#fff', borderColor: C.primary, fontWeight: 700 }} onClick={doLaunch}>{launching ? 'Lanzando…' : 'Lanzar'}</button></div>
       </Card></div>}
   </div>

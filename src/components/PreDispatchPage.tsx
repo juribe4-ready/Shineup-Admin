@@ -82,6 +82,12 @@ function blockHours(b: { startTime: string; endTime: string }) {
   const m = (eh * 60 + em) - (sh * 60 + sm)
   return m > 0 ? m / 60 : 0
 }
+function zipChanges(blocks: Block[], cleanings: Cleaning[], squadId: string, date: string) {
+  const bl = blocks.filter(b => b.squadId === squadId && b.date === date && b.cleaningId).sort((a, b) => a.startTime.localeCompare(b.startTime))
+  const zips = bl.map(b => cleanings.find(c => c.id === b.cleaningId)?.zip || null)
+  let n = 0; for (let i = 1; i < zips.length; i++) if (zips[i] && zips[i - 1] && zips[i] !== zips[i - 1]) n++
+  return n
+}
 const hrs = (h: number) => (Math.round(h * 10) / 10) + ' h'
 const DAY_CAP = 8
 
@@ -104,6 +110,8 @@ export default function PreDispatchPage() {
   const [isMobile, setIsMobile] = useState(
     typeof window !== 'undefined' && window.innerWidth < 768
   )
+  const [loadMs, setLoadMs] = useState<number | null>(null)
+  const [showMs, setShowMs] = useState(false)
   const [mDay, setMDay] = useState(todayStr())
   const [sheet, setSheet] = useState<{ cleaningId: string } | null>(null)
 
@@ -131,6 +139,7 @@ export default function PreDispatchPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true)
+    const t0 = performance.now()
     try {
       const r = await fetch(`/api/getSquads?weekStart=${weekStart}`)
       if (r.ok) {
@@ -138,6 +147,7 @@ export default function PreDispatchPage() {
         setSquads(d.squads || [])
         setBlocks(d.blocks || [])
         setCleanings(d.cleanings || [])
+        setLoadMs(Math.round(performance.now() - t0))
       }
     } catch { showToast('Error cargando datos', 'err') }
     finally { setLoading(false) }
@@ -184,7 +194,7 @@ export default function PreDispatchPage() {
     const un = unassignedCleanings.filter(c => c.date === d).length
     const dn = new Date(d + 'T12:00:00').toLocaleDateString('es', { weekday: 'long', day: 'numeric' })
     if (un > 0) avisos.push(`${dn}: ${un} limpieza${un > 1 ? 's' : ''} sin squad`)
-    for (const sq of squads) { const h = blocks.filter(b => b.squadId === sq.id && b.date === d).reduce((t, b) => t + blockHours(b), 0); if (h >= 7) avisos.push(`${dn}: ${sq.name} con ${hrs(h)} de ${DAY_CAP} h`) }
+    for (const sq of squads) { const h = blocks.filter(b => b.squadId === sq.id && b.date === d).reduce((t, b) => t + blockHours(b), 0); if (h >= 7) avisos.push(`${dn}: ${sq.name} con ${hrs(h)} de ${DAY_CAP} h`); const z = zipChanges(blocks, cleanings, sq.id, d); if (z > 0) avisos.push(`${dn}: ${sq.name} cambia de ZIP ${z} ${z > 1 ? 'veces' : 'vez'} (traslado)`) }
   }
 
   // ── Squad grouping ───────────────────────────────────────────────
@@ -328,7 +338,7 @@ export default function PreDispatchPage() {
           </div>
           <div>
             <h2 className="font-black text-[20px]" style={{ color: C.ink }}>Dispatch</h2>
-            <p className="text-[12px] font-medium" style={{ color: C.muted }}>Asigna squad a limpiezas ya lanzadas</p>
+            <p className="text-[12px] font-medium" style={{ color: C.muted }}>Asigna squad a limpiezas ya lanzadas · <button onClick={() => setShowMs(v => !v)} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 11, textDecoration: 'underline' }}>{showMs ? (loadMs !== null ? `cargó en ${loadMs} ms` : '—') : 'tiempo de carga'}</button></p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -416,6 +426,7 @@ export default function PreDispatchPage() {
               const bl = blocks.filter(b => b.squadId === sq.id && b.date === date).sort((a, b) => a.startTime.localeCompare(b.startTime)); const h = used(sq.id)
               return <div key={sq.id} className="rounded-2xl p-3" style={{ background: C.white, border: `1px solid ${C.border}` }}>
                 <div className="flex items-center gap-2 mb-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: sq.color }} /><p className="text-[13px] font-black flex-1" style={{ color: C.ink }}>{sq.name}</p><p className="text-[11px] font-black" style={{ color: h >= 7 ? C.red : C.slate }}>{hrs(h)} / {DAY_CAP} h</p></div>
+                {zipChanges(blocks, cleanings, sq.id, date) > 0 && <p className="text-[10.5px] font-bold mb-1" style={{ color: C.amber }}>🚗 {zipChanges(blocks, cleanings, sq.id, date)} cambio(s) de ZIP</p>}
                 <div className="rounded-full mb-2" style={{ height: 5, background: '#EEF2F7', overflow: 'hidden' }}><div style={{ height: '100%', width: `${Math.min(100, h / DAY_CAP * 100)}%`, background: h >= 7 ? C.red : C.green }} /></div>
                 {bl.length === 0 && <p className="text-[11px]" style={{ color: C.muted }}>Sin limpiezas este día</p>}
                 {bl.map((b, i) => { const rc = cleanings.find(c => c.id === b.cleaningId); const tc = colorForType(rc?.cleaningType || null)
@@ -636,7 +647,7 @@ export default function PreDispatchPage() {
                               })}
                               {dayBlocks.length > 0 && (() => { const h = dayBlocks.reduce((t, b) => t + blockHours(b), 0); return (
                                 <div className="mt-1"><div className="rounded-full" style={{ height: 4, background: '#EEF2F7', overflow: 'hidden' }}><div style={{ height: '100%', width: `${Math.min(100, h / DAY_CAP * 100)}%`, background: h >= 7 ? C.red : C.green }} /></div>
-                                  <p className="text-[8.5px] font-bold" style={{ color: h >= 7 ? C.red : C.muted }}>{hrs(h)} / {DAY_CAP} h</p></div>) })()}
+                                  <p className="text-[8.5px] font-bold" style={{ color: h >= 7 ? C.red : C.muted }}>{hrs(h)} / {DAY_CAP} h</p>{zipChanges(blocks, cleanings, squad.id, date) > 0 && <p className="text-[8.5px] font-bold" style={{ color: C.amber }}>🚗 {zipChanges(blocks, cleanings, squad.id, date)} cambio(s) de ZIP</p>}</div>) })()}
                             </div>
                           )
                         })}
