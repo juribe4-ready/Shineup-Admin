@@ -73,15 +73,16 @@ function DayBars({ days, prevDays, k, isMonth, mob }: { days: any[]; prevDays: a
   </svg>
 }
 
-export default function MarginTab({ onDebug, onGoDay }: { onDebug: (d: any) => void; onGoDay: (a: { from: string; to: string; property?: string; client?: string }) => void }) {
+export default function MarginTab({ onDebug, onGoDay }: { onDebug: (d: any) => void; onGoDay: (a: { from: string; to: string; property?: string; client?: string; origen?: string }) => void }) {
   const mobile = useIsMobile()
   const [mode, setMode] = useState<'week' | 'month'>('week')
   const [anchor, setAnchor] = useState(todayET())
   const [client, setClient] = useState('')
   const [property, setProperty] = useState('')
+  const [origen, setOrigen] = useState('')
   const from = mode === 'week' ? mondayOf(anchor) : monthStart(anchor)
   const to = mode === 'week' ? addDays(from, 6) : monthEnd(anchor)
-  const { data, loading, err } = useApi('margin', { from, to, client, property }, [from, to, client, property], onDebug)
+  const { data, loading, err } = useApi('margin', { from, to, client, property, origen }, [from, to, client, property, origen], onDebug)
   const days: any[] = data?.days || [], pdays: any[] = data?.prevDays || []
   const today = data?.today || todayET()
   const k = !data ? 0 : today > to ? days.length : today < from ? 0 : days.findIndex((d: any) => d.date === today) + 1
@@ -103,6 +104,7 @@ export default function MarginTab({ onDebug, onGoDay }: { onDebug: (d: any) => v
     const cI = cum('cobrado'), cL = cum('costo'), cM = cum('margen'), cN = cum('limpiezas'), cH = cum('horas')
     const pI = cumul(pdays.map(d => d.cobrado)), pL = cumul(pdays.map(d => d.costo)), pM = cumul(pdays.map(d => d.margen)), pN = cumul(pdays.map(d => d.limpiezas)), pH = cumul(pdays.map(d => d.horas))
     const projArr = (key: string, base: number[]) => { let s = base[k - 1] || 0; const out: number[] = []; for (let i = k - 1; i < days.length; i++) { s += days[i].proy?.[key] || 0; out.push(s) } return out.length > 1 && out[out.length - 1] !== out[0] ? out : [] }
+    const tur = sumK(days, 'ingTurno', k)
     const rng = isNow ? `${fmtShort(days[0].date)} – ${fmtShort(days[k - 1].date)}` : ''
     const prLine = (t: string) => <div style={{ fontSize: 11.5, color: C.slate, marginTop: 4 }}>{t}</div>
     const Cd = (label: string, v: string, color: string | undefined, vs: string, delta: React.ReactNode, projLine: string | null, sp: React.ReactNode) => <div style={{ flex: '1 1 190px', minWidth: 0, background: C.white, border: `1px solid ${C.border}`, borderRadius: 14, padding: '12px 14px' }}>
@@ -113,7 +115,7 @@ export default function MarginTab({ onDebug, onGoDay }: { onDebug: (d: any) => v
       return <div style={{ fontSize: 12, color: ok ? C.green : C.red, fontWeight: 700, marginTop: 2 }}>{dd > 0 ? '▲ +' : '▼ −'}{f}{kind === 'pct' ? '' : pctD(cur, prev)}</div> }
     const cierre = (key: 'cobrado' | 'costo' | 'margen' | 'limpiezas', actual: number, full: number, fmt: (n: number) => string) => { const p = pj(key); if (!isNow || !p) return `${prevName} cerró ${fmt(full)}`; const e = actual + p; return `Proyección cierre ${fmt(e)}${pctD(e, full)} · ${prevName} cerró ${fmt(full)}` }
     cards = <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-      {Cd('Ingresos', money(ing), undefined, `${prevName} a esta fecha: ${money(pIng)}`, dl(ing, pIng, 'up'), cierre('cobrado', ing, fIng, kM), <Spark cur={cI} prev={pI} proj={projArr('cobrado', cI)} k={k} />)}
+      {Cd('Ingresos', money(ing), undefined, `${prevName} a esta fecha: ${money(pIng)}`, <>{dl(ing, pIng, 'up')}{!origen && <div style={{ fontSize: 11.5, marginTop: 4, color: C.slate }}><b style={{ color: C.green }}>Turno {money(tur)}</b> ({ing > 0 ? Math.round(tur / ing * 100) : 0}%) · Otros {money(ing - tur)}</div>}</>, cierre('cobrado', ing, fIng, kM), <Spark cur={cI} prev={pI} proj={projArr('cobrado', cI)} k={k} />)}
       {Cd('Labor', money(lab), undefined, `${prevName} a esta fecha: ${money(pLab)}`, dl(lab, pLab, 'down'), cierre('costo', lab, fLab, kM), <Spark cur={cL} prev={pL} proj={projArr('costo', cL)} k={k} />)}
       {Cd('Margen', money(mg), mg >= 0 ? C.green : C.red, `${prevName} a esta fecha: ${money(pMg)}`, dl(mg, pMg, 'up'), cierre('margen', mg, fMg, kM), <Spark cur={cM} prev={pM} proj={projArr('margen', cM)} k={k} />)}
       {Cd('Margen %', pctS(mgPct), undefined, `${prevName} a esta fecha: ${pctS(pPct)} · Mg/HH ${money1(hh > 0 ? mg / hh : null)}`, pPct === null || mgPct === null ? null : dl(mgPct, pPct, 'up', 'pct'), null, null)}
@@ -135,6 +137,7 @@ export default function MarginTab({ onDebug, onGoDay }: { onDebug: (d: any) => v
       <button style={btn()} onClick={() => step(1)}>›</button>
       <button style={btn()} onClick={() => setAnchor(todayET())}>Hoy</button>
       <select value={client} onChange={e => setClient(e.target.value)} style={selStyle}><option value="">Cliente: todos</option>{(data?.options?.clients || []).map((c: string) => <option key={c}>{c}</option>)}</select>
+      <select value={origen} onChange={e => setOrigen(e.target.value)} style={selStyle}><option value="">Origen: todos</option><option value="turno">Turno (cobranza segura)</option><option value="otros">Otros</option></select>
       <select value={property} onChange={e => setProperty(e.target.value)} style={selStyle}><option value="">Casa: todas</option>{(data?.options?.properties || []).map((c: string) => <option key={c}>{c}</option>)}</select>
     </div>
     <Err msg={err} /><Loading on={loading} />
@@ -165,20 +168,20 @@ export default function MarginTab({ onDebug, onGoDay }: { onDebug: (d: any) => v
         <b style={{ fontSize: 14 }}>Detalle por día</b> <span style={{ fontSize: 12, color: C.muted }}>· toca un día para ver sus casas</span>
         <div style={{ overflowX: 'auto', marginTop: 6 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: mobile ? 600 : 0 }}>
-            <thead><tr>{['Día', 'Ingresos', 'Labor', 'Margen', 'Mg %', 'Limp.', 'Acumulado', 'Labor según', ''].map(h => <th key={h} style={{ textAlign: 'left', fontSize: 10, color: C.muted, letterSpacing: '.04em', padding: 8, background: C.bg, textTransform: 'uppercase' }}>{h}</th>)}</tr></thead>
+            <thead><tr>{['Día', 'Ingresos', 'De Turno', 'Labor', 'Margen', 'Mg %', 'Limp.', 'Acumulado', 'Labor según', ''].map(h => <th key={h} style={{ textAlign: 'left', fontSize: 10, color: C.muted, letterSpacing: '.04em', padding: 8, background: C.bg, textTransform: 'uppercase' }}>{h}</th>)}</tr></thead>
             <tbody>
               {rows.map(({ d, only, acc }) => { const neg = !only && d.margen < 0
-                return <tr key={d.date} onClick={() => onGoDay({ from: d.date, to: d.date, property, client })} style={{ borderTop: '1px solid #F1F5F9', cursor: 'pointer', background: neg ? '#FEF2F2' : only ? '#F0FDF4' : 'transparent', opacity: d.limpiezas || d.costo || d.proy ? 1 : 0.45 }}>
+                return <tr key={d.date} onClick={() => onGoDay({ from: d.date, to: d.date, property, client, origen })} style={{ borderTop: '1px solid #F1F5F9', cursor: 'pointer', background: neg ? '#FEF2F2' : only ? '#F0FDF4' : 'transparent', opacity: d.limpiezas || d.costo || d.proy ? 1 : 0.45 }}>
                   <td style={{ padding: 8, fontWeight: 700, textTransform: 'capitalize' }}>{fmtDow(d.date)}{d.date === today && <span style={{ color: C.primary }}> · hoy</span>}{only && <span style={{ color: C.muted, fontWeight: 400 }}> agendado</span>}</td>
-                  <td style={{ padding: 8 }}>{only ? money(d.proy.cobrado) + '*' : money(d.cobrado)}</td><td style={{ padding: 8 }}>{only ? money(d.proy.costo) + '*' : money(d.costo)}</td>
+                  <td style={{ padding: 8 }}>{only ? money(d.proy.cobrado) + '*' : money(d.cobrado)}</td><td style={{ padding: 8, color: C.slate }}>{only ? '—' : money(d.ingTurno)}</td><td style={{ padding: 8 }}>{only ? money(d.proy.costo) + '*' : money(d.costo)}</td>
                   <td style={{ padding: 8, fontWeight: 700, color: only || d.margen >= 0 ? C.green : C.red }}>{only ? money(d.proy.margen) + '*' : money(d.margen)}{!only && d.proy && <span style={{ fontWeight: 400, color: C.muted }}> +{money(d.proy.margen)}*</span>}</td>
                   <td style={{ padding: 8 }}>{only ? (d.proy.cobrado > 0 ? pctS(d.proy.margen / d.proy.cobrado * 100) : '—') : d.cobrado > 0 ? pctS(d.margen / d.cobrado * 100) : '—'}</td>
                   <td style={{ padding: 8 }}>{only ? d.proy.limpiezas : d.limpiezas}{!only && d.proy && <span style={{ color: C.muted }}> +{d.proy.limpiezas}*</span>}</td>
                   <td style={{ padding: 8, fontWeight: 600 }}>{money(acc)}{only ? '*' : ''}</td>
                   <td style={{ padding: 8, color: C.muted }}>{only ? 'est.' : d.fuente}</td>
                   <td style={{ padding: 8, color: C.primary, fontWeight: 700, whiteSpace: 'nowrap' }}>Ver casas ›</td></tr> })}
-              {data.total && <tr style={{ background: C.bg, fontWeight: 700 }}><td style={{ padding: 8 }}>Total real</td><td style={{ padding: 8 }}>{money(data.total.cobrado)}</td><td style={{ padding: 8 }}>{money(data.total.costo)}</td><td style={{ padding: 8, color: data.total.margen >= 0 ? C.green : C.red }}>{money(data.total.margen)}</td><td style={{ padding: 8 }}>{pctS(data.total.mgPct)}</td><td style={{ padding: 8 }}>{data.total.limpiezas}</td><td colSpan={3} /></tr>}
-              {data.total && days.some(d => d.proy) && <tr style={{ background: '#F0FDF4', fontWeight: 700 }}><td style={{ padding: 8 }}>Total con agendado*</td><td style={{ padding: 8 }}>{money(data.total.cobrado + pT('cobrado'))}</td><td style={{ padding: 8 }}>{money(data.total.costo + pT('costo'))}</td><td style={{ padding: 8, color: C.green }}>{money(data.total.margen + pT('margen'))}</td><td style={{ padding: 8 }}>{pctS((data.total.cobrado + pT('cobrado')) > 0 ? (data.total.margen + pT('margen')) / (data.total.cobrado + pT('cobrado')) * 100 : null)}</td><td style={{ padding: 8 }}>{data.total.limpiezas + pT('limpiezas')}</td><td colSpan={3} /></tr>}
+              {data.total && <tr style={{ background: C.bg, fontWeight: 700 }}><td style={{ padding: 8 }}>Total real</td><td style={{ padding: 8 }}>{money(data.total.cobrado)}</td><td style={{ padding: 8 }}>{money(sumK(days, 'ingTurno', 999))}</td><td style={{ padding: 8 }}>{money(data.total.costo)}</td><td style={{ padding: 8, color: data.total.margen >= 0 ? C.green : C.red }}>{money(data.total.margen)}</td><td style={{ padding: 8 }}>{pctS(data.total.mgPct)}</td><td style={{ padding: 8 }}>{data.total.limpiezas}</td><td colSpan={3} /></tr>}
+              {data.total && days.some(d => d.proy) && <tr style={{ background: '#F0FDF4', fontWeight: 700 }}><td style={{ padding: 8 }}>Total con agendado*</td><td style={{ padding: 8 }}>{money(data.total.cobrado + pT('cobrado'))}</td><td style={{ padding: 8 }} /><td style={{ padding: 8 }}>{money(data.total.costo + pT('costo'))}</td><td style={{ padding: 8, color: C.green }}>{money(data.total.margen + pT('margen'))}</td><td style={{ padding: 8 }}>{pctS((data.total.cobrado + pT('cobrado')) > 0 ? (data.total.margen + pT('margen')) / (data.total.cobrado + pT('cobrado')) * 100 : null)}</td><td style={{ padding: 8 }}>{data.total.limpiezas + pT('limpiezas')}</td><td colSpan={3} /></tr>}
             </tbody>
           </table>
         </div>

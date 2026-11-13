@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { C, Card, Delta, Err, Loading, btn, selStyle, money, money1, pctS, hm, todayET, addDays, mondayOf, monthStart, monthEnd, addMonths, fmtShort, useApi, useIsMobile, useNames } from './shared'
 
-export type Nav = { from: string; to: string; property?: string; client?: string }
+export type Nav = { from: string; to: string; property?: string; client?: string; origen?: string }
 const PRESETS: [string, string][] = [['today', 'Hoy'], ['yest', 'Ayer'], ['week', 'Esta semana'], ['lweek', 'Semana pasada'], ['month', 'Este mes'], ['lmonth', 'Mes pasado'], ['90', '90 días'], ['year', 'Este año'], ['all', 'Todo']]
 export function presetRange(k: string): { from: string; to: string } {
   const t = todayET()
@@ -43,15 +43,16 @@ export default function HistoryView({ init, onBack, onDebug, backLabel }: { init
   const [preset, setPreset] = useState(() => PRESETS.find(([k]) => { const r = presetRange(k); return r.from === init.from && r.to === init.to })?.[0] || 'custom')
   const [property, setProperty] = useState(init.property || '')
   const [client, setClient] = useState(init.client || '')
+  const [origen, setOrigen] = useState(init.origen || '')
   const [status, setStatus] = useState<'all' | 'done' | 'sched' | 'photos'>('all')
   const [selId, setSelId] = useState<string | null>(null)
   const [pg, setPg] = useState(1)
   const per = 25
   const span = Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86400000) + 1
   const hn = useNames('property')
-  const cur = useApi('visits', { from, to, property, client }, [from, to, property, client], onDebug)
+  const cur = useApi('visits', { from, to, property, client, origen }, [from, to, property, client, origen], onDebug)
   const showPrev = span <= 120 && preset !== 'all'
-  const prev = useApi(showPrev ? 'visits' : null, { from: addDays(from, -span), to: addDays(from, -1), property, client }, [from, to, property, client, showPrev])
+  const prev = useApi(showPrev ? 'visits' : null, { from: addDays(from, -span), to: addDays(from, -1), property, client, origen }, [from, to, property, client, origen, showPrev])
   const houses: { name: string; client: string }[] = hn.names
   const clients = useMemo(() => [...new Set(houses.map(h => h.client).filter(Boolean))].sort(), [houses])
   const propOpts = useMemo(() => houses.filter(h => !client || h.client === client).map(h => h.name), [houses, client])
@@ -84,6 +85,7 @@ export default function HistoryView({ init, onBack, onDebug, backLabel }: { init
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
         <select value={client} onChange={e => { setClient(e.target.value); setProperty(''); setPg(1) }} style={selStyle}><option value="">Cliente: todos</option>{clients.map(c => <option key={c}>{c}</option>)}</select>
         <select value={property} onChange={e => { setProperty(e.target.value); setPg(1) }} style={selStyle}><option value="">Casa: todas</option>{propOpts.map(c => <option key={c}>{c}</option>)}</select>
+        <select value={origen} onChange={e => { setOrigen(e.target.value); setPg(1) }} style={selStyle}><option value="">Origen: todos</option><option value="turno">Turno (cobranza segura)</option><option value="otros">Otros</option></select>
         <select value={status} onChange={e => { setStatus(e.target.value as any); setPg(1) }} style={selStyle}><option value="all">Todas</option><option value="done">Terminadas</option><option value="sched">Programadas</option><option value="photos">Con fotos</option></select>
       </div>
     </Card>
@@ -93,6 +95,7 @@ export default function HistoryView({ init, onBack, onDebug, backLabel }: { init
         {[
           { l: 'Limpiezas', v: String(T.n), d: P ? <Delta cur={T.n} prev={P.n} kind="num" /> : null },
           { l: 'Ingresos', v: money(T.ing), d: P ? <Delta cur={T.ing} prev={P.ing} /> : null },
+          { l: 'Ingresos de Turno', v: money(rows.filter(v => v.status === 'Done' && v.origen === 'turno').reduce((t, v) => t + v.price, 0)), s: `${T.ing > 0 ? Math.round(rows.filter(v => v.status === 'Done' && v.origen === 'turno').reduce((t, v) => t + v.price, 0) / T.ing * 100) : 0}% de los ingresos` },
           { l: 'Labor', v: money(T.lab), d: P ? <Delta cur={T.lab} prev={P.lab} good="down" /> : null, s: 'estimado por horas' },
           { l: 'Margen', v: money(T.mg), c: mgc(T.mg), d: P ? <Delta cur={T.mg} prev={P.mg} /> : null },
           { l: 'Margen %', v: pctS(T.pct), d: P && P.pct !== null && T.pct !== null ? <Delta cur={T.pct} prev={P.pct} kind="pct" /> : null },
@@ -116,17 +119,17 @@ export default function HistoryView({ init, onBack, onDebug, backLabel }: { init
         {rows.length === 0 && <div style={{ padding: 16, fontSize: 13, color: C.muted }}>No hay limpiezas con este filtro. Cambia el periodo (arriba) o quita filtros.</div>}
         {mobile ? <div>{shown.map(v => <div key={v.id} onClick={() => setSelId(v.id === selId ? null : v.id)} style={{ padding: '10px 14px', borderTop: '1px solid #F1F5F9', background: v.id === selId ? C.primaryLight : 'transparent' }}>
           <div style={{ display: 'flex', gap: 8 }}><b style={{ textTransform: 'capitalize' }}>{dow(v.date)} {fmtShort(v.date)}</b><span style={{ flex: 1, color: C.primaryDark, fontWeight: 700 }}>{v.property}</span><b style={{ color: mgc(v.margen) }}>{v.margen === null ? '—' : money(v.margen)}</b></div>
-          <div style={{ fontSize: 11.5, color: C.muted }}>{[v.squad, v.dur ? hm(v.dur) : '', `Ing ${money(v.price)}`, v.margen !== null ? `Labor ${money(v.cost)}` : '', v.photos.length ? `${v.photos.length}` : ''].filter(Boolean).join(' · ')}</div></div>)}</div>
+          <div style={{ fontSize: 11.5, color: C.muted }}>{[v.squad, v.dur ? hm(v.dur) : '', `Ing ${money(v.price)}`, v.margen !== null ? `Labor ${money(v.cost)}` : '', v.photos.length ? `${v.photos.length}` : '', v.origen === 'turno' ? 'Turno' : ''].filter(Boolean).join(' · ')}</div></div>)}</div>
           : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-            <thead><tr>{['Fecha', 'Casa', 'Cliente', 'Cleaners', '#', 'Horario', 'Duración', 'Ingresos', 'Labor', 'Margen', 'Mg %', 'Mg/HH', 'Fotos', 'Estado'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <thead><tr>{['Fecha', 'Casa', 'Cliente', 'Cleaners', '#', 'Horario', 'Duración', 'Ingresos', 'Labor', 'Margen', 'Mg %', 'Mg/HH', 'Origen', 'Fotos', 'Estado'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
             <tbody>{shown.map(v => { const on = v.id === selId; const hh = v.margen !== null && v.dur ? v.dur * (v.n || 1) : 0
               return <tr key={v.id} onClick={() => setSelId(on ? null : v.id)} style={{ borderTop: '1px solid #F1F5F9', cursor: 'pointer', background: on ? C.primaryLight : v.margen !== null && v.margen < 0 ? '#FEF2F2' : 'transparent' }}>
                 <td style={{ ...td, fontWeight: 700 }}><span style={{ textTransform: 'capitalize' }}>{dow(v.date)}</span> {fmtShort(v.date)}</td><td style={{ ...td, fontWeight: 700, color: C.primaryDark }}>{v.property}</td><td style={{ ...td, color: C.slate }}>{v.client || '—'}</td>
                 <td style={td}>{v.squad || '—'}</td><td style={td}>{v.n}</td><td style={td}>{v.start ? `${tm(v.start)}–${tm(v.end)}` : tm(v.sched) || '—'}</td><td style={td}>{v.dur ? hm(v.dur) : '—'}</td>
                 <td style={td}>{money(v.price)}</td><td style={td}>{v.margen === null ? '—' : money(v.cost)}</td><td style={{ ...td, fontWeight: 700, color: mgc(v.margen) }}>{v.margen === null ? '—' : money(v.margen)}</td>
-                <td style={td}>{v.margen === null || !v.price ? '—' : pctS(v.margen / v.price * 100)}</td><td style={td}>{hh ? money1(v.margen / hh) : '—'}</td><td style={td}>{v.photos.length ? `${v.photos.length}` : '—'}</td>
+                <td style={td}>{v.margen === null || !v.price ? '—' : pctS(v.margen / v.price * 100)}</td><td style={td}>{hh ? money1(v.margen / hh) : '—'}</td><td style={td}>{v.origen === 'turno' ? <b style={{ color: C.green }}>Turno</b> : 'Otro'}</td><td style={td}>{v.photos.length ? `${v.photos.length}` : '—'}</td>
                 <td style={td}><span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '2px 8px', background: v.status === 'Done' ? C.greenBg : C.amberBg, color: v.status === 'Done' ? C.green : C.amber }}>{v.status === 'Done' ? 'Terminada' : v.status}</span></td></tr> })}
-              {rows.length > 0 && <tr style={{ background: C.bg, fontWeight: 700 }}><td style={td} colSpan={7}>Total ({T.n} terminadas)</td><td style={td}>{money(T.ing)}</td><td style={td}>{money(T.lab)}</td><td style={{ ...td, color: mgc(T.mg) }}>{money(T.mg)}</td><td style={td}>{pctS(T.pct)}</td><td style={td}>{money1(T.mgHH)}</td><td colSpan={2} /></tr>}</tbody></table></div>}
+              {rows.length > 0 && <tr style={{ background: C.bg, fontWeight: 700 }}><td style={td} colSpan={7}>Total ({T.n} terminadas)</td><td style={td}>{money(T.ing)}</td><td style={td}>{money(T.lab)}</td><td style={{ ...td, color: mgc(T.mg) }}>{money(T.mg)}</td><td style={td}>{pctS(T.pct)}</td><td style={td}>{money1(T.mgHH)}</td><td colSpan={3} /></tr>}</tbody></table></div>}
         {pages > 1 && <div style={{ display: 'flex', gap: 6, justifyContent: 'center', padding: 10, flexWrap: 'wrap' }}>{Array.from({ length: Math.min(pages, 12) }, (_, i) => i + 1).map(n => <button key={n} onClick={() => setPg(n)} style={{ ...btn(page === n), height: 28, padding: '0 10px' }}>{n}</button>)}{pages > 12 && <span style={{ fontSize: 12, color: C.muted, alignSelf: 'center' }}>… {pages}</span>}</div>}
       </Card>
       {sel && <Card style={{ marginTop: 10, borderColor: '#C7D2FE' }}>
