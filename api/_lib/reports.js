@@ -62,6 +62,29 @@ function toRow(r, staff, clientName, withMedia) {
 }
 const valid = (row) => row.date && row.status !== 'Cancelled';
 
+// Origen del cobro: el Appointment de cada limpieza trae 'Source' (u 'Online Platform Source'); 'Turno' = cobranza segura
+async function loadOrigen(rows, from, to) {
+  const ids = new Set(rows.map(r => r.id));
+  const seen = {};
+  try {
+    const f = `AND(NOT({Related Cleaning Job} = BLANK()),IS_AFTER({Requested Date & Time},'${dAdd(from, -8)}'),IS_BEFORE({Requested Date & Time},'${dAdd(to, 8)}'))`;
+    const appts = await all(`${AT}/tblXlpg7MuYWA8Ocn?filterByFormula=${encodeURIComponent(f)}`);
+    const map = {};
+    for (const a of appts) {
+      let src = a.fields?.['Online Platform Source'] || a.fields?.['Source'] || '';
+      if (Array.isArray(src)) src = src[0] || '';
+      src = String(src);
+      const rel = Array.isArray(a.fields?.['Related Cleaning Job']) ? a.fields['Related Cleaning Job'] : [];
+      for (const cid of rel) if (ids.has(cid)) { map[cid] = src; seen[src || '(vacío)'] = (seen[src || '(vacío)'] || 0) + 1; }
+    }
+    for (const r of rows) r.origen = /turno/i.test(map[r.id] || '') ? 'turno' : 'otros';
+    return { seen, ok: true, appts: appts.length };
+  } catch (e) {
+    for (const r of rows) r.origen = 'otros';
+    return { seen, ok: false, error: e.message };
+  }
+}
+
 // Labor real por día (Turnos pagados): horas × Cost/Hour de cada persona
 async function loadTurnos(from, to, staff) {
   const tr = await all(`${TURNOS}?filterByFormula=${encodeURIComponent(between('Fecha', from, to))}`).catch(() => []);
@@ -115,12 +138,14 @@ async function margin(q) {
   const isMonth = from.slice(8) === '01' && monthEnd(from) === to;
   let pFrom, pTo;
   if (isMonth) { pTo = dAdd(from, -1); pFrom = pTo.slice(0, 7) + '-01'; } else { pFrom = dAdd(from, -span); pTo = dAdd(from, -1); }
-  const filtered = !!(q.squad || q.client || q.property);
+  const filtered = !!(q.squad || q.client || q.property || q.origen);
   const [{ staff, clientName }, cl] = await Promise.all([loadStaffClients(), all(`${CLEAN}?filterByFormula=${encodeURIComponent(between('Date', pFrom, to))}`)]);
   const tur = await loadTurnos(pFrom, to, staff);
   const turnoByDay = tur.byDay;
   let rows = cl.map(r => toRow(r, staff, clientName)).filter(valid);
   allocate(rows, turnoByDay, staff);
+  const org = await loadOrigen(rows, pFrom, to);
+  if (q.origen === 'turno' || q.origen === 'otros') rows = rows.filter(c => c.origen === q.origen);
   if (q.squad) rows = rows.filter(c => [...c.ids].sort().join('+') === q.squad);
   if (q.client) rows = rows.filter(c => c.client === q.client);
   if (q.property) rows = rows.filter(c => c.property === q.property);
@@ -143,7 +168,7 @@ async function margin(q) {
       const pend = d >= today ? cs.filter(c => !c.done) : [];
       const pc = pend.reduce((t, c) => t + c.price, 0), pk = pend.reduce((t, c) => t + estCost(c), 0);
       const proy = pend.length ? { cobrado: r2(pc), costo: r2(pk), margen: r2(pc - pk), limpiezas: pend.length } : null;
-      days.push({ date: d, proy, cobrado: r2(cobrado), costo: r2(costo), margen: r2(cobrado - costo), limpiezas: done.length, programadas: cs.length, hh: r2(hh), horas: r2(useTurno ? t.h : hh), fuente: done.length || useTurno ? (useTurno || done.some(c => c.alloc) ? 'turnos' : 'est.') : '' });
+      days.push({ date: d, ingTurno: r2(done.filter(c => c.origen === 'turno').reduce((t, c) => t + c.price, 0)), proy, cobrado: r2(cobrado), costo: r2(costo), margen: r2(cobrado - costo), limpiezas: done.length, programadas: cs.length, hh: r2(hh), horas: r2(useTurno ? t.h : hh), fuente: done.length || useTurno ? (useTurno || done.some(c => c.alloc) ? 'turnos' : 'est.') : '' });
     }
     return days;
   };
@@ -155,7 +180,7 @@ async function margin(q) {
   const days = build(from, to), prevDays = build(pFrom, pTo);
   return { body: { today, avgDur: r2(avgDur), from, to, prevFrom: pFrom, prevTo: pTo, isMonth, filtered, days, prevDays, total: sum(days), prevTotal: sum(prevDays),
     options: { clients: [...new Set(rows.filter(c => c.date >= from).map(c => c.client).filter(Boolean))].sort(), properties: [...new Set(rows.filter(c => c.date >= from).map(c => c.property).filter(Boolean))].sort() },
-    debug: { avgDurProyeccion: r2(avgDur), tarifaPromedio: r2(avgRate), cleaningsLeidas: cl.length, turnosLeidos: tur.n, diasConTurno: Object.keys(turnoByDay).length, nota: filtered ? 'Con filtros el costo usa horas limpiando (estimado)' : 'Costo = turnos pagados; sin turnos = horas limpiando (est.)' } } };
+    debug: { origenes: org.seen, origenOk: org.ok, origenError: org.error || null, avgDurProyeccion: r2(avgDur), tarifaPromedio: r2(avgRate), cleaningsLeidas: cl.length, turnosLeidos: tur.n, diasConTurno: Object.keys(turnoByDay).length, nota: filtered ? 'Con filtros el costo usa horas limpiando (estimado)' : 'Costo = turnos pagados; sin turnos = horas limpiando (est.)' } } };
 }
 
 // ── Ranking / lista de casas o clientes ──────────────────────────
@@ -224,14 +249,16 @@ async function visitsKind(q) {
   const cl = await all(`${CLEAN}?filterByFormula=${encodeURIComponent(between('Date', from, to))}`);
   let rows = cl.map(r => toRow(r, staff, clientName, true)).filter(valid);
   allocate(rows, (await loadTurnos(from, to, staff)).byDay, staff);
+  const org = await loadOrigen(rows, from, to);
+  if (q.origen === 'turno' || q.origen === 'otros') rows = rows.filter(c => c.origen === q.origen);
   if (q.property) rows = rows.filter(c => c.property === q.property);
   if (q.client) rows = rows.filter(c => c.client === q.client);
   rows.sort((a, b) => b.date.localeCompare(a.date) || String(a.sched || '').localeCompare(String(b.sched || '')));
   const total = rows.length;
-  const visits = rows.slice(0, 800).map(c => ({ id: c.id, date: c.date, property: c.property, client: c.client, status: c.status, squad: c.squad, n: c.n, dur: r2(c.d), price: c.price, cost: r2(c.cost), margen: c.done && (c.d !== null || c.alloc) ? r2(c.price - c.cost) : null, src: c.alloc ? 'turnos' : 'est.',
+  const visits = rows.slice(0, 800).map(c => ({ id: c.id, date: c.date, property: c.property, client: c.client, status: c.status, squad: c.squad, n: c.n, dur: r2(c.d), price: c.price, cost: r2(c.cost), margen: c.done && (c.d !== null || c.alloc) ? r2(c.price - c.cost) : null, src: c.alloc ? 'turnos' : 'est.', origen: c.origen,
     start: c.start, end: c.end, sched: c.sched, type: c.type, photos: c.media || [] }));
   const names = [...new Set(rows.map(c => c.client).filter(Boolean))];
-  return { body: { from, to, total, visits, debug: { filasLeidas: cl.length, mostradas: visits.length, clientesSinNombre: names.filter(n => /^rec[A-Za-z0-9]{8,}$/.test(n)).length, clientesEjemplo: names.slice(0, 5) } } };
+  return { body: { from, to, total, visits, debug: { origenes: org.seen, origenOk: org.ok, origenError: org.error || null, filasLeidas: cl.length, mostradas: visits.length, clientesSinNombre: names.filter(n => /^rec[A-Za-z0-9]{8,}$/.test(n)).length, clientesEjemplo: names.slice(0, 5) } } };
 }
 
 // ── Comparar casas/clientes elegidos ────────────────────────────
