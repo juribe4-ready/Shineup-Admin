@@ -126,7 +126,8 @@ export default async function handler(req, res) {
     const formula = encodeURIComponent(`AND({Date}>='${dates[0]}', {Date}<'${dayAfterWeekEnd}')`)
     // Paginated — Airtable caps each response at 100 records. A full week can easily exceed
     // that (confirmed live: Sunday's records were being silently cut off without this loop).
-    let blockRecords = [], blockOffset = null
+    const fetchBlocks = async () => {
+      let blockRecords = [], blockOffset = null
     do {
       const blocksRes = await fetch(
         `https://api.airtable.com/v0/${AIRTABLE_BASE}/${BLOCKS_TABLE}?filterByFormula=${formula}&pageSize=100${blockOffset ? `&offset=${blockOffset}` : ''}`,
@@ -138,6 +139,25 @@ export default async function handler(req, res) {
       blockOffset = blocksData.offset || null
     } while (blockOffset)
 
+      return blockRecords
+    }
+    const fetchCleanings = async () => {
+    const cleaningsFormula = encodeURIComponent(`AND({Date}>='${dates[0]}', {Date}<'${dayAfterWeekEnd}')`)
+    let cleaningRecords = [], cleaningOffset = null
+    do {
+      const cleaningsRes = await fetch(
+        `https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}?filterByFormula=${cleaningsFormula}&pageSize=100${cleaningOffset ? `&offset=${cleaningOffset}` : ''}`,
+        { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
+      )
+      const cleaningsData = await cleaningsRes.json()
+      if (cleaningsData.error) { console.error('[getSquads] cleanings fetch error:', cleaningsData.error); break }
+      cleaningRecords = cleaningRecords.concat(cleaningsData.records || [])
+      cleaningOffset = cleaningsData.offset || null
+    } while (cleaningOffset)
+      return cleaningRecords
+    }
+    // Bloques y limpiezas son independientes: se piden en paralelo (antes uno después del otro)
+    const [blockRecords, cleaningRecords] = await Promise.all([fetchBlocks(), fetchCleanings()])
     const blocks = blockRecords.map(r => ({
       id: r.id,
       squadId: Array.isArray(r.fields?.Squads) ? r.fields.Squads[0] : (r.fields?.Squads || null),
@@ -151,18 +171,6 @@ export default async function handler(req, res) {
     }))
 
     // Fetch Cleanings for this week — these are the real launched jobs that need a squad assigned
-    const cleaningsFormula = encodeURIComponent(`AND({Date}>='${dates[0]}', {Date}<'${dayAfterWeekEnd}')`)
-    let cleaningRecords = [], cleaningOffset = null
-    do {
-      const cleaningsRes = await fetch(
-        `https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}?filterByFormula=${cleaningsFormula}&pageSize=100${cleaningOffset ? `&offset=${cleaningOffset}` : ''}`,
-        { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } }
-      )
-      const cleaningsData = await cleaningsRes.json()
-      if (cleaningsData.error) { console.error('[getSquads] cleanings fetch error:', cleaningsData.error); break }
-      cleaningRecords = cleaningRecords.concat(cleaningsData.records || [])
-      cleaningOffset = cleaningsData.offset || null
-    } while (cleaningOffset)
     const cleaningsData = { records: cleaningRecords }
 
     // Reverse-lookup: each Cleaning doesn't store its origin Appointment, but each
