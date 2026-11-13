@@ -108,6 +108,11 @@ async function margin(q) {
     const t = turnoByDay[day] || (turnoByDay[day] = { h: 0, cost: 0 });
     t.h += h; t.cost += h * (staff[sid].rate || 0);
   }
+  const durs = rows.filter(c => c.done && c.d !== null).map(c => c.d);
+  const avgDur = durs.length ? durs.reduce((t, x) => t + x, 0) / durs.length : 2.5;
+  const rates = Object.values(staff).filter(x => x.cleaner && x.rate > 0).map(x => x.rate);
+  const avgRate = rates.length ? rates.reduce((t, x) => t + x, 0) / rates.length : 0;
+  const estCost = (c) => (c.ids.length ? c.ids.reduce((t, id) => t + (staff[id].rate || 0), 0) : avgRate * (c.n || 1)) * avgDur;
   const build = (a, b) => {
     const days = [];
     for (let d = a; d <= b; d = dAdd(d, 1)) {
@@ -118,7 +123,10 @@ async function margin(q) {
       const t = turnoByDay[d];
       const useTurno = !filtered && t && t.cost > 0;
       const costo = useTurno ? t.cost : costB;
-      days.push({ date: d, cobrado: r2(cobrado), costo: r2(costo), margen: r2(cobrado - costo), limpiezas: done.length, programadas: cs.length, hh: r2(hh), horas: r2(useTurno ? t.h : hh), fuente: done.length || useTurno ? (useTurno ? 'turnos' : 'est.') : '' });
+      const pend = d >= today ? cs.filter(c => !c.done) : [];
+      const pc = pend.reduce((t, c) => t + c.price, 0), pk = pend.reduce((t, c) => t + estCost(c), 0);
+      const proy = pend.length ? { cobrado: r2(pc), costo: r2(pk), margen: r2(pc - pk), limpiezas: pend.length } : null;
+      days.push({ date: d, proy, cobrado: r2(cobrado), costo: r2(costo), margen: r2(cobrado - costo), limpiezas: done.length, programadas: cs.length, hh: r2(hh), horas: r2(useTurno ? t.h : hh), fuente: done.length || useTurno ? (useTurno ? 'turnos' : 'est.') : '' });
     }
     return days;
   };
@@ -128,9 +136,9 @@ async function margin(q) {
     return { cobrado: r2(s.cobrado), costo: r2(s.costo), margen: r2(margen), mgPct: s.cobrado > 0 ? r2(margen / s.cobrado * 100) : null, limpiezas: s.limpiezas, horas: r2(s.horas), hh: r2(s.hh), mgHH: s.hh > 0 ? r2(margen / s.hh) : null };
   };
   const days = build(from, to), prevDays = build(pFrom, pTo);
-  return { body: { from, to, prevFrom: pFrom, prevTo: pTo, isMonth, filtered, days, prevDays, total: sum(days), prevTotal: sum(prevDays),
+  return { body: { today, avgDur: r2(avgDur), from, to, prevFrom: pFrom, prevTo: pTo, isMonth, filtered, days, prevDays, total: sum(days), prevTotal: sum(prevDays),
     options: { clients: [...new Set(rows.filter(c => c.date >= from).map(c => c.client).filter(Boolean))].sort(), properties: [...new Set(rows.filter(c => c.date >= from).map(c => c.property).filter(Boolean))].sort() },
-    debug: { cleaningsLeidas: cl.length, turnosLeidos: tr.length, diasConTurno: Object.keys(turnoByDay).length, nota: filtered ? 'Con filtros el costo usa horas limpiando (estimado)' : 'Costo = turnos pagados; sin turnos = horas limpiando (est.)' } } };
+    debug: { avgDurProyeccion: r2(avgDur), tarifaPromedio: r2(avgRate), cleaningsLeidas: cl.length, turnosLeidos: tr.length, diasConTurno: Object.keys(turnoByDay).length, nota: filtered ? 'Con filtros el costo usa horas limpiando (estimado)' : 'Costo = turnos pagados; sin turnos = horas limpiando (est.)' } } };
 }
 
 // ── Ranking / lista de casas o clientes ──────────────────────────
@@ -151,7 +159,7 @@ async function rank(q) {
     const last = past[0]?.date || null;
     return { name, client: entity === 'property' ? (rs.find(c => c.client)?.client || '') : '', last, ago: last ? diffDays(last, today) : null, ...a, prevMargen: p.margen, prevLimpiezas: p.limpiezas };
   }).filter(x => x.last || x.limpiezas);
-  return { body: { from, to, pFrom, pTo, entity, rows: list, debug: { cleaningsLeidas: cl.length, ventana: [lookFrom, to], nota: 'Costo estimado = horas limpiando × Cost/Hour de los cleaners asignados. Casas sin limpiezas en 120 días no salen.' } } };
+  return { body: { from, to, pFrom, pTo, entity, rows: list, debug: { clientesSinNombre: [...new Set(rows.map(c => c.client).filter(Boolean))].filter(n => /^rec[A-Za-z0-9]{8,}$/.test(n)).length, cleaningsLeidas: cl.length, ventana: [lookFrom, to], nota: 'Costo estimado = horas limpiando × Cost/Hour de los cleaners asignados. Casas sin limpiezas en 120 días no salen.' } } };
 }
 
 // ── Lista liviana para el buscador (solo campos básicos, último año) ───
@@ -180,7 +188,7 @@ async function house(q) {
   const cl = await all(`${CLEAN}?filterByFormula=${encodeURIComponent(`{Property Text}='${esc(name)}'`)}&sort[0][field]=Date&sort[0][direction]=desc`);
   const rows = cl.map(r => toRow(r, staff, clientName, true)).filter(valid).sort((a, b) => b.date.localeCompare(a.date));
   const today = todayET();
-  const visits = rows.map(c => ({ id: c.id, date: c.date, status: c.status, squad: c.squad, dur: r2(c.d), price: c.price, cost: r2(c.cost), margen: c.done ? r2(c.price - c.cost) : null, start: c.start, end: c.end, sched: c.sched, type: c.type, photos: c.media || [] }));
+  const visits = rows.map(c => ({ id: c.id, date: c.date, status: c.status, squad: c.squad, n: c.n, dur: r2(c.d), price: c.price, cost: r2(c.cost), margen: c.done ? r2(c.price - c.cost) : null, start: c.start, end: c.end, sched: c.sched, type: c.type, photos: c.media || [] }));
   const done = rows.filter(c => c.done && c.date <= today);
   const next = rows.filter(c => !c.done && c.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0] || null;
   const w90 = rows.filter(c => c.date > dAdd(today, -90) && c.date <= today), p90 = rows.filter(c => c.date > dAdd(today, -180) && c.date <= dAdd(today, -90));
@@ -188,6 +196,23 @@ async function house(q) {
   const wd = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
   return { body: { property: name, client: rows.find(c => c.client)?.client || '', total: done.length, first: done.length ? done[done.length - 1].date : null, last: done[0]?.date || null, next: next ? { date: next.date, sched: next.sched } : null,
     s90: agg(w90), p90: agg(p90), common: { type: top(c => c.type), weekday: top(c => wd[new Date(c.date + 'T12:00:00Z').getUTCDay()]), squad: top(c => c.squad) }, visits } };
+}
+
+// ── Filas de limpiezas (tabla) para un rango y filtro opcional ───
+async function visitsKind(q) {
+  const { from, to } = q;
+  if (!okDate(from) || !okDate(to) || from > to) return { status: 400, body: { error: 'rango invalido' } };
+  const { staff, clientName } = await loadStaffClients();
+  const cl = await all(`${CLEAN}?filterByFormula=${encodeURIComponent(between('Date', from, to))}`);
+  let rows = cl.map(r => toRow(r, staff, clientName, true)).filter(valid);
+  if (q.property) rows = rows.filter(c => c.property === q.property);
+  if (q.client) rows = rows.filter(c => c.client === q.client);
+  rows.sort((a, b) => b.date.localeCompare(a.date) || String(a.sched || '').localeCompare(String(b.sched || '')));
+  const total = rows.length;
+  const visits = rows.slice(0, 800).map(c => ({ id: c.id, date: c.date, property: c.property, client: c.client, status: c.status, squad: c.squad, n: c.n, dur: r2(c.d), price: c.price, cost: r2(c.cost), margen: c.done && c.d !== null ? r2(c.price - c.cost) : null,
+    start: c.start, end: c.end, sched: c.sched, type: c.type, photos: c.media || [] }));
+  const names = [...new Set(rows.map(c => c.client).filter(Boolean))];
+  return { body: { from, to, total, visits, debug: { filasLeidas: cl.length, mostradas: visits.length, clientesSinNombre: names.filter(n => /^rec[A-Za-z0-9]{8,}$/.test(n)).length, clientesEjemplo: names.slice(0, 5) } } };
 }
 
 // ── Comparar casas/clientes elegidos ────────────────────────────
@@ -214,7 +239,7 @@ async function compare(q) {
 export async function handleReports(req, res) {
   try {
     const q = req.query || {};
-    const fn = { margin, rank, houses, house, compare }[q.kind];
+    const fn = { margin, rank, houses, house, compare, visits: visitsKind }[q.kind];
     if (!fn) return res.status(400).json({ error: 'kind desconocido' });
     const out = await fn(q);
     return res.status(out.status || 200).json(out.body);
