@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import { supabase, Profile } from './supabase'
 import LoginPage from './components/LoginPage'
 import Layout, { PageKey } from './components/Layout'
-import PlanningPage from './components/PlanningPage'
+import SchedulePage from './components/SchedulePage'
+import ReportsPage from './components/ReportsPage'
 import UsersPage from './components/UsersPage'
 import OperationsPage from './components/OperationsPage'
 import AnalysisPage from './components/AnalysisPage'
 import CommandCenterPage from './components/CommandCenterPage'
 import ScorecardPage from './components/ScorecardPage'
-import CalendarPage from './components/CalendarPage'
 import FieldPage from './components/FieldPage'
 import ImportPage from './components/ImportPage'
 import SettingsPage from './components/SettingsPage'
@@ -89,15 +89,14 @@ export default function App() {
       {effectivePage === 'cco_monitoring'   && <OperationsPage profile={profile} initialTab="live" />}
       {effectivePage === 'cco_incidents'    && <OperationsPage profile={profile} initialTab="incidents" />}
       {effectivePage === 'cco_ruptures'     && <OperationsPage profile={profile} initialTab="inventory" />}
-      {effectivePage === 'plan_week'        && <PlanningPage />}
-      {effectivePage === 'plan_calendar'    && <CalendarPage />}
+      {(effectivePage === 'plan_week' || effectivePage === 'plan_calendar') && <SchedulePage />}
       {effectivePage === 'plan_predispatch' && <PreDispatchPage />}
       {effectivePage === 'plan_field'       && <FieldPage by={(profile as any).full_name || profile.email || 'Admin'} />}
       {effectivePage === 'tars_rules'       && <RulesPage />}
       {effectivePage === 'system_settings' && <SettingsPage />}
       {effectivePage === 'tars_squads'      && <SquadsPage />}
       {effectivePage === 'tars_blocks'      && <SquadBlocksPage />}
-      {effectivePage === 'earn_stats'       && <AnalysisPage initialTab="stats" />}
+      {effectivePage === 'earn_stats'       && <ReportsPage />}
       {effectivePage === 'earn_billing'     && <AnalysisPage initialTab="billing" />}
       {(effectivePage === 'command' || effectivePage === 'home') && <CommandCenterPage onNavigate={handleNavigate} />}
       {effectivePage === 'users'            && <UsersPage profile={profile} onSignOut={handleSignOut} />}
