@@ -1,6 +1,7 @@
 const AIRTABLE_BASE = 'appBwnoxgyIXILe6M';
 const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN;
 import { resolveRating } from './_lib/duration.js'
+import { handleReports } from './_lib/reports.js'
 
 // Calcular número de semana ISO
 function getWeekNumber(date) {
@@ -703,6 +704,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { action } = req.query;
+  if (action === 'reports') return handleReports(req, res);
   if (action === 'weekCal') return handleWeekCal(req, res);
   if (action === 'notion') return handleNotion(req, res);
   if (action === 'shiftsDay' || action === 'shiftSave' || action === 'shiftAdd' || action === 'laborRange' || action === 'shiftsRange' || action === 'scorecard') return handleShifts(req, res, action);
