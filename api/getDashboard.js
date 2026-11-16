@@ -500,13 +500,13 @@ const median = (a) => { const v = a.filter(x => x !== null && x !== undefined &&
 const dAdd = (d, n) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 const mondayOf = (d) => { const x = new Date(d + 'T12:00:00Z'); return dAdd(d, -((x.getUTCDay() + 6) % 7)); };
 
-async function airtableAll(url, H) {
+async function airtableAll(url, H, maxPages = 60) {
   let records = [], off = null, pages = 0;
   do {
     const r = await fetch(`${url}${url.includes('?') ? '&' : '?'}pageSize=100${off ? `&offset=${off}` : ''}`, { headers: H });
     if (!r.ok) throw new Error(`Airtable ${r.status}: ${(await r.text()).slice(0, 200)}`);
     const d = await r.json(); records = records.concat(d.records || []); off = d.offset || null; pages++;
-  } while (off && pages < 60);
+  } while (off && pages < maxPages);
   return records;
 }
 
@@ -525,13 +525,18 @@ async function handleScorecard(req, res) {
   const inc = encodeURIComponent(`AND(IS_AFTER({Creation Date},'${dAdd(from, -1)}'),IS_BEFORE({Creation Date},'${dAdd(to, 2)}'))`);
   const tf = encodeURIComponent(`AND(IS_AFTER({Fecha},'${dAdd(from, -1)}'),IS_BEFORE({Fecha},'${dAdd(to, 1)}'))`);
   const staffUrl = (withRate) => `https://api.airtable.com/v0/${AIRTABLE_BASE}/tblgHwN1wX6u3ZtNY?fields[]=Name&fields[]=Role${withRate ? `&fields[]=${encodeURIComponent('Cost/Hour')}` : ''}`;
-  const [cleanings, staffRecs, incRecs, turnoRecs, clientRecs] = await Promise.all([
-    airtableAll(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblabOdNknnjrYUU1?filterByFormula=${cf}`, H),
+  const summary = req.query.summary === '1';
+  const fullTo = /^\d{4}-\d{2}-\d{2}$/.test(req.query.fullTo || '') && req.query.fullTo >= from && req.query.fullTo <= to ? req.query.fullTo : to;
+  const [cleanings, staffRecs, incRecs, turnoRecs, clientRecs, firstTurno] = await Promise.all([
+    airtableAll(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblabOdNknnjrYUU1?filterByFormula=${cf}`, H, summary ? 150 : 60),
     airtableAll(staffUrl(true), H).catch(() => airtableAll(staffUrl(false), H)),
     airtableAll(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Incidents?filterByFormula=${inc}`, H).catch(e => { warnings.push('Incidents: ' + e.message); return []; }),
     airtableAll(`${TURNOS_URL}?filterByFormula=${tf}`, H).catch(e => { warnings.push('Turnos: ' + e.message); return []; }),
     airtableAll(`https://api.airtable.com/v0/${AIRTABLE_BASE}/Clients`, H).catch(() => []),
+    // primer dia con Turnos registrados: Utilizacion y Tiempo productivo solo se miden desde ahi
+    fetch(`${TURNOS_URL}?maxRecords=1&sort[0][field]=Fecha&sort[0][direction]=asc&fields[]=Fecha`, { headers: H }).then(r => r.ok ? r.json() : { records: [] }).then(j => String(j.records?.[0]?.fields?.['Fecha'] || '').slice(0, 10) || null).catch(() => null),
   ]);
+  const turnoStart = firstTurno;
 
   const clientName = {};
   for (const c of clientRecs) { const f = c.fields || {}; const n = f['Full name'] || f['Name'] || f['Client Name'] || f['First Name'] || f['full name'] || null; if (n) clientName[c.id] = n; }
@@ -592,15 +597,17 @@ async function handleScorecard(req, res) {
     const realForStd = withDur.filter(c => c.std > 0).reduce((t, c) => t + c.d * c.n, 0);
     const pastCs = cs.filter(c => c.date <= today);
     // capacidad: 48 h por cleaner activo cada semana, proporcional a los dias del bucket
-    let capUnits = 0; const cleanersAll = new Set();
-    for (let m = mondayOf(a); m <= b; m = dAdd(m, 7)) {
-      const set = new Set(rows.filter(c => c.date >= m && c.date <= dAdd(m, 6)).flatMap(c => c.ids));
-      capUnits += set.size * overlapDays(a, b, m, dAdd(m, 6)) / 7;
-      rows.filter(c => c.date >= a && c.date <= b).forEach(c => c.ids.forEach(x => cleanersAll.add(x)));
-    }
+    const capOf = (x, y) => { let u = 0; for (let m = mondayOf(x); m <= y; m = dAdd(m, 7)) { const set = new Set(rows.filter(c => c.date >= m && c.date <= dAdd(m, 6)).flatMap(c => c.ids)); u += set.size * overlapDays(x, y, m, dAdd(m, 6)) / 7; } return u; };
+    const capUnits = capOf(a, b);
+    const cleanersAll = new Set(rows.filter(c => c.date >= a && c.date <= b).flatMap(c => c.ids));
+    // Utilizacion y Tiempo productivo: solo desde que existen Turnos (misma ventana para numerador y denominador)
+    const ua = turnoStart && turnoStart > a ? turnoStart : a;
+    const hasT = !!turnoStart && ua <= b;
+    const capT = hasT ? capOf(ua, b) : 0;
+    const hhT = hasT ? withDur.filter(c => c.date >= ua).reduce((t, c) => t + c.d * c.n, 0) : 0;
     const sched = done.filter(c => c.sched && c.start);
     let late = 0; for (const c of sched) { const dm = (new Date(c.start) - new Date(c.sched)) / 60000; lateDeltas.push(dm); if (dm > 15) late++; }
-    const tw = turnos.filter(t => t.date >= a && t.date <= b);
+    const tw = turnos.filter(t => t.date >= ua && t.date <= b);
     const shiftH = tw.reduce((t, x) => t + Math.max(0, (new Date(x.end) - new Date(x.start)) / 3600000), 0);
     const nInc = incRecs.filter(r => { const d = String(r.fields?.['Creation Date'] || '').slice(0, 10); return d >= a && d <= b; }).length;
     // traslado: hueco entre el fin de una casa y el inicio de la siguiente del mismo squad (mismos cleaners) el mismo dia, 
@@ -619,10 +626,10 @@ async function handleScorecard(req, res) {
       ingreso: r1(ingreso, 100), programado: r1(prog, 100),
       revHH: hh > 0 ? r1(rev / hh, 100) : null,
       margenHH: hh > 0 ? r1((rev - labor) / hh, 100) : null,
-      util: capUnits > 0 && shiftH > 0 ? r1(shiftH / (CAP_HOURS_PER_CLEANER * capUnits) * 100) : null,
+      util: hasT && capT > 0 && shiftH > 0 ? r1(shiftH / (CAP_HOURS_PER_CLEANER * capT) * 100) : null,
       carga: capUnits > 0 ? r1(hh / (CAP_HOURS_PER_CLEANER * capUnits) * 100) : null,
       hhFact: r1(hh, 10), cleaners: cleanersAll.size, capacidadH: Math.round(CAP_HOURS_PER_CLEANER * capUnits),
-      productivo: shiftH > 0 ? r1(hh / shiftH * 100) : null, turnoH: r1(shiftH, 10),
+      productivo: hasT && shiftH > 0 ? r1(hhT / shiftH * 100) : null, turnoH: r1(shiftH, 10),
       traslado: gapN ? r1(gapSum / gapN) : null, nTraslados: gapN,
       ritmo: stdOnly > 0 ? r1(realForStd / stdOnly * 100) : null,
       onTime: sched.length ? r1((1 - late / sched.length) * 100) : null, conHora: sched.length,
@@ -633,7 +640,9 @@ async function handleScorecard(req, res) {
   };
 
   const weekRows = buckets.map(bk => ({ label: labelOf(bk), start: bk.start, end: bk.end, partial: gran === 'day' ? false : !bk.full, future: bk.start > today, ...calc(bk.start, bk.end) }));
-  const total = calc(from, to);
+  const total = calc(from, fullTo);
+  let mtdPrev = null;
+  if (summary) { const ps = dAdd(today.slice(0, 7) + '-01', -1).slice(0, 7) + '-01'; const pe = dAdd(ps, Number(today.slice(8)) - 1); mtdPrev = { from: ps, to: pe > monthEnd(ps) ? monthEnd(ps) : pe, ...calc(ps, pe > monthEnd(ps) ? monthEnd(ps) : pe) }; }
 
   const keys = ['ingreso', 'revHH', 'margenHH', 'util', 'carga', 'productivo', 'traslado', 'ritmo', 'onTime', 'cumplimiento', 'incidentes', 'retencion'];
   const full = weekRows.filter(w => !w.partial && !w.future);
@@ -645,7 +654,7 @@ async function handleScorecard(req, res) {
   if (med !== null && Math.abs(med) > 60) warnings.push(`On-time: la diferencia tipica entre Scheduled Time y Start Time es ${Math.round(med)} min; puede haber desfase horario en Scheduled Time`);
   if (fClient || fProp || fType) warnings.push('Con filtros activos, Retención sigue calculándose sobre todos los clientes');
 
-  return res.status(200).json({ from, to, gran, weeks: weekRows, total, suggested, options, vto: { revHH: 50, traslado: 5 }, capPerCleaner: CAP_HOURS_PER_CLEANER,
+  return res.status(200).json({ from, to, fullTo, gran, weeks: weekRows, total, mtdPrev, turnoStart, suggested, options, vto: { revHH: 50, traslado: 5 }, capPerCleaner: CAP_HOURS_PER_CLEANER,
     debug: { cleaningsLeidas: cleanings.length, enRango: rows.filter(c => inRange(c.date)).length, turnos: turnos.length, incidentes: incRecs.length, clientesConNombre: Object.keys(clientName).length, mediaMinInicioVsProgramado: med === null ? null : Math.round(med), conPrecioFaltante: rows.filter(c => inRange(c.date) && c.done && !c.hasPrice).length, sinEstandar: stdUnmatched }, warnings });
 }
 
