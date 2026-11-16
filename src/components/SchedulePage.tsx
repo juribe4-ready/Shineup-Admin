@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import NewAppointment from './NewAppointment'
 import { C, Card, Seg, btn, selStyle, todayET, mondayOf, addDays, weekLabel, fmtDow, useIsMobile } from './reports/shared'
 
 const PALETTE = ['#6366F1', '#10B981', '#F59E0B', '#EC4899', '#0EA5E9', '#8B5CF6', '#EF4444', '#14B8A6']
@@ -28,6 +29,7 @@ export default function SchedulePage() {
   const [launching, setLaunching] = useState(false)
   const [toast, setToast] = useState<{ m: string; ok: boolean } | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
+  const [newAppt, setNewAppt] = useState(false)
   const [forWho, setForWho] = useState('all')
 
   const load = useCallback(async (mon: string) => {
@@ -106,11 +108,13 @@ export default function SchedulePage() {
   const confirmedAll = items.filter(i => i.st === 'confirmed')
 
   return <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+    {newAppt && <NewAppointment onClose={() => setNewAppt(false)} onCreated={refresh} />}
     {toast && <div style={{ position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 100, background: toast.ok ? C.green : C.red, color: '#fff', padding: '10px 18px', borderRadius: 14, fontWeight: 700, fontSize: 13 }}>{toast.m}</div>}
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
       <Seg items={[['this', 'Esta semana'], ['next', 'Próxima']]} value={tab} onChange={v => setTab(v as any)} />
       <span style={{ fontWeight: 700, fontSize: 14 }}>{weekLabel(monday)}</span>
-      <div style={{ marginLeft: 'auto', position: 'relative' }}>
+      <div style={{ marginLeft: 'auto', position: 'relative', display: 'flex', gap: 8 }}>
+        <button style={{ ...btn(), fontWeight: 700 }} onClick={() => setNewAppt(true)}>+ Nuevo appointment</button>
         <button style={{ ...btn(), background: C.primary, color: '#fff', borderColor: C.primary, fontWeight: 700 }} onClick={() => setShareOpen(o => !o)}>Compartir semana ▾</button>
         {shareOpen && <Card style={{ position: 'absolute', right: 0, top: 44, zIndex: 30, width: 260, boxShadow: '0 10px 30px rgba(15,23,42,.15)' }}>
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>Para:</div>

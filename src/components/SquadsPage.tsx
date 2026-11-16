@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, X, Save, Trash2, RefreshCw, Layers } from 'lucide-react'
+import { Seg } from './reports/shared'
+import SquadTeam from './SquadTeam'
 
 const C = {
   primary: '#6366F1', primaryLight: '#EEF2FF',
@@ -23,7 +25,7 @@ interface Squad {
 
 const emptyForm = { name: '', color: SWATCHES[0], type: 'Weekday', startHour: 8, endHour: 18 }
 
-export default function SquadsPage() {
+function SquadsList() {
   const [squads, setSquads] = useState<Squad[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -252,6 +254,16 @@ export default function SquadsPage() {
       )}
 
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}} .animate-spin{animation:spin 1s linear infinite}`}</style>
+    </div>
+  )
+}
+
+export default function SquadsPage() {
+  const [tab, setTab] = useState<'squads' | 'equipo'>('squads')
+  return (
+    <div style={{ maxWidth: 1000 }}>
+      <div style={{ marginBottom: 14 }}><Seg items={[['squads', 'Squads'], ['equipo', 'Equipo']]} value={tab} onChange={v => setTab(v as 'squads' | 'equipo')} /></div>
+      {tab === 'squads' ? <SquadsList /> : <SquadTeam />}
     </div>
   )
 }
