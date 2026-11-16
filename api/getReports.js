@@ -286,6 +286,7 @@ export default async function handler(req, res) {
     if (type === 'importApply' && req.method === 'POST') return res.status(200).json(await applyImportPayments(headers, req.body))
     if (type === 'updateBillingStatus' && req.method === 'POST') return res.status(200).json(await updateBillingStatus(headers, req.body))
     if (type === 'updateTurnoProject' && req.method === 'POST') return res.status(200).json(await updateTurnoProject(headers, req.body))
+    if (type === 'apptOptions' && req.method === 'GET') return res.status(200).json(await getApptOptions(headers, req.query))
     if (type === 'createAppointments' && req.method === 'POST') return res.status(200).json(await createTurnoAppointments(headers, req.body))
     return res.status(400).json({ error: `Unknown type: ${type}` })
   } catch (err) {
@@ -385,6 +386,49 @@ async function updateTurnoProject(headers, body) {
   } catch (e) { return { error: e.message } }
 }
 
+
+// Opciones para la pantalla "Nuevo appointment": casas, origenes ya usados y appointments existentes de ese dia (para no duplicar)
+async function getApptOptions(headers, q) {
+  const out = { properties: [], sources: [], existing: [], error: null }
+  try {
+    let off = null, pages = 0
+    do {
+      const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${PROPS_TABLE}?pageSize=100&fields[]=Name&fields[]=${encodeURIComponent('Default Start Time')}${off ? `&offset=${off}` : ''}`, { headers })
+      if (!r.ok) throw new Error(`Properties ${r.status}: ${(await r.text()).slice(0, 160)}`)
+      const d = await r.json()
+      for (const x of d.records || []) if (x.fields?.Name) out.properties.push({ id: x.id, name: x.fields.Name, defaultStart: x.fields['Default Start Time'] || null })
+      off = d.offset || null; pages++
+    } while (off && pages < 20)
+    out.properties.sort((a, b) => a.name.localeCompare(b.name))
+  } catch (e) { out.error = e.message }
+  try {
+    const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblXlpg7MuYWA8Ocn?pageSize=100&maxRecords=300&fields[]=Source&sort[0][field]=${encodeURIComponent('Requested Date & Time')}&sort[0][direction]=desc`, { headers })
+    if (r.ok) { const d = await r.json(); const seen = new Set(); for (const x of d.records || []) { const v = x.fields?.Source; if (typeof v === 'string' && v.trim()) seen.add(v.trim()) } out.sources = [...seen].sort() }
+  } catch {}
+  // Opciones reales del campo Source: se intenta leer del esquema de Airtable; si el token no tiene permiso, se usan las conocidas (Turno, Web, Others) + las ya vistas en los datos
+  out.sourcesFrom = 'datos'
+  try {
+    const mr = await fetch(`https://api.airtable.com/v0/meta/bases/${AIRTABLE_BASE}/tables`, { headers })
+    if (mr.ok) {
+      const md = await mr.json()
+      const tb = (md.tables || []).find(t => t.id === 'tblXlpg7MuYWA8Ocn')
+      const fld = tb?.fields?.find(f => f.name === 'Source')
+      const ch = (fld?.options?.choices || []).map(c => c.name).filter(Boolean)
+      if (ch.length) { out.sources = ch; out.sourcesFrom = 'airtable' }
+    }
+  } catch {}
+  if (out.sourcesFrom === 'datos') out.sources = [...new Set(['Turno', 'Web', 'Others', ...out.sources])]
+  if (/^\d{4}-\d{2}-\d{2}$/.test(q.date || '')) {
+    try {
+      const sh = (n) => { const x = new Date(q.date + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10) }
+      const f = encodeURIComponent(`AND(IS_AFTER({Requested Date & Time},'${sh(-2)}'),IS_BEFORE({Requested Date & Time},'${sh(2)}'))`)
+      const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblXlpg7MuYWA8Ocn?pageSize=100&filterByFormula=${f}&fields[]=Property&fields[]=${encodeURIComponent('Requested Date & Time')}&fields[]=Status`, { headers })
+      if (r.ok) { const d = await r.json(); for (const x of d.records || []) { const dt = x.fields?.['Requested Date & Time']; if (!dt || x.fields?.Status === 'Cancelled') continue; const day = new Date(dt).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); if (day === q.date) for (const pid of x.fields?.Property || []) out.existing.push(pid) } }
+    } catch {}
+  }
+  return out
+}
+
 async function createTurnoAppointments(headers, body) {
   const { date, properties } = body
   const results = []
@@ -419,7 +463,7 @@ async function createTurnoAppointments(headers, body) {
       const fields = {
         'Requested Date & Time': timeUTC,
         'Status': 'Confirmed',
-        'Source': 'Turno',
+        'Source': body.source ? String(body.source) : 'Turno',
         'Property': [p.propertyId],
         ...(body.cleaningTypeId ? { 'Cleaning Type': body.cleaningTypeId.startsWith('rec') ? [body.cleaningTypeId] : body.cleaningTypeId } : {}),
       }

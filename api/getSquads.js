@@ -51,7 +51,7 @@ export default async function handler(req, res) {
   try {
     // POST — create, update, or deactivate a squad
     if (req.method === 'POST') {
-      const { action, squadId, name, color, type, startHour, endHour, active } = req.body || {}
+      const { action, squadId, name, color, type, startHour, endHour, active, memberIds } = req.body || {}
 
       if (action === 'delete' || action === 'deactivate') {
         if (!squadId) return res.status(400).json({ error: 'squadId requerido' })
@@ -68,6 +68,8 @@ export default async function handler(req, res) {
         ...(startHour !== undefined ? { StartHour: startHour } : {}),
         ...(endHour !== undefined ? { EndHour: endHour } : {}),
         ...(active !== undefined ? { Active: active } : {}),
+        // equipo fijo del squad (campo existente 'Default Members', vinculado a Staff)
+        ...(Array.isArray(memberIds) ? { 'Default Members': memberIds.filter(x => typeof x === 'string' && x.startsWith('rec')) } : {}),
       }
 
       if (squadId) {
