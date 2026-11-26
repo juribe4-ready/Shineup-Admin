@@ -735,7 +735,7 @@ async function handleCascadeData(req, res) {
       weeks[m] = { mon: m, cur: m === curMon, future: m > curMon, elapsed: m < curMon ? 7 : m === curMon ? Math.max(0, Math.min(7, Math.round((new Date(today + 'T12:00:00Z') - new Date(m + 'T12:00:00Z')) / 86400000))) : 0,
         cleaners: new Set(), seg: Object.fromEntries(SEGS.map(s => [s, { n: 0, nDone: 0, nMed: 0, hh: 0, rev: 0, std: 0, ingDay: [0, 0, 0, 0, 0, 0, 0], pend: { n: 0, price: 0, std: 0, hh: 0, day: [0, 0, 0, 0, 0, 0, 0] } }])) };
     }
-    const types = {}; const dbg = { leidas: recs.length, hechas: 0, medibles: 0, sinDuracion: 0, sinEstandar: 0, sinPrecio: 0, hoyExcluido: 0 };
+    const types = {}; const dbg = { leidas: recs.length, hechas: 0, medibles: 0, sinDuracion: 0, sinEstandar: 0, sinPrecio: 0, atrasadas: 0 };
     for (const r of recs) {
       const x = r.fields || {};
       const date = String(x['Date'] || '').slice(0, 10), st = x['Status'];
@@ -754,11 +754,11 @@ async function handleCascadeData(req, res) {
       if (st === 'Done') {
         dbg.hechas++; g.nDone++; g.ingDay[di] += price;
         const dur = x['Start Time'] && x['End Time'] ? (new Date(x['End Time']) - new Date(x['Start Time'])) / 3600000 : null;
-        if (date >= today) { dbg.hoyExcluido++; continue; } // el dia de hoy aun no cuenta en capacidad
         if (!(dur > 0 && dur < 16)) { dbg.sinDuracion++; continue; }
         if (!(std > 0)) { dbg.sinEstandar++; continue; }
         if (!price) dbg.sinPrecio++;
         g.hh += dur * n; g.rev += price; g.std += std; g.nMed++; dbg.medibles++;
+      } else if (date < today) { dbg.atrasadas++; // programada en un dia pasado y sin terminar: no se proyecta
       } else {
         g.pend.n++; g.pend.price += price; g.pend.std += std; g.pend.hh += std * n; g.pend.day[di] += price;
       }
