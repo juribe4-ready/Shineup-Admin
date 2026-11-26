@@ -32,16 +32,17 @@ export default function CascadaPage() {
     const weeks: WeekRaw[] = raw.weeks
     const done = weeks.filter(w => !w.cur && !w.future)
     const curW = weeks.find(w => w.cur)
-    const useCur = !!curW && curW.elapsed >= 1
+    const useCur = !!curW
     const B: WeekRaw | undefined = useCur ? curW : done[done.length - 1]
     const base = done.filter(w => w.mon < (B?.mon || ''))
     if (!B || !base.length) return { empty: true as const }
     const prev = base[base.length - 1], last4 = base.slice(-4)
     const Rof = (w: WeekRaw) => sel(weekM(w), segs).R || 0
     const best = base.reduce((a, b) => Rof(b) > Rof(a) ? b : a, base[0])
-    const mB = weekM(B)
-    const mA: WeekM = cmp === 'prev' ? weekM(prev) : cmp === 'avg4' ? avgM(last4.map(weekM)) : weekM(best)
-    const mAvg = avgM(last4.map(weekM))
+    const projInfo: any[] = []
+    const mB = weekM(B, projInfo)
+    const mA: WeekM = cmp === 'prev' ? weekM(prev) : cmp === 'avg4' ? avgM(last4.map(w => weekM(w))) : weekM(best)
+    const mAvg = avgM(last4.map(w => weekM(w)))
     const todayIdx = useCur ? Math.max(0, Math.round((new Date(todayET() + 'T12:00:00Z').getTime() - new Date(B.mon + 'T12:00:00Z').getTime()) / 86400000)) : null
     const cB = curve(B, segs, todayIdx)
     const curveOf = (w: WeekRaw) => curve(w, segs, null).cum
@@ -53,7 +54,7 @@ export default function CascadaPage() {
     // historial: cada semana cerrada (y la actual) contra la anterior
     const seq = [...done.slice(-8), ...(useCur ? [B] : [])]
     const hist = seq.map((w, i) => { const pw = i > 0 ? seq[i - 1] : done[done.length - 9] || null; const dd = pw ? decomp(weekM(pw), weekM(w), segs) : null; return { w, R: sel(weekM(w), segs).R, d: dd, partial: w.cur } })
-    return { empty: false as const, B, prev, best, mA, mB, mAvg, d, cB, baseCum, cPrev, cAvg, cBest, hist, todayIdx, useCur, baseClose: baseCum[6] }
+    return { empty: false as const, projInfo, B, prev, best, mA, mB, mAvg, d, cB, baseCum, cPrev, cAvg, cBest, hist, todayIdx, useCur, baseClose: baseCum[6] }
   }, [raw, mode, cmp]) // eslint-disable-line
 
   if (err) return <Err msg={err} />
@@ -67,7 +68,7 @@ export default function CascadaPage() {
   const closing = !!B.cur
   const headline = pct === null ? `${modeName}: sin datos para comparar` : `${modeName} ${closing ? 'va a cerrar' : 'cerró'} la semana en ${k$(close)}, ${Math.abs(pct).toFixed(1)}% ${pct < 0 ? 'abajo' : 'arriba'} de ${CMP[cmp]}`
   const labelA = cmp === 'prev' ? 'Semana pasada' : cmp === 'avg4' ? 'Prom. 4 sem.' : 'Mejor semana'
-  const labelB = closing ? 'Esta semana (a hoy)' : 'Última semana'
+  const labelB = closing ? 'Esta semana (proyectada)' : 'Última semana'
 
   // ── Capítulo 1: curva ──
   const W = 640, H = 210, pad = { l: 40, r: 10, t: 12, b: 24 }
@@ -113,7 +114,7 @@ export default function CascadaPage() {
 
   const dbg = { modo: mode, segmentosUsados: segs, comparacion: cmp, semanaB: B.mon, semanaA: cmp === 'prev' ? m.prev.mon : cmp === 'best' ? m.best.mon : 'promedio 4 previas', capacidadB: mB.cap, capacidadA: mA.cap, A: { ...A }, B: { ...Bs },
     efectos: eff.map(e => ({ [e.key]: +e.val.toFixed(4) })), sumaEfectos: d ? +eff.reduce((t, e) => t + e.val, 0).toFixed(6) : null, deltaRevPAH: d ? +d.dR.toFixed(6) : null, cuadra: d?.ok, nota: d?.note,
-    cierreProyectado: Math.round(close), baseCierre: Math.round(m.baseClose), diaHoyIdx: m.todayIdx, tiposDeAirtable: raw.types, lecturaApi: raw.debug }
+    proyeccion: closing ? m.projInfo.map((x: any) => ({ ...x, ritmo: +x.ritmo.toFixed(3) })) : null, cierreProyectado: Math.round(close), baseCierre: Math.round(m.baseClose), diaHoyIdx: m.todayIdx, tiposDeAirtable: raw.types, lecturaApi: raw.debug }
 
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -175,7 +176,7 @@ export default function CascadaPage() {
               {kids.map((k, i) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: C.slate, padding: '2px 0', gap: 8 }}><span>{k.label}</span><span>{k.a} → {k.b} <span style={{ color: C.muted }}>({k.v})</span></span></div>)}
             </div> })}
         </div>}
-        {noteBox('Los factores se multiplican: Carga × Precio ÷ Ritmo = ingreso por HH disponible. Las barras suman exacto la diferencia (el eje de la gráfica está recortado, no empieza en 0). Ritmo más bajo = más rápido que el estándar = suma.')}
+        {noteBox((closing ? 'Esta semana = lo ya terminado + lo programado que falta, a tu ritmo actual, contra la capacidad de la semana completa. ' : '') + 'Los factores se multiplican: Carga × Precio ÷ Ritmo = ingreso por HH disponible. Las barras suman exacto la diferencia (el eje de la gráfica está recortado, no empieza en 0). Ritmo más bajo = más rápido que el estándar = suma.')}
         {mode === 'Todos' && noteBox('Precio y Ritmo se miden dentro de cada tipo para que un deep cleaning no los contamine; el cambio de mezcla (más o menos deep/relleno) se ve en su propia barra.')}
       </>}
     </Card>

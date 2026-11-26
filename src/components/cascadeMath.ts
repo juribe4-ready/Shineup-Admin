@@ -10,12 +10,22 @@ export const CAP_H = 48
 export interface TypeM { hh: number; rev: number; std: number; n: number }
 export interface WeekM { mon: string; cap: number; cleaners: number; byType: Record<SegKey, TypeM> }
 
-// Semana -> medidas. Semana en curso: solo los dias completos cuentan en la capacidad.
-export function weekM(w: WeekRaw): WeekM {
-  const days = w.cur ? w.elapsed : 7
-  const cap = w.cleaners * CAP_H * days / 7
+// Semana -> medidas. La semana en curso se PROYECTA: lo terminado + lo programado que falta,
+// con el ritmo (HH reales / estandar) que ya llevan las terminadas de cada tipo (100% si aun no hay).
+// La capacidad es siempre la semana completa (cleaners x 48 h).
+export interface Proj { seg: SegKey; ritmo: number; ritmoSupuesto: boolean; pendStd: number; pendPrice: number; pendN: number }
+export function weekM(w: WeekRaw, info?: Proj[]): WeekM {
+  const cap = w.cleaners * CAP_H
   const byType = {} as Record<SegKey, TypeM>
-  for (const k of SEGS) { const g = w.seg[k]; byType[k] = { hh: g.hh, rev: g.rev, std: g.std, n: g.nMed } }
+  for (const k of SEGS) {
+    const g = w.seg[k]; let hh = g.hh, rev = g.rev, std = g.std, n = g.nMed
+    if (w.cur) {
+      const ritmo = g.std > 0 && g.hh > 0 ? g.hh / g.std : 1
+      hh += g.pend.std * ritmo; rev += g.pend.price; std += g.pend.std; n += g.pend.n
+      info?.push({ seg: k, ritmo, ritmoSupuesto: !(g.std > 0 && g.hh > 0), pendStd: g.pend.std, pendPrice: g.pend.price, pendN: g.pend.n })
+    }
+    byType[k] = { hh, rev, std, n }
+  }
   return { mon: w.mon, cap, cleaners: w.cleaners, byType }
 }
 export function avgM(ws: WeekM[]): WeekM {
