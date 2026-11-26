@@ -91,7 +91,7 @@ function fmt$(n: number) {
   return '$' + Math.round(n).toLocaleString('en-US')
 }
 
-export default function PreDispatchPage() {
+export default function PreDispatchPage({ focus, onClearFocus }: { focus?: { date: string; cleaningId: string; n: number } | null; onClearFocus?: () => void } = {}) {
   const [squads, setSquads]   = useState<Squad[]>([])
   const [blocks, setBlocks]   = useState<Block[]>([])
   const [cleanings, setCleanings] = useState<Cleaning[]>([])
@@ -148,6 +148,14 @@ export default function PreDispatchPage() {
   }, [weekStart])
 
   useEffect(() => { loadData() }, [loadData])
+
+  // Viene del Schedule ("Abrir en Dispatch"): ir a esa semana y ese dia, y abrir la hoja en movil
+  useEffect(() => {
+    if (!focus) return
+    setWeekStart(getMonday(new Date(focus.date + 'T12:00:00')).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }))
+    setMDay(focus.date)
+  }, [focus?.n]) // eslint-disable-line
+  const focusCleaning = focus ? cleanings.find(c => c.id === focus.cleaningId) : null
 
   const prevWeek = () => setWeekStart(w => addDaysToISO(w, -7))
   const nextWeek = () => setWeekStart(w => addDaysToISO(w, 7))
@@ -315,6 +323,11 @@ export default function PreDispatchPage() {
           {toast.msg}
         </div>
       )}
+
+      {focus && <div className="flex items-center gap-3 rounded-2xl px-4 py-2.5 text-[13px] font-bold" style={{ background: C.primaryLight, color: C.primary }}>
+        <span className="flex-1">Desde Schedule: {focusCleaning ? focusCleaning.propertyText : 'limpieza'} · {focus.date}{focusCleaning ? (blocks.some(b => b.cleaningId === focusCleaning.id) ? ' · ya tiene squad' : ' · sin squad: asígnala abajo') : (loading ? '' : ' · no la encuentro en esta semana')}</span>
+        <button onClick={() => onClearFocus?.()} className="px-2 py-1 rounded-lg bg-white text-[12px]">✕</button>
+      </div>}
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

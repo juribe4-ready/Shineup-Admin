@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import NewAppointment from './NewAppointment'
+import SchedulePanel from './SchedulePanel'
+import ScheduleCasa, { type Hist } from './ScheduleCasa'
+import { ORIGIN, TYPE_STYLE, originOf, segOfType, toHM, fmt12, dayCapacity, type Origin, type Seg as TSeg, type SquadLite } from './scheduleLib'
 import { C, Card, Seg, btn, selStyle, todayET, mondayOf, addDays, weekLabel, fmtDow, useIsMobile } from './reports/shared'
 
 const PALETTE = ['#6366F1', '#10B981', '#F59E0B', '#EC4899', '#0EA5E9', '#8B5CF6', '#EF4444', '#14B8A6']
 type St = 'launched' | 'confirmed' | 'pending'
-interface Item { key: string; id: string; date: string; time: string | null; property: string; st: St; cleaners: string[]; cleanerIds: string[]; type: string | null; done: boolean }
+export interface Item { key: string; id: string; date: string; time: string | null; property: string; st: St; cleaners: string[]; cleanerIds: string[]; type: string | null; done: boolean; started: boolean; origin: Origin; seg: TSeg; std: number; apptId: string | null; rawStatus: string }
 
 const fmtT = (t: string | null) => { if (!t) return ''; const d = new Date(t); if (isNaN(d.getTime())) return String(t); return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }) }
 
 async function getJ(url: string) { const r = await fetch(url); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`); return j }
 
-export default function SchedulePage() {
+export default function SchedulePage({ onOpenDispatch }: { onOpenDispatch?: (f: { date: string; cleaningId: string }) => void }) {
   const mobile = useIsMobile()
   const [tab, setTab] = useState<'this' | 'next'>('this')
   const thisMon = mondayOf(todayET())
@@ -31,17 +34,38 @@ export default function SchedulePage() {
   const [shareOpen, setShareOpen] = useState(false)
   const [newAppt, setNewAppt] = useState(false)
   const [forWho, setForWho] = useState('all')
+  const [group, setGroup] = useState<'dia' | 'casa' | 'origen'>('dia')
+  const [fOrigin, setFOrigin] = useState<'all' | Origin>('all')
+  const [fType, setFType] = useState<'all' | TSeg>('all')
+  const [fSquad, setFSquad] = useState('all')
+  const [sel, setSel] = useState<Item | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [squads, setSquads] = useState<SquadLite[]>([])
+  const [types, setTypes] = useState<{ id: string; name: string }[]>([])
+  const [hist, setHist] = useState<Hist[]>([])
+  const [histErr, setHistErr] = useState('')
+  const [histDbg, setHistDbg] = useState<any>(null)
+  const [changes, setChanges] = useState<any[]>([])
+  const [undo, setUndo] = useState<{ label: string; run: () => Promise<void> } | null>(null)
 
   const load = useCallback(async (mon: string) => {
     const sun = addDays(mon, 6)
     const [cal, sum] = await Promise.all([getJ(`/api/getDashboard?action=weekCal&from=${mon}&to=${sun}`), getJ(`/api/getAppointments?action=summary&weekStart=${mon}`)])
-    const out: Item[] = []
-    for (const c of cal.cleanings || []) if (c.status !== 'Cancelled') out.push({ key: 'c' + c.id, id: c.id, date: c.date, time: c.time, property: c.property, st: 'launched', cleaners: c.cleaners.map((x: any) => x.name.split(' ')[0]), cleanerIds: c.cleaners.map((x: any) => x.id), type: c.type, done: c.status === 'Done' })
+    const apptByCleaning = new Map<string, any>()
+    for (const a of sum.appointments || []) { const rc = Array.isArray(a.relatedCleaning) ? a.relatedCleaning[0] : a.relatedCleaning; if (rc) apptByCleaning.set(rc, a) }
+    const out: Item[] = []; let sinAppt = 0
+    for (const c of cal.cleanings || []) if (c.status !== 'Cancelled') {
+      const a = apptByCleaning.get(c.id); if (!a) sinAppt++
+      out.push({ key: 'c' + c.id, id: c.id, date: c.date, time: c.time, property: c.property, st: 'launched', cleaners: c.cleaners.map((x: any) => x.name.split(' ')[0]), cleanerIds: c.cleaners.map((x: any) => x.id), type: c.type, done: c.status === 'Done', started: c.status === 'In Progress' || c.status === 'Started',
+        origin: originOf(a ? (a.sourceRaw || a.source) : ''), seg: segOfType(c.type), std: c.std || 0, apptId: a?.id || null, rawStatus: c.status })
+    }
     for (const a of sum.appointments || []) {
       if (!a.date || a.relatedCleaning || a.status === 'Scheduled' || a.status === 'Cancelled') continue
-      out.push({ key: 'a' + a.id, id: a.id, date: a.date, time: a.time, property: a.propertyName || a.clientName || 'Sin nombre', st: a.status === 'Confirmed' ? 'confirmed' : 'pending', cleaners: [], cleanerIds: [], type: a.cleaningType || null, done: false })
+      out.push({ key: 'a' + a.id, id: a.id, date: a.date, time: a.time, property: a.propertyName || a.clientName || 'Sin nombre', st: a.status === 'Confirmed' ? 'confirmed' : 'pending', cleaners: [], cleanerIds: [], type: a.cleaningType || null, done: false, started: false,
+        origin: originOf(a.sourceRaw || a.source), seg: segOfType(a.cleaningType), std: (a.labor || 0) / 60, apptId: a.id, rawStatus: a.status || '' })
     }
-    return { out, raw: { cleanings: (cal.cleanings || []).length, appointments: (sum.appointments || []).length, statuses: [...new Set((sum.appointments || []).map((a: any) => a.status))] } }
+    const sources: Record<string, number> = {}; (sum.appointments || []).forEach((a: any) => { const k = a.sourceRaw || a.source || '(vacío)'; sources[k] = (sources[k] || 0) + 1 })
+    return { out, raw: { cleanings: (cal.cleanings || []).length, appointments: (sum.appointments || []).length, statuses: [...new Set((sum.appointments || []).map((a: any) => a.status))], origenesEnAirtable: sources, lanzadasSinAppointment: sinAppt } }
   }, [])
 
   const refresh = useCallback(() => {
@@ -51,6 +75,9 @@ export default function SchedulePage() {
     load(other).then(r => setNextCount({ l: r.out.filter(i => i.st === 'launched').length, c: r.out.filter(i => i.st === 'confirmed').length, p: r.out.filter(i => i.st === 'pending').length })).catch(() => setNextCount(null))
   }, [load, monday, sunday, tab, thisMon])
   useEffect(() => { refresh() }, [refresh])
+  useEffect(() => { getJ(`/api/getSquads?weekStart=${monday}`).then(j => { setSquads(j.squads || []) }).catch(() => setSquads([])) }, [monday])
+  useEffect(() => { getJ('/api/getReports?type=cleaningTypes').then(j => setTypes((j.cleaningTypes || []).filter((x: any) => x.name))).catch(() => {}) }, [])
+  useEffect(() => { getJ('/api/getDashboard?action=casaHist').then(j => { setHist(j.houses || []); setHistDbg(j.debug); setHistErr('') }).catch(e => { setHist([]); setHistErr(e.message) }) }, [])
   useEffect(() => { getJ('/api/getAppointments?action=defaultStaff').then(j => { const st = j.staff || []; setStaff(st); setSelStaff(st.filter((x: any) => x.defaultAssignment).map((x: any) => x.id)) }).catch(() => {}) }, [])
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i))
@@ -59,7 +86,15 @@ export default function SchedulePage() {
   const squadKey = (i: Item) => i.cleanerIds.slice().sort().join('+')
   const squadKeys = useMemo(() => [...new Set(items.filter(i => i.st === 'launched' && i.cleanerIds.length).map(squadKey))], [items])
   const color = (i: Item) => i.st !== 'launched' ? '#CBD5E1' : !i.cleanerIds.length ? '#94A3B8' : PALETTE[squadKeys.indexOf(squadKey(i)) % PALETTE.length]
-  const perDay = days.map(d => items.filter(i => i.date === d).sort((a, b) => (a.time || '').localeCompare(b.time || '')))
+  const squadLabel = (k: string) => k.split('+').map(id => people.find(p => p[0] === id)?.[1] || '').filter(Boolean).join(' + ')
+  const passes = (i: Item) => (fOrigin === 'all' || i.origin === fOrigin) && (fType === 'all' || i.seg === fType) && (fSquad === 'all' || (i.st === 'launched' && squadKey(i) === fSquad))
+  const shown = items.filter(passes)
+  const perDay = days.map(d => shown.filter(i => i.date === d).sort((a, b) => (a.time || '').localeCompare(b.time || '')))
+  const oc = { T: items.filter(i => i.origin === 'T').length, W: items.filter(i => i.origin === 'W').length, O: items.filter(i => i.origin === 'O').length }
+  const tc = { 'STR': items.filter(i => i.seg === 'STR').length, 'Resid.': items.filter(i => i.seg === 'Resid.').length, 'Deep': items.filter(i => i.seg === 'Deep').length }
+  const capDay = days.map(d => { const cap = dayCapacity(squads, d); const used = items.filter(i => i.date === d && i.st !== 'pending').reduce((t, i) => t + i.std, 0); return { d, used, cap: cap.hours, parts: cap.parts, pct: cap.hours > 0 ? used / cap.hours * 100 : null } })
+  const houseOrigin = (name: string): Origin | null => items.find(i => i.property.trim().toLowerCase() === name.trim().toLowerCase())?.origin || null
+
   const showT = (m: string, ok = true) => { setToast({ m, ok }); setTimeout(() => setToast(null), 3500) }
 
   const doLaunch = async () => {
@@ -71,6 +106,50 @@ export default function SchedulePage() {
       if (j.success) { showT(`✓ ${j.created} limpiezas creadas`); setLaunch(null); refresh() } else showT(j.error || 'Error al lanzar', false)
     } catch { showT('Error de conexión', false) } finally { setLaunching(false) }
   }
+
+  // ── Editar / cancelar (nunca borra; Dispatch se reinicia con deleteSquadBlock) ──
+  const post = async (url: string, body: any) => { const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); const j = await r.json().catch(() => ({})); if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`); return j }
+  const log = (what: string, ok: boolean, extra?: any) => setChanges(p => [{ at: new Date().toLocaleTimeString('en-US'), what, ok, ...extra }, ...p].slice(0, 12))
+  const resetDispatch = async (cleaningId: string, date: string) => {
+    const j = await getJ(`/api/getSquads?weekStart=${mondayOf(date)}`)
+    const bl = (j.blocks || []).filter((b: any) => b.cleaningId === cleaningId)
+    for (const b of bl) await post('/api/deleteSquadBlock', { blockId: b.id })
+    return bl.length
+  }
+  const armUndo = (label: string, run: () => Promise<void>) => { setUndo({ label, run }); setTimeout(() => setUndo(u => (u && u.label === label ? null : u)), 10000) }
+  const guard = async (what: string, fn: () => Promise<void>) => { setBusy(true); try { await fn(); log(what, true) } catch (e: any) { log(what, false, { error: e.message }); showT(e.message || 'Error', false) } finally { setBusy(false) } }
+  const apptEdit = (body: any) => post('/api/getAppointments?action=editAppointment', body)
+  const clnEdit = (body: any) => post('/api/getAppointments?action=editCleaning', body)
+
+  const onSave = (it: Item, v: { date: string; time: string; typeId?: string }) => guard(`Guardar ${it.property}`, async () => {
+    const oldHM = toHM(it.time) || '10:00', oldTypeId = types.find(t => t.name === it.type)?.id
+    if (it.st === 'launched') {
+      const n = await resetDispatch(it.id, it.date)
+      await clnEdit({ id: it.id, date: v.date !== it.date ? v.date : undefined, time: v.time !== oldHM ? v.time : undefined })
+      armUndo(`${it.property} movida`, async () => { await clnEdit({ id: it.id, date: it.date, time: oldHM }); refresh() })
+      showT(n ? `Movida · se quitó de Dispatch (${n} bloque${n > 1 ? 's' : ''})` : 'Movida')
+    } else {
+      await apptEdit({ id: it.id, date: v.date !== it.date ? v.date : undefined, time: v.time !== oldHM ? v.time : undefined, cleaningTypeId: v.typeId })
+      armUndo(`${it.property} editada`, async () => { await apptEdit({ id: it.id, date: it.date, time: oldHM, cleaningTypeId: v.typeId ? oldTypeId : undefined }); refresh() })
+      showT('Guardado')
+    }
+    setSel(null); refresh()
+  })
+  const onStatus = (it: Item, status: 'Lead' | 'Cancelled') => guard(`${status === 'Lead' ? 'Devolver a por confirmar' : 'Cancelar appointment'} ${it.property}`, async () => {
+    const prev = it.rawStatus || 'Confirmed'
+    await apptEdit({ id: it.id, status })
+    armUndo(`${it.property} ${status === 'Lead' ? 'devuelta a por confirmar' : 'cancelada'}`, async () => { await apptEdit({ id: it.id, status: prev }); refresh() })
+    showT(status === 'Lead' ? 'Devuelta a por confirmar' : 'Appointment cancelado'); setSel(null); refresh()
+  })
+  const onCancelCleaning = (it: Item) => guard(`Cancelar limpieza ${it.property}`, async () => {
+    const n = await resetDispatch(it.id, it.date)
+    await clnEdit({ id: it.id, cancel: true })
+    if (it.apptId) await apptEdit({ id: it.apptId, status: 'Cancelled', viaCleaning: true })
+    armUndo(`${it.property} cancelada`, async () => { await clnEdit({ id: it.id, status: 'Scheduled' }); if (it.apptId) await apptEdit({ id: it.apptId, status: 'Scheduled', viaCleaning: true }); refresh() })
+    showT(n ? `Cancelada · se quitó de Dispatch` : 'Cancelada'); setSel(null); refresh()
+  })
+  const runUndo = async () => { if (!undo) return; const u = undo; setUndo(null); await guard('Deshacer: ' + u.label, u.run) }
+  const openDispatch = (it: Item) => { if (onOpenDispatch) onOpenDispatch({ date: it.date, cleaningId: it.id }) }
 
   // ── Exportar (sin dinero) ────────────────────────────────────
   const shareItems = () => items.filter(i => i.st !== 'pending' && (forWho === 'all' || i.cleanerIds.includes(forWho)))
@@ -101,9 +180,16 @@ export default function SchedulePage() {
   }
 
   const chip = (i: Item) => {
-    const base: React.CSSProperties = { borderRadius: 8, padding: '5px 7px', marginBottom: 5, fontSize: 11, lineHeight: 1.25, opacity: i.done ? .6 : 1 }
-    const st: React.CSSProperties = i.st === 'launched' ? { ...base, background: C.bg, borderLeft: `4px solid ${color(i)}` } : i.st === 'confirmed' ? { ...base, background: C.amberBg, border: `1.5px dashed #F59E0B` } : { ...base, background: '#fff', border: `1.5px dotted ${C.muted}`, color: C.muted }
-    return <div key={i.key} style={st}><b style={{ display: 'block', color: i.st === 'pending' ? C.slate : C.ink }}>{i.property}</b><span style={{ color: '#64748B' }}>{[fmtT(i.time), i.cleaners.join(' + ') || (i.st === 'launched' ? 'Sin asignar' : '')].filter(Boolean).join(' · ')}</span></div>
+    const ts = TYPE_STYLE[i.seg]; const o = ORIGIN[i.origin]
+    const base: React.CSSProperties = { position: 'relative', borderRadius: 8, padding: '5px 26px 5px 7px', marginBottom: 5, fontSize: 11, lineHeight: 1.25, opacity: i.done ? .6 : 1, cursor: 'pointer', background: ts.bg, color: C.ink }
+    const st: React.CSSProperties = i.st === 'launched' ? { ...base, border: `1.5px solid ${ts.bd}` } : i.st === 'confirmed' ? { ...base, border: `1.5px dashed ${ts.bd}` } : { ...base, background: '#fff', border: `1.5px dotted ${ts.bd}`, color: C.muted }
+    const dot = i.st === 'launched' ? color(i) : null
+    return <div key={i.key} style={st} onClick={() => setSel(i)}>
+      <span title={o.label} style={{ position: 'absolute', top: 4, right: 4, width: 17, height: 17, borderRadius: 9, background: o.color, color: '#fff', fontSize: 9.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i.origin}</span>
+      <b style={{ display: 'block', color: i.st === 'pending' ? C.slate : C.ink }}>{i.property}</b>
+      <span style={{ color: '#64748B', display: 'flex', alignItems: 'center', gap: 4 }}>{dot && <i title="color del squad" style={{ width: 7, height: 7, borderRadius: 4, background: dot, display: 'inline-block' }} />}{[fmt12(toHM(i.time)), i.cleaners.join(' + ') || (i.st === 'launched' ? 'Sin asignar' : '')].filter(Boolean).join(' · ')}</span>
+      <span style={{ display: 'inline-block', marginTop: 2, fontSize: 9.5, fontWeight: 800, color: ts.fg }}>{i.seg}</span>
+    </div>
   }
   const confirmedAll = items.filter(i => i.st === 'confirmed')
 
@@ -125,28 +211,50 @@ export default function SchedulePage() {
         </Card>}
       </div>
     </div>
-    <Card style={{ padding: '10px 14px', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 13 }}>
-      <span><b style={{ color: C.green }}>{cnt.l}</b> lanzadas</span><span><b style={{ color: C.amber }}>{cnt.c}</b> confirmadas por lanzar</span><span><b style={{ color: C.muted }}>{cnt.p}</b> por confirmar</span>
-      {cnt.c > 0 && <button style={{ ...btn(), marginLeft: 'auto', background: C.amberBg, borderColor: '#F59E0B', color: C.amber, fontWeight: 700 }} onClick={() => setLaunch({ ids: confirmedAll.map(i => i.id), label: `las ${confirmedAll.length} confirmadas de la semana` })}>Lanzar las {cnt.c} confirmadas</button>}
+    <Card style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Lbl>Agrupar</Lbl>
+        {([['dia', 'Por día'], ['casa', 'Por casa'], ['origen', 'Por origen']] as const).map(([k, l]) => <button key={k} style={btn(group === k)} onClick={() => setGroup(k)}>{l}</button>)}
+        <Lbl>Origen</Lbl>
+        <button style={btn(fOrigin === 'all')} onClick={() => setFOrigin('all')}>Todos {items.length}</button>
+        {(['T', 'W', 'O'] as Origin[]).map(o => <button key={o} style={btn(fOrigin === o)} onClick={() => setFOrigin(fOrigin === o ? 'all' : o)}>{ORIGIN[o].label} {oc[o]}</button>)}
+        <Lbl>Tipo</Lbl>
+        {(['STR', 'Resid.', 'Deep'] as TSeg[]).map(t => <button key={t} style={btn(fType === t)} onClick={() => setFType(fType === t ? 'all' : t)}>{t} {tc[t as 'STR']}</button>)}
+        <select value={fSquad} onChange={e => setFSquad(e.target.value)} style={{ ...selStyle, marginLeft: mobile ? 0 : 'auto' }}><option value="all">Squad: todos</option>{squadKeys.map(k => <option key={k} value={k}>{squadLabel(k) || 'Sin nombre'}</option>)}</select>
+      </div>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', fontSize: 13 }}>
+        <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}>{(['T', 'W', 'O'] as Origin[]).map((o, k) => <span key={o} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>{k > 0 && '·'}<b>{oc[o]}</b><Dot o={o} /></span>)}</span>
+        <span><b style={{ color: C.green }}>{cnt.l}</b> lanzadas</span><span><b style={{ color: C.amber }}>{cnt.c}</b> confirmadas por lanzar</span><span><b style={{ color: C.muted }}>{cnt.p}</b> por confirmar</span>
+        {cnt.c > 0 && <button style={{ ...btn(), marginLeft: 'auto', background: C.amberBg, borderColor: '#F59E0B', color: C.amber, fontWeight: 700 }} onClick={() => setLaunch({ ids: confirmedAll.map(i => i.id), label: `las ${confirmedAll.length} confirmadas de la semana` })}>Lanzar las {cnt.c} confirmadas</button>}
+      </div>
     </Card>
     {err && <div style={{ background: C.redBg, color: C.red, borderRadius: 10, padding: 10, fontSize: 13 }}>Error: {err}</div>}
     {loading && <div style={{ fontSize: 12, color: C.muted }}>Cargando…</div>}
+    {group !== 'dia' ? <ScheduleCasa items={shown} days={days} hist={hist} mobile={mobile} groupBy={group === 'casa' ? 'casa' : 'origen'} onOpen={setSel} histErr={histErr} originOfHouse={houseOrigin} /> :
     <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(7, minmax(0, 1fr))', gap: 8 }}>
-      {days.map((d, k) => { const conf = perDay[k].filter(i => i.st === 'confirmed'); const isT = d === todayET()
+      {days.map((d, k) => { const conf = perDay[k].filter(i => i.st === 'confirmed'); const isT = d === todayET(); const cp = capDay[k]
         return <div key={d} style={{ background: C.white, border: `1px solid ${isT ? C.primary : C.border}`, boxShadow: isT ? '0 0 0 2px #E0E7FF' : 'none', borderRadius: 12, padding: 8, minHeight: mobile ? 0 : 140 }}>
-          <div style={{ textAlign: mobile ? 'left' : 'center', borderBottom: '1px solid #F1F5F9', paddingBottom: 6, marginBottom: 6, display: mobile ? 'flex' : 'block', gap: 8, alignItems: 'baseline' }}>
-            <b style={{ fontSize: 13 }}>{fmtDow(d)}</b><span style={{ fontSize: 11, color: C.muted }}>{perDay[k].length} limp.</span>
-            {conf.length > 0 && <button onClick={() => setLaunch({ ids: conf.map(i => i.id), label: `${conf.length} del ${fmtDow(d)}` })} style={{ display: mobile ? 'inline-block' : 'block', margin: mobile ? '0 0 0 auto' : '4px auto 0', border: '1.5px solid #F59E0B', background: C.amberBg, color: C.amber, borderRadius: 8, fontSize: 11, fontWeight: 700, padding: '2px 8px', cursor: 'pointer' }}>Lanzar {conf.length}</button>}
+          <div style={{ textAlign: mobile ? 'left' : 'center', borderBottom: '1px solid #F1F5F9', paddingBottom: 6, marginBottom: 6 }}>
+            <div style={{ display: mobile ? 'flex' : 'block', gap: 8, alignItems: 'baseline' }}>
+              <b style={{ fontSize: 13 }}>{fmtDow(d)}</b> <span style={{ fontSize: 11, color: C.muted }}>{perDay[k].length} limp.</span>
+              {conf.length > 0 && <button onClick={() => setLaunch({ ids: conf.map(i => i.id), label: `${conf.length} del ${fmtDow(d)}` })} style={{ display: mobile ? 'inline-block' : 'block', margin: mobile ? '0 0 0 auto' : '4px auto 0', border: '1.5px solid #F59E0B', background: C.amberBg, color: C.amber, borderRadius: 8, fontSize: 11, fontWeight: 700, padding: '2px 8px', cursor: 'pointer' }}>Lanzar {conf.length}</button>}
+            </div>
+            <div style={{ height: 6, background: '#E2E8F0', borderRadius: 3, marginTop: 5, overflow: 'hidden' }}><div style={{ width: `${Math.min(100, cp.pct || 0)}%`, height: '100%', background: (cp.pct || 0) > 100 ? C.red : (cp.pct || 0) >= 50 ? '#10B981' : '#94A3B8' }} /></div>
+            <div style={{ fontSize: 10.5, color: C.slate, marginTop: 2 }}>{cp.cap > 0 ? `${cp.used.toFixed(0)} h / ${cp.cap.toFixed(0)} h · ${Math.round(cp.pct || 0)}%` : `${cp.used.toFixed(0)} h · sin equipo`}</div>
           </div>
           {perDay[k].map(chip)}{perDay[k].length === 0 && <p style={{ fontSize: 11, color: C.muted, textAlign: 'center', marginTop: mobile ? 4 : 16 }}>Sin programar</p>}
         </div> })}
-    </div>
-    <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 11.5, color: C.slate }}>
-      <span><i style={{ display: 'inline-block', width: 14, height: 10, borderLeft: '4px solid #6366F1', background: C.bg, marginRight: 5 }} />Lanzada (color = squad)</span><span><i style={{ display: 'inline-block', width: 14, height: 10, border: '1.5px dashed #F59E0B', background: C.amberBg, marginRight: 5 }} />Confirmada, por lanzar</span><span><i style={{ display: 'inline-block', width: 14, height: 10, border: `1.5px dotted ${C.muted}`, marginRight: 5 }} />Por confirmar</span>
+    </div>}
+    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 11.5, color: C.slate, alignItems: 'center' }}>
+      {(['T', 'W', 'O'] as Origin[]).map(o => <span key={o} style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}><Dot o={o} />{ORIGIN[o].label}</span>)}
+      {(['STR', 'Resid.', 'Deep'] as TSeg[]).map(t => <span key={t} style={{ background: TYPE_STYLE[t].bg, color: TYPE_STYLE[t].fg, border: `1px solid ${TYPE_STYLE[t].bd}`, borderRadius: 6, padding: '0 6px', fontWeight: 700 }}>{t}</span>)}
+      <span>Borde punteado = por lanzar · sólido = lanzada · punto de color = squad · barra = horas estándar ÷ capacidad del equipo</span>
     </div>
     {nextCount && <Card style={{ padding: '10px 14px', fontSize: 13, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}><b>{tab === 'this' ? 'Próxima semana' : 'Esta semana'}:</b> {nextCount.l} lanzadas · {nextCount.c} confirmadas por lanzar · {nextCount.p} por confirmar<button style={{ ...btn(), marginLeft: 'auto' }} onClick={() => setTab(tab === 'this' ? 'next' : 'this')}>Ver ›</button></Card>}
     <button onClick={() => setShowDbg(s => !s)} style={{ alignSelf: 'flex-start', fontSize: 12, color: C.slate, background: 'none', border: 'none', cursor: 'pointer' }}>{showDbg ? '▾' : '▸'} Debug</button>
-    {showDbg && <pre style={{ background: C.ink, color: '#E2E8F0', padding: 12, borderRadius: 10, fontSize: 12, overflowX: 'auto' }}>{JSON.stringify(dbg, null, 2)}</pre>}
+    {showDbg && <pre style={{ background: C.ink, color: '#E2E8F0', padding: 12, borderRadius: 10, fontSize: 12, overflowX: 'auto' }}>{JSON.stringify({ ...dbg, historial: histDbg || histErr, squads: squads.map(q => ({ n: q.name, tipo: q.type, h: `${q.startHour}-${q.endHour}`, miembros: q.defaultMemberIds.length })), capacidadPorDia: capDay.map(c => ({ d: c.d, usadasH: Math.round(c.used * 10) / 10, capH: c.cap, equipo: c.parts })), cambiosRecientes: changes }, null, 2)}</pre>}
+    {undo && <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 120, background: C.ink, color: '#fff', padding: '10px 14px', borderRadius: 14, fontSize: 13, display: 'flex', gap: 12, alignItems: 'center' }}>{undo.label}<button onClick={runUndo} style={{ background: 'none', border: 'none', color: '#A5B4FC', fontWeight: 800, cursor: 'pointer', fontSize: 13 }}>Deshacer</button></div>}
+    {sel && <SchedulePanel item={sel} mobile={mobile} types={types} busy={busy} onClose={() => setSel(null)} onSave={onSave} onStatus={onStatus} onCancelCleaning={onCancelCleaning} onDispatch={openDispatch} />}
     {launch && <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.5)', zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <Card style={{ maxWidth: 420, width: '100%' }}>
         <b style={{ fontSize: 16 }}>¿Lanzar {launch.label}?</b>
@@ -160,3 +268,6 @@ export default function SchedulePage() {
       </Card></div>}
   </div>
 }
+
+const Lbl = ({ children }: { children: any }) => <span style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: .4 }}>{children}</span>
+const Dot = ({ o }: { o: Origin }) => <span style={{ width: 17, height: 17, borderRadius: 9, background: ORIGIN[o].color, color: '#fff', fontSize: 9.5, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{o}</span>

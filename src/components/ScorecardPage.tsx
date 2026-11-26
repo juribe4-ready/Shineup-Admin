@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import CascadaPage from './CascadaPage'
 import { C, Card, Seg, selStyle, btn, Err, Loading, useIsMobile, todayET, addDays, mondayOf, rangeLabel } from './reports/shared'
 
 type M = { key: string; label: string; unit: '$' | '$0' | '%' | 'n' | 'min'; dir: 'up' | 'down'; hint: string; lead?: boolean; sum?: boolean }
@@ -58,7 +59,7 @@ function Val({ m, v, goal, plain }: { m: M; v: number | null | undefined; goal: 
   return <span style={{ background: p.bg, color: p.c, fontWeight: 700, fontSize: 12.5, padding: '2px 8px', borderRadius: 999, whiteSpace: 'nowrap' }}>{txt}</span>
 }
 
-export default function ScorecardPage() {
+function ScorecardTable() {
   const mobile = useIsMobile()
   const today = todayET()
   const curMon = mondayOf(today)
@@ -247,4 +248,12 @@ export default function ScorecardPage() {
       )}
     </div>
   )
+}
+
+export default function ScorecardPage() {
+  const [tab, setTab] = useState<'cascada' | 'tabla'>('cascada')
+  return <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <Seg items={[['cascada', 'Cascada'], ['tabla', 'Tabla']]} value={tab} onChange={v => setTab(v as any)} />
+    {tab === 'cascada' ? <CascadaPage /> : <ScorecardTable />}
+  </div>
 }
