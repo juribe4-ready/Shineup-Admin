@@ -21,6 +21,7 @@ export default function App() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState<PageKey>('command')
+  const [dispatchFocus, setDispatchFocus] = useState<{ date: string; cleaningId: string; n: number } | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -89,8 +90,8 @@ export default function App() {
       {effectivePage === 'cco_monitoring'   && <OperationsPage profile={profile} initialTab="live" />}
       {effectivePage === 'cco_incidents'    && <OperationsPage profile={profile} initialTab="incidents" />}
       {effectivePage === 'cco_ruptures'     && <OperationsPage profile={profile} initialTab="inventory" />}
-      {(effectivePage === 'plan_week' || effectivePage === 'plan_calendar') && <SchedulePage />}
-      {effectivePage === 'plan_predispatch' && <PreDispatchPage />}
+      {(effectivePage === 'plan_week' || effectivePage === 'plan_calendar') && <SchedulePage onOpenDispatch={f => { setDispatchFocus({ ...f, n: Date.now() }); handleNavigate('plan_predispatch') }} />}
+      {effectivePage === 'plan_predispatch' && <PreDispatchPage focus={dispatchFocus} onClearFocus={() => setDispatchFocus(null)} />}
       {effectivePage === 'plan_field'       && <FieldPage by={(profile as any).full_name || profile.email || 'Admin'} />}
       {effectivePage === 'tars_rules'       && <RulesPage />}
       {effectivePage === 'system_settings' && <SettingsPage />}
