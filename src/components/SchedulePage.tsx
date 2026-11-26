@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import NewAppointment from './NewAppointment'
 import SchedulePanel from './SchedulePanel'
 import ScheduleCasa, { type Hist } from './ScheduleCasa'
-import { ORIGIN, TYPE_STYLE, originOf, segOfType, toHM, fmt12, dayCapacity, type Origin, type Seg as TSeg, type SquadLite } from './scheduleLib'
+import { ORIGIN, TYPE_STYLE, originOf, segOfType, toHM, dayCapacity, type Origin, type Seg as TSeg, type SquadLite } from './scheduleLib'
 import { C, Card, Seg, btn, selStyle, todayET, mondayOf, addDays, weekLabel, fmtDow, useIsMobile } from './reports/shared'
 
 const PALETTE = ['#6366F1', '#10B981', '#F59E0B', '#EC4899', '#0EA5E9', '#8B5CF6', '#EF4444', '#14B8A6']
@@ -37,7 +37,6 @@ export default function SchedulePage({ onOpenDispatch }: { onOpenDispatch?: (f: 
   const [group, setGroup] = useState<'dia' | 'casa' | 'origen'>('dia')
   const [fOrigin, setFOrigin] = useState<'all' | Origin>('all')
   const [fType, setFType] = useState<'all' | TSeg>('all')
-  const [fSquad, setFSquad] = useState('all')
   const [sel, setSel] = useState<Item | null>(null)
   const [busy, setBusy] = useState(false)
   const [squads, setSquads] = useState<SquadLite[]>([])
@@ -86,10 +85,10 @@ export default function SchedulePage({ onOpenDispatch }: { onOpenDispatch?: (f: 
   const squadKey = (i: Item) => i.cleanerIds.slice().sort().join('+')
   const squadKeys = useMemo(() => [...new Set(items.filter(i => i.st === 'launched' && i.cleanerIds.length).map(squadKey))], [items])
   const color = (i: Item) => i.st !== 'launched' ? '#CBD5E1' : !i.cleanerIds.length ? '#94A3B8' : PALETTE[squadKeys.indexOf(squadKey(i)) % PALETTE.length]
-  const squadLabel = (k: string) => k.split('+').map(id => people.find(p => p[0] === id)?.[1] || '').filter(Boolean).join(' + ')
-  const passes = (i: Item) => (fOrigin === 'all' || i.origin === fOrigin) && (fType === 'all' || i.seg === fType) && (fSquad === 'all' || (i.st === 'launched' && squadKey(i) === fSquad))
+  const passes = (i: Item) => (fOrigin === 'all' || i.origin === fOrigin) && (fType === 'all' || i.seg === fType) 
   const shown = items.filter(passes)
-  const perDay = days.map(d => shown.filter(i => i.date === d).sort((a, b) => (a.time || '').localeCompare(b.time || '')))
+  const OR = { T: 0, W: 1, O: 2 }
+  const perDay = days.map(d => shown.filter(i => i.date === d).sort((a, b) => OR[a.origin] - OR[b.origin] || a.property.localeCompare(b.property)))
   const oc = { T: items.filter(i => i.origin === 'T').length, W: items.filter(i => i.origin === 'W').length, O: items.filter(i => i.origin === 'O').length }
   const tc = { 'STR': items.filter(i => i.seg === 'STR').length, 'Resid.': items.filter(i => i.seg === 'Resid.').length, 'Deep': items.filter(i => i.seg === 'Deep').length }
   const capDay = days.map(d => { const cap = dayCapacity(squads, d); const used = items.filter(i => i.date === d && i.st !== 'pending').reduce((t, i) => t + i.std, 0); return { d, used, cap: cap.hours, parts: cap.parts, pct: cap.hours > 0 ? used / cap.hours * 100 : null } })
@@ -187,8 +186,9 @@ export default function SchedulePage({ onOpenDispatch }: { onOpenDispatch?: (f: 
     return <div key={i.key} style={st} onClick={() => setSel(i)}>
       <span title={o.label} style={{ position: 'absolute', top: 4, right: 4, width: 17, height: 17, borderRadius: 9, background: o.color, color: '#fff', fontSize: 9.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i.origin}</span>
       <b style={{ display: 'block', color: i.st === 'pending' ? C.slate : C.ink }}>{i.property}</b>
-      <span style={{ color: '#64748B', display: 'flex', alignItems: 'center', gap: 4 }}>{dot && <i title="color del squad" style={{ width: 7, height: 7, borderRadius: 4, background: dot, display: 'inline-block' }} />}{[fmt12(toHM(i.time)), i.cleaners.join(' + ') || (i.st === 'launched' ? 'Sin asignar' : '')].filter(Boolean).join(' · ')}</span>
-      <span style={{ display: 'inline-block', marginTop: 2, fontSize: 9.5, fontWeight: 800, color: ts.fg }}>{i.seg}</span>
+      <span style={{ color: '#64748B', display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>{dot && <i title="color del squad" style={{ width: 7, height: 7, borderRadius: 4, background: dot, display: 'inline-block' }} />}
+        {i.st === 'launched' ? (i.cleaners.length ? <span title={i.cleaners.join(' + ')} style={{ letterSpacing: .5, fontWeight: 600 }}>{i.cleaners.map(n => n[0]).join(' ')}</span> : <i>sin asignar</i>) : null}
+        <span style={{ fontSize: 9.5, fontWeight: 800, color: ts.fg, marginLeft: i.st === 'launched' ? 'auto' : 0 }}>{i.seg}</span></span>
     </div>
   }
   const confirmedAll = items.filter(i => i.st === 'confirmed')
@@ -212,15 +212,10 @@ export default function SchedulePage({ onOpenDispatch }: { onOpenDispatch?: (f: 
       </div>
     </div>
     <Card style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <Lbl>Agrupar</Lbl>
-        {([['dia', 'Por día'], ['casa', 'Por casa'], ['origen', 'Por origen']] as const).map(([k, l]) => <button key={k} style={btn(group === k)} onClick={() => setGroup(k)}>{l}</button>)}
-        <Lbl>Origen</Lbl>
-        <button style={btn(fOrigin === 'all')} onClick={() => setFOrigin('all')}>Todos {items.length}</button>
-        {(['T', 'W', 'O'] as Origin[]).map(o => <button key={o} style={btn(fOrigin === o)} onClick={() => setFOrigin(fOrigin === o ? 'all' : o)}>{ORIGIN[o].label} {oc[o]}</button>)}
-        <Lbl>Tipo</Lbl>
-        {(['STR', 'Resid.', 'Deep'] as TSeg[]).map(t => <button key={t} style={btn(fType === t)} onClick={() => setFType(fType === t ? 'all' : t)}>{t} {tc[t as 'STR']}</button>)}
-        <select value={fSquad} onChange={e => setFSquad(e.target.value)} style={{ ...selStyle, marginLeft: mobile ? 0 : 'auto' }}><option value="all">Squad: todos</option>{squadKeys.map(k => <option key={k} value={k}>{squadLabel(k) || 'Sin nombre'}</option>)}</select>
+      <div style={{ display: 'flex', gap: mobile ? 8 : 18, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <Group label="Agrupar"><Pills value={group} onChange={v => setGroup(v as any)} items={[['dia', 'Día'], ['casa', 'Casa'], ['origen', 'Origen']]} /></Group>
+        <Group label="Origen"><Pills value={fOrigin} onChange={v => setFOrigin(v as any)} items={[['all', `Todos ${items.length}`], ...(['T', 'W', 'O'] as Origin[]).map(o => [o, `${ORIGIN[o].label} ${oc[o]}`, ORIGIN[o].color] as [string, string, string])]} /></Group>
+        <Group label="Tipo"><Pills value={fType} onChange={v => setFType(v as any)} items={[['all', 'Todos'], ...(['STR', 'Resid.', 'Deep'] as TSeg[]).map(t => [t, `${t} ${tc[t as 'STR']}`, TYPE_STYLE[t].bd] as [string, string, string])]} /></Group>
       </div>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', fontSize: 13 }}>
         <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}>{(['T', 'W', 'O'] as Origin[]).map((o, k) => <span key={o} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>{k > 0 && '·'}<b>{oc[o]}</b><Dot o={o} /></span>)}</span>
@@ -240,7 +235,7 @@ export default function SchedulePage({ onOpenDispatch }: { onOpenDispatch?: (f: 
               {conf.length > 0 && <button onClick={() => setLaunch({ ids: conf.map(i => i.id), label: `${conf.length} del ${fmtDow(d)}` })} style={{ display: mobile ? 'inline-block' : 'block', margin: mobile ? '0 0 0 auto' : '4px auto 0', border: '1.5px solid #F59E0B', background: C.amberBg, color: C.amber, borderRadius: 8, fontSize: 11, fontWeight: 700, padding: '2px 8px', cursor: 'pointer' }}>Lanzar {conf.length}</button>}
             </div>
             <div style={{ height: 6, background: '#E2E8F0', borderRadius: 3, marginTop: 5, overflow: 'hidden' }}><div style={{ width: `${Math.min(100, cp.pct || 0)}%`, height: '100%', background: (cp.pct || 0) > 100 ? C.red : (cp.pct || 0) >= 50 ? '#10B981' : '#94A3B8' }} /></div>
-            <div style={{ fontSize: 10.5, color: C.slate, marginTop: 2 }}>{cp.cap > 0 ? `${cp.used.toFixed(0)} h / ${cp.cap.toFixed(0)} h · ${Math.round(cp.pct || 0)}%` : `${cp.used.toFixed(0)} h · sin equipo`}</div>
+            <div title={cp.parts.map(x => `${x.squad}: ${x.people} personas = ${x.hours} h`).join('\n') || 'Sin squads con equipo ese día'} style={{ fontSize: 10.5, color: C.slate, marginTop: 2 }}>{cp.cap > 0 ? `${cp.used.toFixed(0)} h / ${cp.cap.toFixed(0)} h · ${Math.round(cp.pct || 0)}%` : `${cp.used.toFixed(0)} h · sin equipo`}</div>
           </div>
           {perDay[k].map(chip)}{perDay[k].length === 0 && <p style={{ fontSize: 11, color: C.muted, textAlign: 'center', marginTop: mobile ? 4 : 16 }}>Sin programar</p>}
         </div> })}
@@ -269,5 +264,8 @@ export default function SchedulePage({ onOpenDispatch }: { onOpenDispatch?: (f: 
   </div>
 }
 
-const Lbl = ({ children }: { children: any }) => <span style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: .4 }}>{children}</span>
+const Group = ({ label, children }: { label: string; children: any }) => <div><div style={{ fontSize: 10.5, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: .5, marginBottom: 3 }}>{label}</div>{children}</div>
+const Pills = ({ items, value, onChange }: { items: ([string, string] | [string, string, string])[]; value: string; onChange: (v: string) => void }) => <div style={{ display: 'inline-flex', background: '#F1F5F9', borderRadius: 10, padding: 3, gap: 2, maxWidth: '100%', overflowX: 'auto' }}>
+  {items.map(([k, l, c]) => { const on = value === k; return <button key={k} onClick={() => onChange(on && k !== 'all' && items[0][0] === 'all' ? 'all' : k)} style={{ border: 'none', cursor: 'pointer', borderRadius: 8, padding: '5px 11px', fontSize: 12.5, fontWeight: on ? 700 : 500, background: on ? '#fff' : 'transparent', color: on ? C.ink : C.slate, boxShadow: on ? '0 1px 3px rgba(15,23,42,.15)' : 'none', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 5 }}>{c && <i style={{ width: 8, height: 8, borderRadius: 4, background: c, display: 'inline-block' }} />}{l}</button> })}
+</div>
 const Dot = ({ o }: { o: Origin }) => <span style={{ width: 17, height: 17, borderRadius: 9, background: ORIGIN[o].color, color: '#fff', fontSize: 9.5, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{o}</span>
