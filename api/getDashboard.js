@@ -674,9 +674,98 @@ async function handleWeekCal(req, res) {
       const x = r.fields || {};
       const ids = (Array.isArray(x['Assigned Staff']) ? x['Assigned Staff'] : []).filter(id => staff[id]?.cleaner);
       return { id: r.id, date: String(x['Date'] || '').slice(0, 10), property: x['Property Text'] || 'Sin nombre', time: x['Scheduled Time'] || null, status: x['Status'] || 'Programmed',
-        price: Number(x['Price']) || 0, type: x['Cleaning Type Text'] || null, cleaners: ids.map(id => ({ id, name: staff[id].name })) };
+        price: Number(x['Price']) || 0, type: x['Cleaning Type Text'] || null, cleaners: ids.map(id => ({ id, name: staff[id].name })),
+        std: (Number((Array.isArray(x['Labor (from Property)']) ? x['Labor (from Property)'][0] : x['Labor (from Property)'])) || 0) / 60 };
     }).filter(c => c.date >= from && c.date <= to);
     return res.status(200).json({ from, to, cleanings });
+  } catch (e) { return res.status(500).json({ error: e.message }); }
+}
+
+
+// ───────── Schedule "Por casa": historial de limpiezas por propiedad ─────────
+async function handleCasaHist(req, res) {
+  const H = { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` };
+  try {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const days = Math.min(365, Math.max(60, Number(req.query.days) || 180));
+    const from = dAdd(today, -days);
+    const f = encodeURIComponent(`AND(IS_AFTER({Date},'${dAdd(from, -1)}'),IS_BEFORE({Date},'${dAdd(today, 1)}'))`);
+    const fields = ['Date', 'Status', 'Property Text'].map(x => `fields[]=${encodeURIComponent(x)}`).join('&');
+    const recs = await airtableAll(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblabOdNknnjrYUU1?${fields}&filterByFormula=${f}`, H, 80);
+    const by = {};
+    let used = 0;
+    for (const r of recs) {
+      const x = r.fields || {};
+      const date = String(x['Date'] || '').slice(0, 10), name = x['Property Text'];
+      if (!date || !name || x['Status'] === 'Cancelled' || date > today) continue;
+      (by[name] ||= []).push(date); used++;
+    }
+    const diffD = (a, b) => Math.round((new Date(b + 'T12:00:00Z') - new Date(a + 'T12:00:00Z')) / 86400000);
+    const houses = Object.entries(by).map(([name, ds]) => {
+      ds = [...new Set(ds)].sort();
+      const gaps = []; for (let i = 1; i < ds.length; i++) gaps.push(diffD(ds[i - 1], ds[i]));
+      const last = ds[ds.length - 1];
+      return { name, total: ds.length, n30: ds.filter(d => d >= dAdd(today, -30)).length, n90: ds.filter(d => d >= dAdd(today, -90)).length,
+        last, daysSince: diffD(last, today), gap: median(gaps), first: ds[0] };
+    });
+    return res.status(200).json({ today, from, days, houses, debug: { leidas: recs.length, usadas: used, casas: houses.length } });
+  } catch (e) { return res.status(500).json({ error: e.message }); }
+}
+
+// ───────── Cascada: datos por semana y segmento (STR / Relleno / Deep) ─────────
+const segOf = (t) => /deep/i.test(t || '') ? 'Deep' : /str/i.test(t || '') ? 'STR' : 'Relleno';
+async function handleCascadeData(req, res) {
+  const H = { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` };
+  try {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const nW = Math.min(26, Math.max(4, Number(req.query.weeks) || 14));
+    const curMon = mondayOf(today);
+    const from = dAdd(curMon, -7 * (nW - 1));
+    const to = dAdd(curMon, 13); // semana actual + la siguiente
+    const f = encodeURIComponent(`AND(IS_AFTER({Date},'${dAdd(from, -1)}'),IS_BEFORE({Date},'${dAdd(to, 1)}'))`);
+    const fields = ['Date', 'Status', 'Price', 'Start Time', 'End Time', 'Assigned Staff', 'Labor (from Property)', 'Cleaning Type Text', '#Cleaners'].map(x => `fields[]=${encodeURIComponent(x)}`).join('&');
+    const [recs, staffRecs] = await Promise.all([
+      airtableAll(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblabOdNknnjrYUU1?${fields}&filterByFormula=${f}`, H, 150),
+      airtableAll(`https://api.airtable.com/v0/${AIRTABLE_BASE}/tblgHwN1wX6u3ZtNY?fields[]=Name&fields[]=Role`, H),
+    ]);
+    const cleaner = {}; for (const r of staffRecs) cleaner[r.id] = String(r.fields?.Role || '').toLowerCase().includes('cleaner');
+    const SEGS = ['STR', 'Relleno', 'Deep'];
+    const weeks = {};
+    for (let m = from; m <= dAdd(curMon, 7); m = dAdd(m, 7)) {
+      weeks[m] = { mon: m, cur: m === curMon, future: m > curMon, elapsed: m < curMon ? 7 : m === curMon ? Math.max(0, Math.min(7, Math.round((new Date(today + 'T12:00:00Z') - new Date(m + 'T12:00:00Z')) / 86400000))) : 0,
+        cleaners: new Set(), seg: Object.fromEntries(SEGS.map(s => [s, { n: 0, nDone: 0, nMed: 0, hh: 0, rev: 0, std: 0, ingDay: [0, 0, 0, 0, 0, 0, 0], pend: { n: 0, price: 0, std: 0, hh: 0, day: [0, 0, 0, 0, 0, 0, 0] } }])) };
+    }
+    const types = {}; const dbg = { leidas: recs.length, hechas: 0, medibles: 0, sinDuracion: 0, sinEstandar: 0, sinPrecio: 0, hoyExcluido: 0 };
+    for (const r of recs) {
+      const x = r.fields || {};
+      const date = String(x['Date'] || '').slice(0, 10), st = x['Status'];
+      if (!date || st === 'Cancelled') continue;
+      const mon = mondayOf(date), w = weeks[mon]; if (!w) continue;
+      const di = Math.round((new Date(date + 'T12:00:00Z') - new Date(mon + 'T12:00:00Z')) / 86400000);
+      const ids = (Array.isArray(x['Assigned Staff']) ? x['Assigned Staff'] : []).filter(id => cleaner[id]);
+      ids.forEach(id => w.cleaners.add(id));
+      const type = x['Cleaning Type Text'] || '(sin tipo)'; const seg = segOf(type);
+      const k = seg + '|' + type; types[k] = (types[k] || 0) + 1;
+      const g = w.seg[seg]; g.n++;
+      const price = Number(x['Price']) || 0;
+      const lab = Array.isArray(x['Labor (from Property)']) ? x['Labor (from Property)'][0] : x['Labor (from Property)'];
+      const std = (Number(lab) || 0) / 60;
+      const n = ids.length || Number(x['#Cleaners']) || 1;
+      if (st === 'Done') {
+        dbg.hechas++; g.nDone++; g.ingDay[di] += price;
+        const dur = x['Start Time'] && x['End Time'] ? (new Date(x['End Time']) - new Date(x['Start Time'])) / 3600000 : null;
+        if (date >= today) { dbg.hoyExcluido++; continue; } // el dia de hoy aun no cuenta en capacidad
+        if (!(dur > 0 && dur < 16)) { dbg.sinDuracion++; continue; }
+        if (!(std > 0)) { dbg.sinEstandar++; continue; }
+        if (!price) dbg.sinPrecio++;
+        g.hh += dur * n; g.rev += price; g.std += std; g.nMed++; dbg.medibles++;
+      } else {
+        g.pend.n++; g.pend.price += price; g.pend.std += std; g.pend.hh += std * n; g.pend.day[di] += price;
+      }
+    }
+    const out = Object.values(weeks).map(w => ({ mon: w.mon, cur: w.cur, future: w.future, elapsed: w.elapsed, cleaners: w.cleaners.size, seg: w.seg }));
+    return res.status(200).json({ today, curMon, capPerCleaner: CAP_HOURS_PER_CLEANER, weeks: out,
+      types: Object.entries(types).map(([k, n]) => ({ seg: k.split('|')[0], type: k.split('|').slice(1).join('|'), n })).sort((a, b) => a.seg.localeCompare(b.seg) || b.n - a.n), debug: dbg });
   } catch (e) { return res.status(500).json({ error: e.message }); }
 }
 
@@ -715,6 +804,8 @@ export default async function handler(req, res) {
   const { action } = req.query;
   if (action === 'reports') return handleReports(req, res);
   if (action === 'weekCal') return handleWeekCal(req, res);
+  if (action === 'casaHist') return handleCasaHist(req, res);
+  if (action === 'cascadeData') return handleCascadeData(req, res);
   if (action === 'notion') return handleNotion(req, res);
   if (action === 'shiftsDay' || action === 'shiftSave' || action === 'shiftAdd' || action === 'laborRange' || action === 'shiftsRange' || action === 'scorecard') return handleShifts(req, res, action);
   

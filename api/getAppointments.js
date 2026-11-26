@@ -35,6 +35,8 @@ export default async function handler(req, res) {
 
   // POST: Launch week - create cleanings from appointments
   if (req.method === 'POST') {
+    if (action === 'editAppointment') return handleEditAppointment(req, res)
+    if (action === 'editCleaning') return handleEditCleaning(req, res)
     return handleLaunchWeek(req, res)
   }
 
@@ -208,6 +210,7 @@ async function handleGetWeekSummary(req, res) {
         clientName: Array.isArray(r.fields?.['Client Name']) ? r.fields['Client Name'][0] : (r.fields?.['Client Name'] || ''),
         notes: r.fields?.['Notes'] || '',
         source: r.fields?.['Online Platform Source'] || r.fields?.['Source'] || '',
+        sourceRaw: r.fields?.['Source'] || '',
         relatedCleaning: r.fields?.['Related Cleaning Job'] || null,
       }
     })
@@ -530,4 +533,79 @@ function addMinutes(time, minutes) {
   const newH = Math.floor(totalMin / 60) % 24
   const newM = totalMin % 60
   return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`
+}
+
+
+// ───────── Schedule: editar / devolver / cancelar (nunca borra registros) ─────────
+async function readBody(req) {
+  if (req.body && typeof req.body === 'object') return req.body
+  if (typeof req.body === 'string') { try { return JSON.parse(req.body) } catch { return {} } }
+  return {}
+}
+const okDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '')
+const okTime = (t) => /^\d{2}:\d{2}$/.test(t || '')
+
+// Appointment: { id, date?, time?, status?: 'Lead'|'Cancelled', cleaningTypeId? }
+// Solo toca 'Requested Date & Time', 'Status' y 'Cleaning Type'. No permite editar uno ya lanzado.
+async function handleEditAppointment(req, res) {
+  try {
+    const { id, date, time, status, cleaningTypeId, viaCleaning } = await readBody(req)
+    if (!id || !/^rec/.test(id)) return res.status(400).json({ error: 'id requerido' })
+    const H = { Authorization: `Bearer ${AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' }
+    const cur = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}/${id}`, { headers: H })
+    const cd = await cur.json()
+    if (!cur.ok) return res.status(cur.status).json({ error: cd?.error?.message || 'no se pudo leer' })
+    const f = cd.fields || {}
+    if (!viaCleaning && ((f['Related Cleaning Job'] || []).length || f['Status'] === 'Scheduled')) return res.status(409).json({ error: 'Ya está lanzado: edita la limpieza' })
+    const fields = {}
+    if (date || time) {
+      const old = f['Requested Date & Time'] ? new Date(f['Requested Date & Time']) : null
+      const oldLocal = old ? old.toLocaleString('sv-SE', { timeZone: 'America/New_York' }).replace(' ', 'T') : null
+      const d = date || (oldLocal ? oldLocal.slice(0, 10) : null)
+      const t = time || (oldLocal ? oldLocal.slice(11, 16) : '10:00')
+      if (!okDate(d) || !okTime(t)) return res.status(400).json({ error: 'fecha/hora inválida' })
+      fields['Requested Date & Time'] = `${d}T${t}:00.000${etOff(d)}`
+    }
+    if (status) {
+      if (!['Lead', 'Confirmed', 'Cancelled', 'Scheduled'].includes(status)) return res.status(400).json({ error: 'status no permitido' })
+      fields['Status'] = status
+    }
+    if (cleaningTypeId) { if (!/^rec/.test(cleaningTypeId)) return res.status(400).json({ error: 'tipo inválido' }); fields['Cleaning Type'] = [cleaningTypeId] }
+    if (!Object.keys(fields).length) return res.status(400).json({ error: 'nada que cambiar' })
+    const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${APPOINTMENTS_TABLE}/${id}`, { method: 'PATCH', headers: H, body: JSON.stringify({ fields }) })
+    const d2 = await r.json()
+    if (!r.ok) return res.status(r.status).json({ error: d2?.error?.message || 'Airtable rechazó el cambio', sent: fields })
+    return res.status(200).json({ ok: true, id, sent: fields, before: { date: f['Requested Date & Time'] || null, status: f['Status'] || null } })
+  } catch (e) { return res.status(500).json({ error: e.message }) }
+}
+
+// Limpieza lanzada: { id, date?, time?, cancel? }. No toca limpiezas Done / en curso.
+// El reinicio de Dispatch (borrar bloques) lo hace el frontend con /api/deleteSquadBlock ANTES de llamar aquí.
+async function handleEditCleaning(req, res) {
+  try {
+    const { id, date, time, cancel, status } = await readBody(req)
+    if (!id || !/^rec/.test(id)) return res.status(400).json({ error: 'id requerido' })
+    const H = { Authorization: `Bearer ${AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' }
+    const cur = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${id}`, { headers: H })
+    const cd = await cur.json()
+    if (!cur.ok) return res.status(cur.status).json({ error: cd?.error?.message || 'no se pudo leer' })
+    const f = cd.fields || {}
+    if (f['Start Time'] || f['End Time'] || ['Done', 'In Progress'].includes(f['Status'])) return res.status(409).json({ error: 'Ya empezó o terminó: no se puede modificar' })
+    const fields = {}
+    if (cancel) fields['Status'] = 'Cancelled'
+    else if (status) { if (!['Scheduled', 'Cancelled'].includes(status)) return res.status(400).json({ error: 'status no permitido' }); fields['Status'] = status }
+    else {
+      const old = f['Scheduled Time'] ? new Date(f['Scheduled Time']) : null
+      const oldLocal = old ? old.toLocaleString('sv-SE', { timeZone: 'America/New_York' }).replace(' ', 'T') : null
+      const d = date || String(f['Date'] || '').slice(0, 10)
+      const t = time || (oldLocal ? oldLocal.slice(11, 16) : '10:00')
+      if (!okDate(d) || !okTime(t)) return res.status(400).json({ error: 'fecha/hora inválida' })
+      if (date) fields['Date'] = d
+      fields['Scheduled Time'] = `${d}T${t}:00.000${etOff(d)}`
+    }
+    const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${CLEANINGS_TABLE}/${id}`, { method: 'PATCH', headers: H, body: JSON.stringify({ fields }) })
+    const d2 = await r.json()
+    if (!r.ok) return res.status(r.status).json({ error: d2?.error?.message || 'Airtable rechazó el cambio', sent: fields })
+    return res.status(200).json({ ok: true, id, sent: fields, before: { date: f['Date'] || null, time: f['Scheduled Time'] || null, status: f['Status'] || null } })
+  } catch (e) { return res.status(500).json({ error: e.message }) }
 }
