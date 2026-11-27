@@ -545,7 +545,7 @@ function timeToMinAvail(t) {
 // Order itself isn't stored anywhere separately — once times are written, sorting blocks by
 // their own StartTime reproduces the sequence. No extra Airtable field needed.
 async function resequenceSquadDay(headers, body) {
-  const { squadId, date, orderedBlockIds, squadStartHour } = body
+  const { squadId, date, orderedBlockIds, squadStartHour, pin } = body // pin: { blockId, time:'HH:MM' } -> esa casa queda fija a esa hora
   if (!squadId || !date || !Array.isArray(orderedBlockIds) || orderedBlockIds.length === 0) {
     return { ok: false, error: 'squadId, date y orderedBlockIds (array) requeridos' }
   }
@@ -638,7 +638,17 @@ async function resequenceSquadDay(headers, body) {
       anchor = new Date(`${date}T${String(anchorHour).padStart(2, '0')}:00:00.000${etOff(date)}`)
     }
 
-    const sequenced = sequenceJobs(jobs, anchor, cfg)
+    let sequenced, warnings = []
+    const pinIdx = pin && /^\d{2}:\d{2}$/.test(pin.time || '') ? jobs.findIndex(j => j.blockId === pin.blockId) : -1
+    if (pinIdx >= 0) {
+      // Casa fija: queda exactamente a la hora pedida. Las de antes se encadenan desde el inicio original del dia;
+      // la fija y las de despues se encadenan a partir de su hora (duracion + traslado).
+      const pinStart = new Date(`${date}T${pin.time}:00.000${etOff(date)}`)
+      const before = pinIdx > 0 ? sequenceJobs(jobs.slice(0, pinIdx), anchor, cfg) : []
+      const rest = sequenceJobs(jobs.slice(pinIdx), pinStart, cfg)
+      sequenced = [...before, ...rest]
+      if (before.length && before[before.length - 1].end > pinStart) warnings.push('Las casas de antes se traslapan con la hora fija: revisa el orden o la hora.')
+    } else sequenced = sequenceJobs(jobs, anchor, cfg)
 
     // 6. Write back — Block StartTime/EndTime AND Cleaning Scheduled Time (for Ops).
     // Scheduled Time on the Cleaning is what the cleaner sees in Ops. When a pill is deleted
@@ -663,7 +673,7 @@ async function resequenceSquadDay(headers, body) {
       else console.error('[resequenceSquadDay] patch failed:', job.blockId, !br.ok && await br.text(), !cr.ok && await cr.text())
     }
 
-    return { ok: true, updated, total: sequenced.length, times }
+    return { ok: true, updated, total: sequenced.length, times, warnings }
   } catch (e) {
     console.error('[resequenceSquadDay] Exception:', e.message)
     return { ok: false, error: e.message }
