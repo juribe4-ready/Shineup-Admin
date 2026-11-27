@@ -114,6 +114,8 @@ export default function PreDispatchPage({ focus, onClearFocus }: { focus?: { dat
   const [dragOverBlockId, setDragOverBlockId] = useState<string | null>(null)
   const [pendingCleaningIds, setPendingCleaningIds] = useState<Set<string>>(new Set())
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
+  const [editBlock, setEditBlock] = useState<Block | null>(null)
+  const [editTime, setEditTime] = useState('')
   const inFlightRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
@@ -312,6 +314,26 @@ export default function PreDispatchPage({ focus, onClearFocus }: { focus?: { dat
     finally { setResequencingKey(null) }
   }
 
+  // Clic en una casa: cambiar su hora (queda fija) y el resto del squad se reacomoda antes y despues
+  const openEdit = (b: Block) => { if (!b.cleaningId) return; setEditBlock(b); setEditTime(b.startTime) }
+  const handleEditTime = async () => {
+    const b = editBlock; if (!b || !/^\d{2}:\d{2}$/.test(editTime)) return
+    const squad = squads.find(s => s.id === b.squadId)
+    const others = blocks.filter(x => x.squadId === b.squadId && x.date === b.date && x.id !== b.id).sort((a, c) => a.startTime.localeCompare(c.startTime))
+    const at = others.findIndex(x => x.startTime > editTime)
+    const ordered = [...others]; ordered.splice(at === -1 ? others.length : at, 0, b)
+    setEditBlock(null); setResequencingKey(`${b.squadId}-${b.date}`)
+    try {
+      const res = await fetch('/api/getReports?type=resequence', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ squadId: b.squadId, date: b.date, orderedBlockIds: ordered.map(x => x.id), squadStartHour: squad?.startHour ?? 8, pin: { blockId: b.id, time: editTime } }) })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.ok) { showToast(data?.error || 'Error al cambiar la hora', 'err'); return }
+      if (data.times) setBlocks(prev => prev.map(x => { const u = data.times[x.id]; return u ? { ...x, startTime: u.start, endTime: u.end } : x }))
+      showToast(data.warnings?.length ? data.warnings[0] : `Hora cambiada · ${data.updated} horario(s) actualizado(s)`, data.warnings?.length ? 'err' : 'ok')
+    } catch (e: any) { showToast('Error de red: ' + (e?.message || 'desconocido'), 'err') }
+    finally { setResequencingKey(null) }
+  }
+
   // ── Render ───────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-4 p-4 max-w-full">
@@ -323,6 +345,21 @@ export default function PreDispatchPage({ focus, onClearFocus }: { focus?: { dat
           {toast.msg}
         </div>
       )}
+
+      {editBlock && (() => { const rc = cleanings.find(c => c.id === editBlock.cleaningId); const sq = squads.find(s => s.id === editBlock.squadId)
+        return <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ background: 'rgba(15,23,42,.45)' }} onClick={() => setEditBlock(null)}>
+          <div className="bg-white w-full sm:w-[400px] rounded-t-3xl sm:rounded-2xl p-5" onClick={e => e.stopPropagation()}>
+            <p className="text-[16px] font-black" style={{ color: C.ink }}>{rc?.propertyText || editBlock.notes}</p>
+            <p className="text-[12px] mb-3" style={{ color: C.slate }}>{sq?.name} · {editBlock.date} · ahora {editBlock.startTime} · {pillDuration(editBlock.startTime, editBlock.endTime)}</p>
+            <label className="text-[11px] font-black uppercase" style={{ color: C.muted }}>Hora de inicio</label>
+            <input type="time" value={editTime} onChange={e => setEditTime(e.target.value)} className="w-full rounded-xl px-3 py-2 mt-1 text-[15px]" style={{ border: `1px solid ${C.border}` }} />
+            <p className="text-[11.5px] mt-3 rounded-xl p-2.5" style={{ background: C.primaryLight, color: C.primary }}>Esta casa queda exactamente a esa hora. Las demás del squad se acomodan antes y después (duración + traslado), como al arrastrar.</p>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setEditBlock(null)} className="flex-1 py-2.5 rounded-xl text-[13px] font-bold" style={{ border: `1px solid ${C.border}` }}>Cancelar</button>
+              <button disabled={!editTime || editTime === editBlock.startTime} onClick={handleEditTime} className="flex-1 py-2.5 rounded-xl text-[13px] font-black text-white" style={{ background: C.primary, opacity: !editTime || editTime === editBlock.startTime ? .5 : 1 }}>Guardar</button>
+            </div>
+          </div>
+        </div> })()}
 
       {focus && <div className="flex items-center gap-3 rounded-2xl px-4 py-2.5 text-[13px] font-bold" style={{ background: C.primaryLight, color: C.primary }}>
         <span className="flex-1">Desde Schedule: {focusCleaning ? focusCleaning.propertyText : 'limpieza'} · {focus.date}{focusCleaning ? (blocks.some(b => b.cleaningId === focusCleaning.id) ? ' · ya tiene squad' : ' · sin squad: asígnala abajo') : (loading ? '' : ' · no la encuentro en esta semana')}</span>
@@ -420,7 +457,7 @@ export default function PreDispatchPage({ focus, onClearFocus }: { focus?: { dat
                 {bl.length === 0 && <p className="text-[11px]" style={{ color: C.muted }}>Sin limpiezas este día</p>}
                 {bl.map((b, i) => { const rc = cleanings.find(c => c.id === b.cleaningId); const tc = colorForType(rc?.cleaningType || null)
                   return <div key={b.id} className="flex items-center gap-1.5 rounded-xl px-2 py-1.5 mb-1" style={{ background: tc.bg, border: `1px solid ${tc.border}40` }}>
-                    <div className="min-w-0 flex-1"><p className="text-[11px] font-black truncate" style={{ color: tc.text }}>{b.startTime} · {pillDuration(b.startTime, b.endTime)}</p><p className="text-[10.5px] truncate" style={{ color: C.slate }}>{rc?.propertyText || b.notes}</p></div>
+                    <div className="min-w-0 flex-1" onClick={() => openEdit(b)} style={{ cursor: b.cleaningId ? 'pointer' : 'default' }}><p className="text-[11px] font-black truncate" style={{ color: tc.text }}>{b.startTime} · {pillDuration(b.startTime, b.endTime)}</p><p className="text-[10.5px] truncate" style={{ color: C.slate }}>{rc?.propertyText || b.notes}</p></div>
                     {b.cleaningId && bl.length > 1 && <>
                       <button disabled={i === 0} onClick={() => handleReorderBlocks(sq.id, date, b.id, bl[i - 1].id)} className="w-7 h-7 rounded-lg text-[12px]" style={{ border: `1px solid ${C.border}`, background: C.white, opacity: i === 0 ? .3 : 1 }}>▲</button>
                       <button disabled={i === bl.length - 1} onClick={() => handleReorderBlocks(sq.id, date, b.id, bl[i + 1].id)} className="w-7 h-7 rounded-lg text-[12px]" style={{ border: `1px solid ${C.border}`, background: C.white, opacity: i === bl.length - 1 ? .3 : 1 }}>▼</button></>}
@@ -618,7 +655,7 @@ export default function PreDispatchPage({ focus, onClearFocus }: { focus?: { dat
                                       cursor: b.cleaningId ? 'grab' : 'default',
                                       transform: isDragTarget ? 'scale(1.03)' : 'scale(1)',
                                     }}>
-                                    <div className="min-w-0">
+                                    <div className="min-w-0 flex-1" onClick={() => openEdit(b)} style={{ cursor: b.cleaningId ? 'pointer' : 'default' }} title={b.cleaningId ? 'Clic para cambiar la hora' : undefined}>
                                       {b.startTime && (
                                         <p className="text-[9px] font-black truncate" style={{ color: tc.text }}>
                                           {b.startTime}{dur ? ` · ${dur}` : ''}
